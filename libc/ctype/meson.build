@@ -33,11 +33,9 @@
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 srcs_ctype = [
-    'caseconv.c',
     'ctype_.c',
     'ctype_class.c',
     'ctype_table.c',
-    'ctype_wide.c',
     'isalnum.c',
     'isalnum_l.c',
     'isalpha.c',
@@ -62,6 +60,23 @@ srcs_ctype = [
     'isspace_l.c',
     'isupper.c',
     'isupper_l.c',
+    'isxdigit.c',
+    'isxdigit_l.c',
+    'toascii.c',
+    'toascii_l.c',
+    'tolower.c',
+    'tolower_l.c',
+    'toupper.c',
+    'toupper_l.c',
+]
+
+# Wide-character / multibyte ctype routines. These all need wint_t which
+# is 32 bits — they pull in i32 paths the backend doesn't yet handle on
+# 16-bit-int targets. Gate behind mb-capable so non-MB targets skip them.
+if mb_capable
+  srcs_ctype += [
+    'caseconv.c',
+    'ctype_wide.c',
     'iswalnum.c',
     'iswalnum_l.c',
     'iswalpha.c',
@@ -88,14 +103,6 @@ srcs_ctype = [
     'iswupper_l.c',
     'iswxdigit.c',
     'iswxdigit_l.c',
-    'isxdigit.c',
-    'isxdigit_l.c',
-    'toascii.c',
-    'toascii_l.c',
-    'tolower.c',
-    'tolower_l.c',
-    'toupper.c',
-    'toupper_l.c',
     'towctrans.c',
     'towctrans_l.c',
     'towlower.c',
@@ -106,7 +113,8 @@ srcs_ctype = [
     'wctrans_l.c',
     'wctype.c',
     'wctype_l.c',
-]
+  ]
+endif
 
 srcs_ctype_use = []
 foreach file : srcs_ctype

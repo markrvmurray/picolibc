@@ -177,6 +177,12 @@ option('stdio-exit-flush', type: 'boolean', value: false,
 # Internationalization options
 #
 
+option('stdio-float', type: 'boolean', value: true,
+       description: 'Include float/double formatting and conversion in stdio (printf %f, strtod, ecvt/fcvt, etc.)')
+option('posix-extensions', type: 'boolean', value: true,
+       description: 'Enable POSIX-only library functions in libc/posix (regex, fnmatch, pwd/grp, etc.)')
+option('search-extensions', type: 'boolean', value: true,
+       description: 'Enable POSIX/BSD search extensions in libc/search (qsort, hash, ndbm, hcreate)')
 option('mb-capable', type: 'boolean', value: false,
        description: 'enable multibyte support for UTF-8 charset')
 option('mb-extended-charsets', type: 'boolean', value: false,

@@ -33,8 +33,17 @@
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 srcs_search = [
-    'bsd_qsort_r.c',
     'bsearch.c',
+    'tdelete.c',
+    'tdestroy.c',
+    'tfind.c',
+    'tsearch.c',
+    'twalk.c',
+]
+
+if search_extensions
+  srcs_search += [
+    'bsd_qsort_r.c',
     'hash_bigkey.c',
     'hash_buf.c',
     'hash.c',
@@ -46,12 +55,8 @@ srcs_search = [
     'ndbm.c',
     'qsort.c',
     'qsort_r.c',
-    'tdelete.c',
-    'tdestroy.c',
-    'tfind.c',
-    'tsearch.c',
-    'twalk.c',
-]
+  ]
+endif
 hdrs_search = [
     'db_local.h',
     'extern.h',

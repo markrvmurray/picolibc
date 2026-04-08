@@ -474,6 +474,9 @@ endforeach
 
 fast_strcmp = get_option('fast-strcmp')
 
+stdio_float = get_option('stdio-float')
+posix_extensions = get_option('posix-extensions')
+search_extensions = get_option('search-extensions')
 mb_capable = get_option('mb-capable')
 mb_extended_charsets = mb_capable and get_option('mb-extended-charsets')
 if get_option('mb-ucs-charsets') == 'auto'

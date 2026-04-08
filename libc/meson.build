@@ -34,9 +34,13 @@
 #
 
 libdirs = ['argz', 'ctype', 'errno', 'iconv', 'locale',
-           'misc', 'posix', 'search', 'signal', 'ssp',
+           'misc', 'search', 'signal', 'ssp',
            'stdio', 'stdlib', 'string', 'time', 'xdr',
            'uchar', 'ubsan']
+
+if posix_extensions
+  libdirs += ['posix']
+endif
 
 if use_stdlib
   libdirs += ['native']

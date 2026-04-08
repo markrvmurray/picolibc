@@ -531,6 +531,11 @@ warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 #define __SMALL_BITFIELDS /* 16 Bit INT */
 #endif
 
+#ifdef __6809__
+#define __IEEE_BIG_ENDIAN
+#define __SMALL_BITFIELDS /* 16 Bit INT */
+#endif
+
 #ifdef __PRU__
 #define __IEEE_LITTLE_ENDIAN
 #endif

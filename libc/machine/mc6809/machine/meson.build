@@ -33,31 +33,11 @@
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-# No mc6809-specific machine sources yet. The setjmp/longjmp,
-# interrupt entry, and any other architecture-specific assembly will
-# be added here as the port matures. For now this file exists only
-# to satisfy picolibc's top-level meson.build, which checks for
-# libc/machine/<host_cpu_family>/meson.build before allowing the
-# build to proceed.
+inc_machine_headers_machine = [
+  '_types.h',
+]
 
-# machine/_types.h overrides __off_t and __fpos_t to 32-bit on the
-# 6809 (instead of the picolibc-default 64-bit), to keep the stdio
-# file-position family clear of i64 codegen until the broader long-
-# long roadmap lands. See machine/_types.h for the rationale.
-subdir('machine')
-
-srcs_machine = []
-
-foreach params : targets
-  target = params['name']
-  target_dir = params['dir']
-  target_c_args = params['c_args']
-  if srcs_machine.length() > 0
-    set_variable('lib_machine' + target,
-                 static_library('machine' + target,
-                                srcs_machine,
-                                pic: false,
-                                include_directories: inc,
-                                c_args: target_c_args + c_args + arg_fnobuiltin))
-  endif
-endforeach
+if really_install
+  install_headers(inc_machine_headers_machine,
+                  install_dir: include_dir / 'machine')
+endif

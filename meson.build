@@ -1893,7 +1893,9 @@ endif
 # Build the C library
 
 subdir('libc')
-subdir('libm')
+if get_option('want-libm')
+  subdir('libm')
+endif
 
 libnames = ['cpart', 'mpart']
 

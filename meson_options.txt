@@ -179,6 +179,8 @@ option('stdio-exit-flush', type: 'boolean', value: false,
 
 option('stdio-float', type: 'boolean', value: true,
        description: 'Include float/double formatting and conversion in stdio (printf %f, strtod, ecvt/fcvt, etc.)')
+option('want-libm', type: 'boolean', value: true,
+       description: 'Build libm. Disable on FPU-less targets that have no FP support in the toolchain.')
 option('posix-extensions', type: 'boolean', value: true,
        description: 'Enable POSIX-only library functions in libc/posix (regex, fnmatch, pwd/grp, etc.)')
 option('search-extensions', type: 'boolean', value: true,

@@ -4,6 +4,7 @@ cpp = ['/Users/markmurray/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin/c
 ar = '/Users/markmurray/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin/llvm-ar'
 nm = '/Users/markmurray/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin/llvm-nm'
 strip = '/Users/markmurray/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin/llvm-strip'
+exe_wrapper = ['/Users/markmurray/GitHub/picolibc/scripts/run-mc6809']
 
 [host_machine]
 system = 'none'

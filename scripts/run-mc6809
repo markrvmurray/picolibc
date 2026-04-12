@@ -1,0 +1,53 @@
+#!/bin/sh
+#
+# run-mc6809 — picolibc test runner for MC6809 (usim09batch)
+#
+# Usage: run-mc6809 <elf> [--stdin "string"] [--args "args"]
+#
+# Converts ELF to Intel HEX and runs via usim09batch.
+# Exit code from the simulated program's halt device write.
+#
+
+USIM="${USIM09BATCH:-usim09batch}"
+OBJCOPY="${LLVM_OBJCOPY:-llvm-objcopy}"
+
+# select the program
+elf="$1"
+shift
+
+stdin=""
+args=""
+done=0
+while [ $# -gt 0 -a $done -eq 0 ]; do
+  case "$1" in
+    --stdin)
+      stdin="$2"
+      shift 2
+      ;;
+    --args)
+      args="$2"
+      shift 2
+      ;;
+    *)
+      done=1
+      ;;
+  esac
+done
+
+if [ -z "$elf" ]; then
+  echo "usage: run-mc6809 <elf> [--stdin string] [--args string]" >&2
+  exit 1
+fi
+
+# Convert ELF to Intel HEX (USim only loads HEX)
+hex=$(mktemp /tmp/mc6809-XXXXXX.hex)
+trap "rm -f $hex" EXIT
+
+$OBJCOPY -O ihex "$elf" "$hex" 2>/dev/null
+if [ $? -ne 0 ]; then
+  echo "run-mc6809: failed to convert $elf to hex" >&2
+  exit 1
+fi
+
+# Run simulator
+echo "$stdin" | $USIM --timeout=10000000 "$hex"

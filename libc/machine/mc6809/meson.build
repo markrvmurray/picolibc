@@ -39,17 +39,7 @@
 # long roadmap lands. See machine/_types.h for the rationale.
 subdir('machine')
 
-# Hand-written memcpy/memmove/memset in 6809 assembly. These exist
-# because picolibc's C implementations are miscompiled by clang at
-# -Oz (the default optimisation level): a `while (n--)` loop loses
-# its back-branch, so the loop body never runs and memcpy becomes a
-# no-op. This silently broke .data initialisation in crt0 and killed
-# every stdio-using test before it reached main.
-srcs_machine = [
-  'memcpy.S',
-  'memmove.S',
-  'memset.S',
-]
+srcs_machine = []
 
 foreach params : targets
   target = params['name']

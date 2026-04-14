@@ -102,10 +102,25 @@ _cstart(void)
      * other emulators may leave the ACIA in an indeterminate state.
      * Do a master reset (cr=0x03) followed by operating mode:
      *   cr = 0x15 = 0b00010101 = /16 clock, 8N1, no IRQ, RTS=low
+     *
+     * Written as inline asm to keep the compiler from tracking the
+     * ACIA address through its register allocator — letting it
+     * believe the stores are part of normal codegen has caused
+     * downstream regalloc to lose track of __data_size and emit
+     * a memcpy with a garbage size argument.
      */
-    volatile unsigned char *acia_status_ctrl = (volatile unsigned char *)0xC000;
-    *acia_status_ctrl = 0x03;   /* master reset */
-    *acia_status_ctrl = 0x15;   /* /16 clock, 8N1, no IRQ */
+    __asm__ volatile (
+        "pshs d,x\n\t"         /* save caller's D and X */
+        "ldx #0xC000\n\t"
+        "ldb #0x03\n\t"
+        "stb ,x\n\t"           /* master reset */
+        "ldb #0x15\n\t"
+        "stb ,x\n\t"           /* /16 clock, 8N1, no IRQ */
+        "puls d,x\n\t"         /* restore D and X */
+        :
+        :
+        : "memory"
+    );
 
     __start();
 }

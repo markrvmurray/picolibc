@@ -80,6 +80,14 @@ _BEGIN_STD_C
 #define _JBLEN 34
 #endif
 
+#if defined(__mc6809__) || defined(__6809__)
+/*
+ * MC6809: save U (frame pointer), Y, S, PC = 4 registers.
+ * All are 16-bit. D and X are caller-saved.
+ */
+#define _JBLEN 4
+#endif
+
 #if defined(__mc68hc11__) || defined(__mc68hc12__) || defined(__mc68hc1x__)
 /*
  * D, X, Y are not saved.

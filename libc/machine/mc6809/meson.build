@@ -33,20 +33,23 @@
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-# No mc6809-specific machine sources yet. The setjmp/longjmp,
-# interrupt entry, and any other architecture-specific assembly will
-# be added here as the port matures. For now this file exists only
-# to satisfy picolibc's top-level meson.build, which checks for
-# libc/machine/<host_cpu_family>/meson.build before allowing the
-# build to proceed.
-
 # machine/_types.h overrides __off_t and __fpos_t to 32-bit on the
 # 6809 (instead of the picolibc-default 64-bit), to keep the stdio
 # file-position family clear of i64 codegen until the broader long-
 # long roadmap lands. See machine/_types.h for the rationale.
 subdir('machine')
 
-srcs_machine = []
+# Hand-written memcpy/memmove/memset in 6809 assembly. These exist
+# because picolibc's C implementations are miscompiled by clang at
+# -Oz (the default optimisation level): a `while (n--)` loop loses
+# its back-branch, so the loop body never runs and memcpy becomes a
+# no-op. This silently broke .data initialisation in crt0 and killed
+# every stdio-using test before it reached main.
+srcs_machine = [
+  'memcpy.S',
+  'memmove.S',
+  'memset.S',
+]
 
 foreach params : targets
   target = params['name']

@@ -95,6 +95,18 @@ __asm__(
 static void __used
 _cstart(void)
 {
+    /* Initialise the MC6850 ACIA semihost device.
+     *
+     * USim's mc6850 emulation works without explicit initialisation
+     * (the constructor's reset() sets sr=TDRE), but real hardware and
+     * other emulators may leave the ACIA in an indeterminate state.
+     * Do a master reset (cr=0x03) followed by operating mode:
+     *   cr = 0x15 = 0b00010101 = /16 clock, 8N1, no IRQ, RTS=low
+     */
+    volatile unsigned char *acia_status_ctrl = (volatile unsigned char *)0xC000;
+    *acia_status_ctrl = 0x03;   /* master reset */
+    *acia_status_ctrl = 0x15;   /* /16 clock, 8N1, no IRQ */
+
     __start();
 }
 
@@ -104,8 +116,8 @@ _start(void)
     /* Initialise stack pointer to top-of-stack from the linker
      * script, then long-branch to the C bring-up. The 6809 has
      * no separate "interrupt vector" table loaded by hardware —
-     * the reset vector at 0xFFFE is wired up by mc6809rt.s in
-     * the LLVM-MC6809 runtime, which jumps here. */
+     * the reset vector at 0xFFFE is injected into the hex file
+     * by the run-mc6809 wrapper before USim loads it. */
     __asm__ volatile("lds #__stack");
     __asm__ volatile("lbra _cstart");
 }

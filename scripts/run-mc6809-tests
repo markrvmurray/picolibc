@@ -53,6 +53,21 @@ def existing_binary_tests():
 def run_meson_test(test_names):
     """Invoke meson test for the named tests, return path to JSON log."""
     env = os.environ.copy()
+    # ============================================================
+    # =========  TEMPORARY — REMOVE WHEN BUG #119 IS FIXED  ======
+    # ============================================================
+    # llvm-objdump currently crashes on certain MC6809 disassembly
+    # (bug #119, ArrayRef OOB in evaluateMemoryOperandAddress).
+    # Every crash spawns llvm-symbolizer to symbolicate the stack
+    # trace, which on macOS walks every loaded dylib and can take
+    # tens of seconds. Disabling both kills the wait without
+    # affecting test outcomes — exit codes are preserved, only the
+    # crash-report machinery is silenced.
+    #
+    # !! DELETE THESE TWO LINES WHEN #119 IS CLOSED !!
+    env["LLVM_DISABLE_CRASH_REPORT"] = "1"
+    env["LLVM_DISABLE_SYMBOLIZATION"] = "1"
+    # ============================================================
     cmd = [
         "meson", "test",
         "-C", BUILDDIR,

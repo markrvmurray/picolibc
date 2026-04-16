@@ -1,0 +1,22 @@
+#!/bin/sh
+# Convenience wrapper around run-mc6809-tests.
+#
+# The harness itself requires three tools to be reachable via the
+# environment:
+#   USIM09BATCH   — MC6809 batch simulator (from the usim repo)
+#   LLVM_OBJCOPY  — llvm-objcopy built for MC6809
+#   LLVM_NM       — llvm-nm built for MC6809
+#
+# The defaults below match a typical layout:
+#   ${HOME}/GitHub/usim         — github.com/sim6809/usim checkout
+#   ${HOME}/GitHub/llvm-mc6809  — llvm-mc6809 checkout with a
+#                                  cmake-build-debug-system build dir
+#
+# Already-set environment values are preserved, so override any
+# individual path by exporting it before invoking this wrapper.
+: "${USIM09BATCH:=${HOME}/GitHub/usim/usim09batch}"
+: "${LLVM_OBJCOPY:=${HOME}/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin/llvm-objcopy}"
+: "${LLVM_NM:=${HOME}/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin/llvm-nm}"
+export USIM09BATCH LLVM_OBJCOPY LLVM_NM
+
+exec "$(dirname "$0")/run-mc6809-tests" "$@"

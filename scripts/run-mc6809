@@ -41,7 +41,10 @@ if [ -z "$elf" ]; then
 fi
 
 # Convert ELF to Intel HEX (USim only loads HEX)
-hex=$(mktemp /tmp/mc6809-XXXXXX.hex)
+# NB: BSD mktemp on macOS only substitutes X's when at the END of the
+# template — a trailing ".hex" suffix is taken literally and produces
+# /tmp/mc6809-XXXXXX (verbatim), which collides on the second call.
+hex=$(mktemp /tmp/mc6809.XXXXXXXX)
 trap "rm -f $hex" EXIT
 
 $OBJCOPY -O ihex "$elf" "$hex" 2>/dev/null

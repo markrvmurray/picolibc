@@ -13,18 +13,30 @@ Outputs:
   /tmp/picolibc-results.txt   — one line per test, plus tally
   /tmp/picolibc-failures.log  — stdout+stderr of every non-OK test
 
+With --record, also writes each run to
+  ~/Documents/mc6809-bench/results.sqlite
+so cycle counts can be tracked over time. Requires USIM_CYCLES=1
+(set automatically) so usim09batch emits cycles=<N> on stderr.
+
 Environment overrides:
   PICOLIBC_BUILDDIR   build directory (default: <repo>/builddir-mc6809)
   USIM09BATCH         USim binary
   LLVM_OBJCOPY        llvm-objcopy
   LLVM_NM             llvm-nm
+  MC6809_BENCH_DB     override SQLite path (default: ~/Documents/
+                      mc6809-bench/results.sqlite)
 """
 
+import argparse
 import json
 import os
+import re
+import sqlite3
 import subprocess
 import sys
 from collections import Counter
+from datetime import datetime, timezone
+from pathlib import Path
 
 REPO     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILDDIR = os.environ.get("PICOLIBC_BUILDDIR", f"{REPO}/builddir-mc6809")
@@ -32,6 +44,10 @@ BUILDDIR = os.environ.get("PICOLIBC_BUILDDIR", f"{REPO}/builddir-mc6809")
 OUT     = "/tmp/picolibc-results.txt"
 FAILLOG = "/tmp/picolibc-failures.log"
 LOGBASE = "mc6809-tally"
+
+DEFAULT_DB = Path.home() / "Documents" / "mc6809-bench" / "results.sqlite"
+
+CYCLES_RE = re.compile(r"^cycles=(\d+)\s*$", re.MULTILINE)
 
 
 def existing_binary_tests():
@@ -50,77 +66,199 @@ def existing_binary_tests():
     return keep
 
 
-def run_meson_test(test_names):
-    """Invoke meson test for the named tests, return path to JSON log."""
+def run_single_test(test_name, logbase):
+    """Invoke meson test for one test; return the parsed result tuple or None.
+
+    One-at-a-time execution lets the caller commit each result to the DB
+    as it lands, so an interrupted run still preserves completed tests.
+    The slight overhead (meson startup) is negligible next to usim runs."""
     env = os.environ.copy()
     cmd = [
         "meson", "test",
         "-C", BUILDDIR,
         "--no-rebuild",
         "--num-processes", "1",
-        "--logbase", LOGBASE,
+        "--logbase", logbase,
         "--print-errorlogs",
         "-q",
         "-t", os.environ.get("MESON_TIMEOUT_MULTIPLIER", "10"),
         "--",
-    ] + test_names
-    print(f"running {len(test_names)} tests via meson…", flush=True)
+        test_name,
+    ]
     subprocess.run(cmd, env=env, stdout=subprocess.DEVNULL,
                    stderr=subprocess.DEVNULL)
-    return f"{BUILDDIR}/meson-logs/{LOGBASE}.json"
+    log = f"{BUILDDIR}/meson-logs/{logbase}.json"
+    if not os.path.exists(log):
+        return None
+    for r in parse_meson_log(log):
+        return r
+    return None
 
 
 def parse_meson_log(path):
-    """Yield (name, result, returncode, stdout, stderr, duration) per test."""
+    """Yield (name, result, returncode, stdout, stderr, duration, cycles) per test."""
     with open(path) as f:
         for line in f:
             line = line.strip()
             if not line:
                 continue
             r = json.loads(line)
+            err = r.get("stderr", "")
+            m = CYCLES_RE.search(err) if err else None
+            cycles = int(m.group(1)) if m else None
             yield (
                 r.get("name", "?"),
                 r.get("result", "?"),
                 r.get("returncode", -1),
                 r.get("stdout", ""),
-                r.get("stderr", ""),
+                err,
                 r.get("duration", 0.0),
+                cycles,
             )
 
 
+def git_head(path):
+    """Return short git SHA for the given path, or None if not a git repo."""
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=True,
+        )
+        return out.stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+
+def ensure_db(path):
+    """Create the SQLite ledger if absent; return a connection."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(path))
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS runs (
+            run_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp       TEXT NOT NULL,
+            llvm_commit     TEXT,
+            picolibc_commit TEXT,
+            usim_commit     TEXT,
+            host            TEXT
+        );
+        CREATE TABLE IF NOT EXISTS results (
+            run_id       INTEGER NOT NULL REFERENCES runs(run_id),
+            test_name    TEXT NOT NULL,
+            suite        TEXT,
+            status       TEXT NOT NULL,
+            wall_seconds REAL,
+            cycles       INTEGER,
+            rc           INTEGER,
+            PRIMARY KEY (run_id, test_name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_results_test
+            ON results(test_name, run_id);
+    """)
+    return conn
+
+
+def open_run(db_path):
+    """Open the ledger and insert a fresh `runs` row; return (conn, run_id)."""
+    conn = ensure_db(db_path)
+    usim_path = os.environ.get("USIM09BATCH") or "/Users/markmurray/GitHub/usim"
+    usim_repo = Path(usim_path).parent if Path(usim_path).is_file() else Path(usim_path)
+    run_row = (
+        datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        git_head("/Users/markmurray/GitHub/llvm-mc6809"),
+        git_head(REPO),
+        git_head(str(usim_repo)),
+        os.uname().nodename,
+    )
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO runs (timestamp, llvm_commit, picolibc_commit, "
+        "usim_commit, host) VALUES (?, ?, ?, ?, ?)",
+        run_row,
+    )
+    conn.commit()
+    return conn, cur.lastrowid
+
+
+def insert_result(conn, run_id, name, result, rc, dur, cycles):
+    """Insert one result row and commit immediately — durable per-test."""
+    suite = name.split(" - ", 1)[0] if " - " in name else None
+    conn.execute(
+        "INSERT INTO results (run_id, test_name, suite, status, "
+        "wall_seconds, cycles, rc) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (run_id, name, suite, result, dur, cycles, rc),
+    )
+    conn.commit()
+
+
 def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
+    ap.add_argument("--record", action="store_true",
+                    help="write cycles+status to the SQLite ledger")
+    ap.add_argument("--db", default=os.environ.get("MC6809_BENCH_DB",
+                                                   str(DEFAULT_DB)),
+                    help=f"SQLite ledger path (default: {DEFAULT_DB})")
+    args = ap.parse_args()
+
+    if args.record:
+        os.environ["USIM_CYCLES"] = "1"
+
     tests = existing_binary_tests()
     if not tests:
         print("no buildable test binaries found", file=sys.stderr)
         return 1
 
-    names = [t["name"] for t in tests]
-    log = run_meson_test(names)
-    if not os.path.exists(log):
-        print(f"meson did not produce {log}", file=sys.stderr)
-        return 1
+    conn, run_id = (None, None)
+    if args.record:
+        conn, run_id = open_run(Path(args.db))
+        print(f"recording to {args.db} as run_id={run_id}", flush=True)
 
-    results = list(parse_meson_log(log))
-    counts = Counter(r[1] for r in results)
-
-    with open(OUT, "w") as ftally, open(FAILLOG, "w") as flog:
-        for name, result, rc, out, err, dur in sorted(results):
-            ftally.write(f"{result:14s} rc={rc:<4d} {dur:6.2f}s  {name}\n")
+    results = []
+    counts = Counter()
+    # Open tally + failure log line-buffered so partial state is visible
+    # even if the harness is interrupted.
+    ftally = open(OUT, "w", buffering=1)
+    flog = open(FAILLOG, "w", buffering=1)
+    print(f"running {len(tests)} tests one-at-a-time…", flush=True)
+    try:
+        for i, t in enumerate(tests, 1):
+            name = t["name"]
+            # Per-test logbase so each run's JSON artefact is isolated.
+            safe = re.sub(r"[^A-Za-z0-9._-]", "_", name)
+            logbase = f"{LOGBASE}-{safe}"
+            parsed = run_single_test(name, logbase)
+            if parsed is None:
+                # meson failed to produce a log — treat as ERROR
+                parsed = (name, "ERROR", -1, "", "", 0.0, None)
+            pname, result, rc, out, err, dur, cycles = parsed
+            results.append(parsed)
+            counts[result] += 1
+            cyc_str = f" cyc={cycles:>11d}" if cycles is not None else ""
+            line = f"{result:14s} rc={rc:<4d} {dur:6.2f}s{cyc_str}  {pname}"
+            print(f"[{i:>2}/{len(tests)}] {line}", flush=True)
+            ftally.write(line + "\n")
             if result not in ("OK", "EXPECTEDFAIL", "SKIP"):
                 flog.write("=" * 70 + "\n")
-                flog.write(f"{result}: {name}  (rc={rc}, {dur:.2f}s)\n")
+                flog.write(f"{result}: {pname}  (rc={rc}, {dur:.2f}s)\n")
                 flog.write("-" * 70 + "\n")
                 if out:
                     flog.write("--- stdout ---\n" + out.rstrip() + "\n")
                 if err:
                     flog.write("--- stderr ---\n" + err.rstrip() + "\n")
                 flog.write("\n")
+            if conn is not None:
+                insert_result(conn, run_id, pname, result, rc, dur, cycles)
+    finally:
         ftally.write("-" * 50 + "\n")
         for k in ("OK", "EXPECTEDFAIL", "SKIP", "FAIL", "UNEXPECTEDPASS",
                   "ERROR", "TIMEOUT"):
             if counts.get(k):
                 ftally.write(f"{k:14s} {counts[k]}\n")
         ftally.write(f"TOTAL          {sum(counts.values())}\n")
+        ftally.close()
+        flog.close()
+        if conn is not None:
+            conn.close()
 
     parts = [f"{k}={counts[k]}"
              for k in ("OK", "EXPECTEDFAIL", "SKIP", "FAIL",
@@ -129,6 +267,12 @@ def main():
     print("  ".join(parts) + f"  TOTAL={sum(counts.values())}")
     print(f"per-test: {OUT}")
     print(f"failure logs: {FAILLOG}")
+
+    if args.record:
+        cycle_total = sum(r[6] for r in results if r[6] is not None)
+        tests_with_cycles = sum(1 for r in results if r[6] is not None)
+        print(f"recorded run_id={run_id} to {args.db} "
+              f"({tests_with_cycles} tests with cycles, total={cycle_total})")
     return 0
 
 

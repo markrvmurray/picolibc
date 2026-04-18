@@ -19,4 +19,10 @@
 : "${LLVM_NM:=${HOME}/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin/llvm-nm}"
 export USIM09BATCH LLVM_OBJCOPY LLVM_NM
 
+# Suppress llvm-symbolizer on pre-existing crashes (FP/address-space
+# test compilation failures). Each crash spawns llvm-symbolizer which
+# walks all loaded dylibs on macOS — tens of seconds per crash.
+export LLVM_DISABLE_CRASH_REPORT=1
+export LLVM_DISABLE_SYMBOLIZATION=1
+
 exec "$(dirname "$0")/run-mc6809-tests" "$@"

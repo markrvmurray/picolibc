@@ -72,5 +72,11 @@ if [ -n "$start_addr" ]; then
   ' "$hex" > "$hex.tmp" && mv "$hex.tmp" "$hex"
 fi
 
-# Run simulator
-echo "$stdin" | $USIM --timeout="${USIM_TIMEOUT:-500000000}" "$hex"
+# Run simulator.
+# USIM_CYCLES=1 opts into canonical-cycle reporting; usim09batch then
+# emits 'cycles=<N>' on stderr which the tally harness picks up.
+cycles_flag=""
+if [ "${USIM_CYCLES:-0}" = "1" ]; then
+  cycles_flag="--cycles"
+fi
+echo "$stdin" | $USIM --timeout="${USIM_TIMEOUT:-500000000}" $cycles_flag "$hex"

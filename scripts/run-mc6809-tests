@@ -61,6 +61,7 @@ def run_meson_test(test_names):
         "--logbase", LOGBASE,
         "--print-errorlogs",
         "-q",
+        "-t", os.environ.get("MESON_TIMEOUT_MULTIPLIER", "10"),
         "--",
     ] + test_names
     print(f"running {len(test_names)} tests via meson…", flush=True)

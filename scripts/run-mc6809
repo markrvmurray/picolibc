@@ -79,4 +79,9 @@ cycles_flag=""
 if [ "${USIM_CYCLES:-0}" = "1" ]; then
   cycles_flag="--cycles"
 fi
-echo "$stdin" | $USIM --timeout="${USIM_TIMEOUT:-500000000}" $cycles_flag "$hex"
+# Default cap raised 500M -> 2B (4x headroom). Three picolibc string
+# tests (memset, memchr, memmem) sit just above 500M instructions and
+# were misclassified as FAIL until the cap moved. usim returns rc 124
+# on cap-hit (GNU timeout convention); we relay it unchanged so the
+# python harness can reclassify FAIL -> TIMEOUT.
+echo "$stdin" | $USIM --timeout="${USIM_TIMEOUT:-2000000000}" $cycles_flag "$hex"

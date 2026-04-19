@@ -49,6 +49,12 @@ DEFAULT_DB = Path.home() / "Documents" / "mc6809-bench" / "results.sqlite"
 
 CYCLES_RE = re.compile(r"^cycles=(\d+)\s*$", re.MULTILINE)
 
+# usim09batch exits 124 (GNU `timeout(1)` convention) when --timeout=N
+# is hit. meson only sees a non-zero rc and reports FAIL; reclassify
+# here so cap-hits appear as TIMEOUT in the ledger instead of polluting
+# the FAIL bucket. Bumping USIM_TIMEOUT is the other half of bug #131.
+USIM_CAP_RC = 124
+
 
 def existing_binary_tests():
     """Tests from intro-tests.json whose cmd[0] is an existing executable.
@@ -231,6 +237,9 @@ def main():
                 # meson failed to produce a log — treat as ERROR
                 parsed = (name, "ERROR", -1, "", "", 0.0, None)
             pname, result, rc, out, err, dur, cycles = parsed
+            if rc == USIM_CAP_RC and result == "FAIL":
+                result = "TIMEOUT"
+                parsed = (pname, result, rc, out, err, dur, cycles)
             results.append(parsed)
             counts[result] += 1
             cyc_str = f" cyc={cycles:>11d}" if cycles is not None else ""

@@ -34,7 +34,9 @@ import re
 import sqlite3
 import subprocess
 import sys
+import threading
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -197,6 +199,26 @@ def insert_result(conn, run_id, name, result, rc, dur, cycles):
     conn.commit()
 
 
+def prior_cycles(db_path):
+    """Map test_name -> last-recorded cycles for LPT scheduling.
+
+    Tests not in the DB get 0, scheduling them last (cheap default).
+    Used only to order submission so the longest tests start first
+    on a parallel pool — overall makespan is then close to optimal."""
+    if not Path(db_path).exists():
+        return {}
+    conn = sqlite3.connect(str(db_path))
+    try:
+        cur = conn.execute(
+            "SELECT test_name, cycles FROM results "
+            "WHERE run_id = (SELECT MAX(run_id) FROM runs) "
+            "AND cycles IS NOT NULL"
+        )
+        return dict(cur.fetchall())
+    finally:
+        conn.close()
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     ap.add_argument("--record", action="store_true",
@@ -204,6 +226,10 @@ def main():
     ap.add_argument("--db", default=os.environ.get("MC6809_BENCH_DB",
                                                    str(DEFAULT_DB)),
                     help=f"SQLite ledger path (default: {DEFAULT_DB})")
+    ap.add_argument("--jobs", "-j", type=int, default=1,
+                    help="parallel workers (default: 1). With --jobs >1, "
+                         "tests are scheduled longest-first using cycle "
+                         "counts from the most recent recorded run.")
     args = ap.parse_args()
 
     if args.record:
@@ -214,10 +240,23 @@ def main():
         print("no buildable test binaries found", file=sys.stderr)
         return 1
 
+    # LPT (longest processing time first) scheduling: feed the pool the
+    # slowest tests first so they don't all stack on one worker at the
+    # tail of the run. Unknown tests sort last (cycles default 0).
+    if args.jobs > 1:
+        prior = prior_cycles(args.db)
+        tests.sort(key=lambda t: prior.get(t["name"], 0), reverse=True)
+
     conn, run_id = (None, None)
     if args.record:
         conn, run_id = open_run(Path(args.db))
         print(f"recording to {args.db} as run_id={run_id}", flush=True)
+
+    # SQLite stdlib connection isn't thread-safe; serialise writes
+    # behind a lock when running parallel. Print lock keeps the
+    # interleaved per-test lines from fragmenting.
+    db_lock = threading.Lock()
+    print_lock = threading.Lock()
 
     results = []
     counts = Counter()
@@ -225,26 +264,30 @@ def main():
     # even if the harness is interrupted.
     ftally = open(OUT, "w", buffering=1)
     flog = open(FAILLOG, "w", buffering=1)
-    print(f"running {len(tests)} tests one-at-a-time…", flush=True)
-    try:
-        for i, t in enumerate(tests, 1):
-            name = t["name"]
-            # Per-test logbase so each run's JSON artefact is isolated.
-            safe = re.sub(r"[^A-Za-z0-9._-]", "_", name)
-            logbase = f"{LOGBASE}-{safe}"
-            parsed = run_single_test(name, logbase)
-            if parsed is None:
-                # meson failed to produce a log — treat as ERROR
-                parsed = (name, "ERROR", -1, "", "", 0.0, None)
-            pname, result, rc, out, err, dur, cycles = parsed
-            if rc == USIM_CAP_RC and result == "FAIL":
-                result = "TIMEOUT"
-                parsed = (pname, result, rc, out, err, dur, cycles)
-            results.append(parsed)
-            counts[result] += 1
-            cyc_str = f" cyc={cycles:>11d}" if cycles is not None else ""
-            line = f"{result:14s} rc={rc:<4d} {dur:6.2f}s{cyc_str}  {pname}"
-            print(f"[{i:>2}/{len(tests)}] {line}", flush=True)
+    mode = "one-at-a-time" if args.jobs == 1 else f"{args.jobs}-at-a-time"
+    print(f"running {len(tests)} tests {mode}…", flush=True)
+
+    def execute(t):
+        name = t["name"]
+        safe = re.sub(r"[^A-Za-z0-9._-]", "_", name)
+        logbase = f"{LOGBASE}-{safe}"
+        parsed = run_single_test(name, logbase)
+        if parsed is None:
+            parsed = (name, "ERROR", -1, "", "", 0.0, None)
+        pname, result, rc, out, err, dur, cycles = parsed
+        if rc == USIM_CAP_RC and result == "FAIL":
+            result = "TIMEOUT"
+            parsed = (pname, result, rc, out, err, dur, cycles)
+        return parsed
+
+    def record(parsed, completed_idx, total):
+        pname, result, rc, out, err, dur, cycles = parsed
+        results.append(parsed)
+        counts[result] += 1
+        cyc_str = f" cyc={cycles:>11d}" if cycles is not None else ""
+        line = f"{result:14s} rc={rc:<4d} {dur:6.2f}s{cyc_str}  {pname}"
+        with print_lock:
+            print(f"[{completed_idx:>2}/{total}] {line}", flush=True)
             ftally.write(line + "\n")
             if result not in ("OK", "EXPECTEDFAIL", "SKIP"):
                 flog.write("=" * 70 + "\n")
@@ -255,8 +298,19 @@ def main():
                 if err:
                     flog.write("--- stderr ---\n" + err.rstrip() + "\n")
                 flog.write("\n")
-            if conn is not None:
+        if conn is not None:
+            with db_lock:
                 insert_result(conn, run_id, pname, result, rc, dur, cycles)
+
+    try:
+        if args.jobs == 1:
+            for i, t in enumerate(tests, 1):
+                record(execute(t), i, len(tests))
+        else:
+            with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+                futures = [pool.submit(execute, t) for t in tests]
+                for i, fut in enumerate(as_completed(futures), 1):
+                    record(fut.result(), i, len(tests))
     finally:
         ftally.write("-" * 50 + "\n")
         for k in ("OK", "EXPECTEDFAIL", "SKIP", "FAIL", "UNEXPECTEDPASS",

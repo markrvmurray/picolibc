@@ -57,6 +57,37 @@ CYCLES_RE = re.compile(r"^cycles=(\d+)\s*$", re.MULTILINE)
 # the FAIL bucket. Bumping USIM_TIMEOUT is the other half of bug #131.
 USIM_CAP_RC = 124
 
+# Per-test usim instruction caps. Keys are the bare test name as stored
+# in meson's intro-tests.json (what the harness passes to `meson test`);
+# meson itself renders a fuller "suite - project:name" form in its logs,
+# but that form is derived only after the fact. Measured values from
+# run_id=7/9 with ~2x headroom. A single global USIM_TIMEOUT is wrong:
+# tight on the slow-but-correct outliers (they trip the cap and get
+# misclassified as TIMEOUT) yet far too generous for the fast majority
+# (a genuine hang in any fast test sleeps for the slow-test budget).
+# This table lets each known-slow test set its own ceiling while
+# everything else keeps the tight default. Source of truth is
+# reference_slow_test_budgets.md.
+SLOW_CAPS = {
+    "strcmp-1":     5_000_000_000,
+    "test-memset":  3_000_000_000,
+    "test-memchr": 25_000_000_000,
+    "test-memmem": 80_000_000_000,
+}
+
+# Tests that are genuinely too slow for routine tallies (>10 min wall).
+# Skipped by default; included only with --slow. Keeps the default
+# tally fast without losing the ability to run them when needed.
+SLOW_TESTS = {
+    "test-memmem",
+}
+
+# Default usim cap for tests not in SLOW_CAPS. Matches run-mc6809's
+# own fallback so behaviour is identical between single-test and
+# tally invocations. Override via USIM_TIMEOUT env if callers really
+# need a different baseline for all tests.
+DEFAULT_USIM_TIMEOUT = 2_000_000_000
+
 
 def existing_binary_tests():
     """Tests from intro-tests.json whose cmd[0] is an existing executable.
@@ -81,6 +112,10 @@ def run_single_test(test_name, logbase):
     as it lands, so an interrupted run still preserves completed tests.
     The slight overhead (meson startup) is negligible next to usim runs."""
     env = os.environ.copy()
+    cap = SLOW_CAPS.get(test_name,
+                        int(os.environ.get("USIM_TIMEOUT",
+                                           DEFAULT_USIM_TIMEOUT)))
+    env["USIM_TIMEOUT"] = str(cap)
     cmd = [
         "meson", "test",
         "-C", BUILDDIR,
@@ -148,7 +183,8 @@ def ensure_db(path):
             llvm_commit     TEXT,
             picolibc_commit TEXT,
             usim_commit     TEXT,
-            host            TEXT
+            host            TEXT,
+            opt_level       TEXT
         );
         CREATE TABLE IF NOT EXISTS results (
             run_id       INTEGER NOT NULL REFERENCES runs(run_id),
@@ -158,15 +194,24 @@ def ensure_db(path):
             wall_seconds REAL,
             cycles       INTEGER,
             rc           INTEGER,
+            opt_level    TEXT,
             PRIMARY KEY (run_id, test_name)
         );
         CREATE INDEX IF NOT EXISTS idx_results_test
             ON results(test_name, run_id);
+        CREATE INDEX IF NOT EXISTS idx_results_opt
+            ON results(opt_level, test_name);
     """)
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(runs)")}
+    if "opt_level" not in cols:
+        conn.execute("ALTER TABLE runs ADD COLUMN opt_level TEXT")
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(results)")}
+    if "opt_level" not in cols:
+        conn.execute("ALTER TABLE results ADD COLUMN opt_level TEXT")
     return conn
 
 
-def open_run(db_path):
+def open_run(db_path, opt_level):
     """Open the ledger and insert a fresh `runs` row; return (conn, run_id)."""
     conn = ensure_db(db_path)
     usim_path = os.environ.get("USIM09BATCH") or "/Users/markmurray/GitHub/usim"
@@ -177,43 +222,55 @@ def open_run(db_path):
         git_head(REPO),
         git_head(str(usim_repo)),
         os.uname().nodename,
+        opt_level,
     )
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO runs (timestamp, llvm_commit, picolibc_commit, "
-        "usim_commit, host) VALUES (?, ?, ?, ?, ?)",
+        "usim_commit, host, opt_level) VALUES (?, ?, ?, ?, ?, ?)",
         run_row,
     )
     conn.commit()
     return conn, cur.lastrowid
 
 
-def insert_result(conn, run_id, name, result, rc, dur, cycles):
+def insert_result(conn, run_id, name, result, rc, dur, cycles, opt_level):
     """Insert one result row and commit immediately — durable per-test."""
     suite = name.split(" - ", 1)[0] if " - " in name else None
     conn.execute(
         "INSERT INTO results (run_id, test_name, suite, status, "
-        "wall_seconds, cycles, rc) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (run_id, name, suite, result, dur, cycles, rc),
+        "wall_seconds, cycles, rc, opt_level) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (run_id, name, suite, result, dur, cycles, rc, opt_level),
     )
     conn.commit()
 
 
-def prior_cycles(db_path):
+def prior_cycles(db_path, opt_level):
     """Map test_name -> last-recorded cycles for LPT scheduling.
 
-    Tests not in the DB get 0, scheduling them last (cheap default).
-    Used only to order submission so the longest tests start first
-    on a parallel pool — overall makespan is then close to optimal."""
+    Filters by opt_level so a -O0 sweep doesn't pick up -Oz cycle
+    counts (and vice versa). Tests not in the DB get 0, scheduling
+    them last (cheap default)."""
     if not Path(db_path).exists():
         return {}
     conn = sqlite3.connect(str(db_path))
     try:
-        cur = conn.execute(
-            "SELECT test_name, cycles FROM results "
-            "WHERE run_id = (SELECT MAX(run_id) FROM runs) "
-            "AND cycles IS NOT NULL"
-        )
+        if opt_level is None:
+            cur = conn.execute(
+                "SELECT test_name, cycles FROM results "
+                "WHERE run_id = (SELECT MAX(run_id) FROM runs "
+                "                WHERE opt_level IS NULL) "
+                "AND cycles IS NOT NULL"
+            )
+        else:
+            cur = conn.execute(
+                "SELECT test_name, cycles FROM results "
+                "WHERE run_id = (SELECT MAX(run_id) FROM runs "
+                "                WHERE opt_level = ?) "
+                "AND cycles IS NOT NULL",
+                (opt_level,),
+            )
         return dict(cur.fetchall())
     finally:
         conn.close()
@@ -230,12 +287,27 @@ def main():
                     help="parallel workers (default: 1). With --jobs >1, "
                          "tests are scheduled longest-first using cycle "
                          "counts from the most recent recorded run.")
+    ap.add_argument("--opt-level", default=os.environ.get("MC6809_OPT_LEVEL"),
+                    help="optimisation level tag to record alongside each "
+                         "result row (e.g. O0, O1, O2, O3, Os, Oz). Used to "
+                         "distinguish multi-O sweeps within the same DB. "
+                         "Defaults to $MC6809_OPT_LEVEL or NULL.")
+    ap.add_argument("--slow", action="store_true",
+                    help="include tests in SLOW_TESTS (e.g. test-memmem, "
+                         "~30 min wall). Off by default to keep routine "
+                         "tallies fast.")
     args = ap.parse_args()
 
     if args.record:
         os.environ["USIM_CYCLES"] = "1"
 
     tests = existing_binary_tests()
+    if not args.slow:
+        skipped = [t for t in tests if t["name"] in SLOW_TESTS]
+        tests = [t for t in tests if t["name"] not in SLOW_TESTS]
+        for t in skipped:
+            print(f"skipping {t['name']} (SLOW_TESTS; pass --slow to include)",
+                  flush=True)
     if not tests:
         print("no buildable test binaries found", file=sys.stderr)
         return 1
@@ -244,12 +316,12 @@ def main():
     # slowest tests first so they don't all stack on one worker at the
     # tail of the run. Unknown tests sort last (cycles default 0).
     if args.jobs > 1:
-        prior = prior_cycles(args.db)
+        prior = prior_cycles(args.db, args.opt_level)
         tests.sort(key=lambda t: prior.get(t["name"], 0), reverse=True)
 
     conn, run_id = (None, None)
     if args.record:
-        conn, run_id = open_run(Path(args.db))
+        conn, run_id = open_run(Path(args.db), args.opt_level)
         print(f"recording to {args.db} as run_id={run_id}", flush=True)
 
     # SQLite stdlib connection isn't thread-safe; serialise writes
@@ -300,7 +372,8 @@ def main():
                 flog.write("\n")
         if conn is not None:
             with db_lock:
-                insert_result(conn, run_id, pname, result, rc, dur, cycles)
+                insert_result(conn, run_id, pname, result, rc, dur, cycles,
+                              args.opt_level)
 
     try:
         if args.jobs == 1:

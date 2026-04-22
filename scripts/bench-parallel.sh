@@ -110,8 +110,15 @@ _setup_wave() {
     # shellcheck disable=SC2086
     ( cd "$PICO" && meson setup "$bd" "${COMMON[@]}" $opts ) >>"$wl" 2>&1
   else
+    # `meson setup --reconfigure` re-reads the cross-file (so any
+    # edits to scripts/cross-clang-mc6809-unknown-elf.txt — e.g. a
+    # MEMORY-layout change — propagate). `meson configure` after
+    # then applies the per-level options. Both are idempotent and
+    # cheap when nothing has changed.
     # shellcheck disable=SC2086
-    ( cd "$PICO" && meson configure "$bd" $opts ) >>"$wl" 2>&1
+    ( cd "$PICO" \
+      && meson setup --reconfigure --cross-file=$CROSS "$bd" \
+      && meson configure "$bd" $opts ) >>"$wl" 2>&1
   fi
 }
 

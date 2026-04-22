@@ -103,7 +103,7 @@ _cstart(void)
      * Do a master reset (cr=0x03) followed by operating mode:
      *   cr = 0x15 = 0b00010101 = /16 clock, 8N1, no IRQ, RTS=low
      */
-    volatile unsigned char *acia_status_ctrl = (volatile unsigned char *)0xC000;
+    volatile unsigned char *acia_status_ctrl = (volatile unsigned char *)0xFFD0;
     *acia_status_ctrl = 0x03;   /* master reset */
     *acia_status_ctrl = 0x15;   /* /16 clock, 8N1, no IRQ */
 

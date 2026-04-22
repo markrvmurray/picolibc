@@ -14,7 +14,17 @@ endian = 'big'
 
 [properties]
 skip_sanity_check = true
-default_flash_addr = '0xC100'
-default_flash_size = '0x3E00'
+# Memory layout (top-to-bottom; $0000 at the top, $FFFF at the
+# bottom). Now that USim's IO slab and vector ROM are parked at
+# the bottom ($FFD0-$FFFF), the linker has continuous space from
+# $0100 down to $FFCF. The flash + ram split is retained because
+# picolibc's template expects two regions, but they abut at $C000
+# so there is no IO wedge in the middle:
+#   ram   $0100-$BFFF  (47.74 KB) — data + bss + heap + stack
+#   flash $C000-$FFCF  (15.81 KB) — text + rodata
+#   IO    $FFD0-$FFEF              — USim ACIA + halt + tracectl
+#   vrom  $FFF0-$FFFF              — vector ROM
+default_flash_addr = '0xC000'
+default_flash_size = '0x3FD0'
 default_ram_addr   = '0x0100'
 default_ram_size   = '0xBF00'

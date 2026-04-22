@@ -98,58 +98,6 @@ SLOW_TESTS = {
 DEFAULT_USIM_TIMEOUT = 2_000_000_000
 
 
-def try_noflash_relink(target_path, builddir=None):
-    """Relink a test that overflowed flash using the no-flash linker
-    script + crt0. Returns True if the binary now exists and is
-    executable.
-
-    When picolibc's default link script (16 KB flash + 16 KB RAM) can't
-    fit the .text, meson leaves the test binary missing and meson-test
-    quietly drops it. But the 6809 can access 64 KB linearly — the
-    picolibc_noflash.ld script + crt0-noflash-semihost make the whole
-    address space RAM, which fits all current tests comfortably. To
-    keep big tests (qsort, string, strtol, …) in the campaign, we
-    substitute the no-flash variants and re-link on the fly instead of
-    dropping the test.
-
-    The .o dependencies are unchanged between flash and no-flash
-    configurations, so we can reuse them — only the crt0 object and
-    the linker script differ.
-
-    `builddir` overrides the module-level `BUILDDIR` for multi-builddir
-    callers. Defaults to `BUILDDIR` for the legacy single-builddir
-    code path."""
-    bd = builddir or BUILDDIR
-    target = os.path.relpath(target_path, bd)
-    try:
-        out = subprocess.run(
-            ["ninja", "-C", bd, "-t", "commands", target],
-            capture_output=True, text=True, check=True,
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return False
-    lines = [l for l in out.stdout.splitlines() if l.strip()]
-    if not lines:
-        return False
-    link_cmd = lines[-1]
-    if " -T " not in link_cmd:
-        return False  # not a link step we recognise
-    link_cmd = link_cmd.replace(
-        "picocrt/crt0-semihost.o.p/",
-        "picocrt/crt0-noflash-semihost.o.p/",
-    )
-    link_cmd = link_cmd.replace(
-        "picocrt/crt0-hosted.o.p/",
-        "picocrt/crt0-noflash-hosted.o.p/",
-    )
-    link_cmd = link_cmd.replace("/picolibc.ld", "/picolibc_noflash.ld")
-    rc = subprocess.run(link_cmd, shell=True, cwd=bd,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL).returncode
-    return (rc == 0 and os.path.isfile(target_path)
-            and os.access(target_path, os.X_OK))
-
-
 def preflight_fresh_binaries(skip_ninja=False, verbose=True, builddir=None):
     """Read intro-tests.json, refresh every test binary, return the
     subset that now exists and is executable.
@@ -162,17 +110,15 @@ def preflight_fresh_binaries(skip_ninja=False, verbose=True, builddir=None):
     rebuild produced an ELF that passes. The preflight prevents that
     class of phantom regression.
 
-    Flash tests go through `ninja -k 0` in one batch; ninja's
+    All test binaries go through `ninja -k 0` in one batch; ninja's
     `.ninja_deps` tracking handles staleness, and `-k 0` keeps the
     batch going past permanently-broken FP-gated targets (see
-    `project_fp_not_enabled.md`). Flash-overflow tests get the same
-    noflash relink path as before — their link command isn't part of
-    ninja's graph, so ninja can't refresh them.
+    `project_fp_not_enabled.md`).
 
     `skip_ninja=True` disables the refresh step (for callers that know
     their binaries are fresh, e.g. immediately after a manual
-    `cmake --build`). Still runs the existence check and noflash
-    fallback.
+    `cmake --build`). Still runs the existence check and drops tests
+    whose link failed.
 
     `builddir` overrides the module-level `BUILDDIR` for multi-builddir
     callers; legacy single-builddir callers leave it None.
@@ -204,14 +150,12 @@ def preflight_fresh_binaries(skip_ninja=False, verbose=True, builddir=None):
                 print("preflight: ninja not found on PATH; "
                       "skipping refresh (recorded tally may use stale ELFs)",
                       flush=True)
-    keep = []
-    for t in cands:
-        cmd0 = t["cmd"][0]
-        if os.path.isfile(cmd0) and os.access(cmd0, os.X_OK):
-            keep.append(t)
-        elif try_noflash_relink(cmd0, builddir=bd):
-            t["_noflash"] = True
-            keep.append(t)
+    # Tests whose link failed (e.g. text overflows the 16 KB flash
+    # region of the regular linker script) are simply absent from
+    # disk; drop them. There is only one memory map; no per-test
+    # rescue path.
+    keep = [t for t in cands
+            if os.path.isfile(t["cmd"][0]) and os.access(t["cmd"][0], os.X_OK)]
     return keep
 
 
@@ -417,7 +361,7 @@ def run_multi(args):
 
     Mechanics:
     - Parse the LEVEL:DIR list; preflight each builddir independently
-      (each may need its own ninja refresh / noflash relinks).
+      (each may need its own ninja refresh).
     - Tag every selected test with its (level, builddir).
     - LPT-sort across the union, using prior cycles per (test, level)
       so the longest tests start first.
@@ -448,7 +392,6 @@ def run_multi(args):
     # Per-level preflight + test selection. SLOW_TESTS gating happens
     # once here so it stays consistent across levels.
     queue = []
-    noflash_set = set()  # (level, name)
     for lvl, bd in pairs:
         tests = preflight_fresh_binaries(
             skip_ninja=args.no_preflight, builddir=bd,
@@ -462,8 +405,6 @@ def run_multi(args):
         for t in tests:
             t["_level"] = lvl
             t["_builddir"] = bd
-            if t.get("_noflash"):
-                noflash_set.add((lvl, t["name"]))
             queue.append(t)
 
     if not queue:
@@ -527,10 +468,8 @@ def run_multi(args):
         results.append((lvl, parsed))
         counts[(lvl, result)] += 1
         cyc_str = f" cyc={cycles:>11d}" if cycles is not None else ""
-        nf = " [NOFLASH]" if (lvl, pname) in noflash_set \
-             or (lvl, pname.split(" - ", 1)[-1]) in noflash_set else ""
         line = (f"[{lvl:5s}] {result:14s} rc={rc:<4d} {dur:6.2f}s"
-                f"{cyc_str}  {pname}{nf}")
+                f"{cyc_str}  {pname}")
         with print_lock:
             print(f"[{completed_idx:>3}/{total}] {line}", flush=True)
             ftally.write(line + "\n")
@@ -679,8 +618,6 @@ def main():
     mode = "one-at-a-time" if args.jobs == 1 else f"{args.jobs}-at-a-time"
     print(f"running {len(tests)} tests {mode}…", flush=True)
 
-    noflash_tests = {t["name"] for t in tests if t.get("_noflash")}
-
     def execute(t):
         name = t["name"]
         safe = re.sub(r"[^A-Za-z0-9._-]", "_", name)
@@ -699,9 +636,7 @@ def main():
         results.append(parsed)
         counts[result] += 1
         cyc_str = f" cyc={cycles:>11d}" if cycles is not None else ""
-        nf = " [NOFLASH]" if pname.split(" - ", 1)[-1] in noflash_tests \
-             or pname in noflash_tests else ""
-        line = f"{result:14s} rc={rc:<4d} {dur:6.2f}s{cyc_str}  {pname}{nf}"
+        line = f"{result:14s} rc={rc:<4d} {dur:6.2f}s{cyc_str}  {pname}"
         with print_lock:
             print(f"[{completed_idx:>2}/{total}] {line}", flush=True)
             ftally.write(line + "\n")

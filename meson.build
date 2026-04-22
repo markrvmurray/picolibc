@@ -949,24 +949,33 @@ foreach params : [default_target] + targets
     picolibc_ld_data.set('DATATLS', '')
     picolibc_ld_data.set('LINUX', '')
 
-    # non-exec mode for ram PHDR
-    picolibc_ld_data.set('RAM_MODE', 'w!rx')
+    # MC6809 fork: there is no real flash on the emulated machine —
+    # the whole address space is one writable RAM region. Place every
+    # section into the single `ram` PHDR so .text + .rodata can share
+    # the address space with .data + .bss + heap + stack instead of
+    # being capped by a tiny artificial flash region. The flash region
+    # in the cross-file is shrunk to a 16-byte stub for .init only;
+    # everything else lives in ram. (Was originally 'w!rx' / 'flash'
+    # placements, which assumed a real ROM/RAM split.)
+    picolibc_ld_data.set('RAM_MODE', 'rwx')
+    picolibc_ld_data.set('INITTLS', '')
+    picolibc_ld_data.set('DATATLS', ld_comment)
 
     # attributes for regular executable sections
-    picolibc_ld_data.set('TEXT_MEM', 'flash')
-    picolibc_ld_data.set('TEXT_AT', 'flash')
-    picolibc_ld_data.set('TEXT_PHDR', 'text')
+    picolibc_ld_data.set('TEXT_MEM', 'ram')
+    picolibc_ld_data.set('TEXT_AT', 'ram')
+    picolibc_ld_data.set('TEXT_PHDR', 'ram')
 
     # attributes for read-only data sections
-    picolibc_ld_data.set('RODATA_MEM', 'flash')
-    picolibc_ld_data.set('RODATA_AT', 'flash')
-    picolibc_ld_data.set('RODATA_PHDR', 'rodata')
+    picolibc_ld_data.set('RODATA_MEM', 'ram')
+    picolibc_ld_data.set('RODATA_AT', 'ram')
+    picolibc_ld_data.set('RODATA_PHDR', 'ram')
 
     # attributes for data-initialized read-write data sections
     picolibc_ld_data.set('DATA_MEM', 'ram')
-    picolibc_ld_data.set('DATA_AT', 'flash')
+    picolibc_ld_data.set('DATA_AT', 'ram')
     picolibc_ld_data.set('DATA_PHDR', 'ram')
-    picolibc_ld_data.set('DATA_INIT_PHDR', 'ram_init')
+    picolibc_ld_data.set('DATA_INIT_PHDR', 'ram')
 
     # attributes for zero-initialized read-write data sections
     picolibc_ld_data.set('BSS_MEM', 'ram')

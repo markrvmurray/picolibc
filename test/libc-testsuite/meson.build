@@ -38,6 +38,7 @@ libc_tests_common = [
   'fnmatch',
   'qsort',
   'snprintf',
+  'sno',
   'sscanf',
   'string',
   'strtol',

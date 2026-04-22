@@ -91,6 +91,30 @@ SLOW_TESTS = {
     "test-memmem",
 }
 
+# Tests that need a real-FS semihost (open/read/write/lseek/stat against
+# the host filesystem). USim's semihost is the picolibc "fake" stub set
+# — it returns -1 for everything — so these tests universally FAIL at
+# every opt level regardless of codegen. Skipping them by default keeps
+# the bench ledger honest about codegen quality (otherwise the same 13
+# environmental FAILs swamp every report at every level). Include with
+# --include-fake-fs when measuring the semihost layer itself, or once
+# USim grows real file I/O.
+FAKE_FS_TESTS = {
+    "test-stat",
+    "test-fread-fwrite",
+    "test-freopen",
+    "test-fopen",
+    "test-fgetc",
+    "test-fgets-eof",
+    "test-mktemp",
+    "test-setvbuf",
+    "test-wchar",
+    "test-ungetc-ftell",
+    "test-dprintf",
+    "test-posix-io",
+    "tzset",
+}
+
 # Default usim cap for tests not in SLOW_CAPS. Matches run-mc6809's
 # own fallback so behaviour is identical between single-test and
 # tally invocations. Override via USIM_TIMEOUT env if callers really
@@ -389,8 +413,8 @@ def run_multi(args):
         print("--multi: empty list", file=sys.stderr)
         return 2
 
-    # Per-level preflight + test selection. SLOW_TESTS gating happens
-    # once here so it stays consistent across levels.
+    # Per-level preflight + test selection. SLOW_TESTS / FAKE_FS_TESTS
+    # gating happens once here so it stays consistent across levels.
     queue = []
     for lvl, bd in pairs:
         tests = preflight_fresh_binaries(
@@ -402,6 +426,13 @@ def run_multi(args):
             for t in skipped:
                 print(f"[{lvl}] skipping {t['name']} (SLOW_TESTS; "
                       f"pass --slow to include)", flush=True)
+        if not args.include_fake_fs:
+            skipped = [t for t in tests if t["name"] in FAKE_FS_TESTS]
+            tests = [t for t in tests if t["name"] not in FAKE_FS_TESTS]
+            for t in skipped:
+                print(f"[{lvl}] skipping {t['name']} (FAKE_FS_TESTS; "
+                      f"USim semihost has no real FS; pass "
+                      f"--include-fake-fs to include)", flush=True)
         for t in tests:
             t["_level"] = lvl
             t["_builddir"] = bd
@@ -556,6 +587,16 @@ def main():
                     help="include tests in SLOW_TESTS (e.g. test-memmem, "
                          "~30 min wall). Off by default to keep routine "
                          "tallies fast.")
+    ap.add_argument("--include-fake-fs", action="store_true",
+                    help="include tests in FAKE_FS_TESTS (the 13 stdio/stat "
+                         "tests that need real-FS semihost — fopen, fread, "
+                         "fwrite, stat, etc.). USim's semihost is the "
+                         "picolibc fake stub set, so these tests always FAIL "
+                         "regardless of codegen. Skipped by default to keep "
+                         "the bench ledger focused on codegen quality. Pass "
+                         "this flag when actually measuring the semihost "
+                         "layer or when USim has been extended with real "
+                         "file I/O.")
     ap.add_argument("--no-preflight", action="store_true",
                     help="skip the pre-run ninja refresh of every test "
                          "binary. Use when you know the binaries are "
@@ -586,6 +627,13 @@ def main():
         tests = [t for t in tests if t["name"] not in SLOW_TESTS]
         for t in skipped:
             print(f"skipping {t['name']} (SLOW_TESTS; pass --slow to include)",
+                  flush=True)
+    if not args.include_fake_fs:
+        skipped = [t for t in tests if t["name"] in FAKE_FS_TESTS]
+        tests = [t for t in tests if t["name"] not in FAKE_FS_TESTS]
+        for t in skipped:
+            print(f"skipping {t['name']} (FAKE_FS_TESTS; USim semihost has "
+                  f"no real FS; pass --include-fake-fs to include)",
                   flush=True)
     if not tests:
         print("no buildable test binaries found", file=sys.stderr)

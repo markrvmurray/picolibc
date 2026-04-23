@@ -36,6 +36,7 @@ libc_tests_common = [
   'basename',
   'dirname',
   'fnmatch',
+  'phantom-bit1',
   'qsort',
   'snprintf',
   'sno',

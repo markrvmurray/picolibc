@@ -144,6 +144,13 @@ _build_wave() {
   # ninja non-zero is expected for FP-gated targets; libc.a + non-FP
   # test binaries still build along the way. (project_fp_not_enabled.md)
   echo "==[ $(ts) $label build end rc=$rc ]==" >>"$wl"
+  # Sidecar for the driver to surface in the top-level summary so a
+  # silent libc.a-link failure is no longer indistinguishable from a
+  # clean build. (bug #157)
+  local failed_n elf_n
+  failed_n=$(grep -c '^FAILED: ' "$wl" 2>/dev/null || echo 0)
+  elf_n=$(find "$bd" -type f -name '*.elf' 2>/dev/null | wc -l | tr -d ' ')
+  printf '%s\t%s\t%s\n' "$rc" "$failed_n" "$elf_n" > "/tmp/bench-parallel-$label.rc"
 }
 
 # Tally phase is now a single flat invocation of
@@ -235,6 +242,39 @@ if [ $skip_build -eq 0 ]; then
   echo "==[ $(ts) build waves ($build_jobs-way) ]==" | tee -a "$LOG"
   dispatch "$build_jobs" _build_wave "${LEVEL_LIST[@]}"
   echo "==[ $(ts) build waves done ]==" | tee -a "$LOG"
+
+  # Per-level build summary, derived from sidecar files written by
+  # _build_wave. Surfaces silent libc.a-link failures as a visible
+  # WARN line at the top level, instead of leaving them only in the
+  # per-wave logs. (bug #157)
+  echo "==[ $(ts) build summary per level ]==" | tee -a "$LOG"
+  max_elf=0
+  for lvl in "${LEVEL_LIST[@]}"; do
+    rcfile="/tmp/bench-parallel-$lvl.rc"
+    if [ -f "$rcfile" ]; then
+      read rc fn en < "$rcfile"
+      [ "$en" -gt "$max_elf" ] 2>/dev/null && max_elf=$en
+    fi
+  done
+  for lvl in "${LEVEL_LIST[@]}"; do
+    rcfile="/tmp/bench-parallel-$lvl.rc"
+    if [ ! -f "$rcfile" ]; then
+      echo "  $lvl: NO SIDECAR (wave didn't run?)" | tee -a "$LOG"
+      continue
+    fi
+    read rc fn en < "$rcfile"
+    # WARN when this level produced substantially fewer test ELFs than
+    # the best-performing level — a strong signal that libc.a (or one
+    # of its objects) failed to link and downstream test binaries are
+    # missing. The threshold is half: anything that built less than
+    # half of the best-built level's ELFs is almost certainly broken.
+    if [ "$max_elf" -gt 0 ] && [ "$en" -lt $(( max_elf / 2 )) ]; then
+      tag="WARN"
+    else
+      tag=" ok "
+    fi
+    echo "  $lvl: $tag rc=$rc FAILED=$fn elfs=$en/$max_elf" | tee -a "$LOG"
+  done
 fi
 
 if [ $skip_tally -eq 0 ]; then
@@ -265,6 +305,29 @@ if [ $skip_tally -eq 0 ]; then
 fi
 
 echo "==[ $(ts) bench-parallel END ]==" | tee -a "$LOG"
+
+# Disambiguate the cross-O summary's "0 0 0 0 0 0" rows. With #144
+# closed, an Og row of all zeros is no longer the expected build-wall
+# state — it now means the build silently failed and the tally pool
+# found no test binaries for that level. Fish the offending levels out
+# of the ledger and emit a visible WARN before the table prints. (bug #157)
+zero_levels=""
+for lvl in "${LEVEL_LIST[@]}"; do
+  count=$(sqlite3 "$DB" "
+    SELECT COUNT(*) FROM results
+     WHERE run_id = (SELECT MAX(run_id) FROM runs WHERE opt_level='$lvl');
+  " 2>/dev/null)
+  if [ "${count:-0}" = "0" ]; then
+    zero_levels="${zero_levels:+$zero_levels }$lvl"
+  fi
+done
+if [ -n "$zero_levels" ]; then
+  echo "==[ $(ts) WARN: zero-test levels — likely silent build failure ]==" | tee -a "$LOG"
+  for z in $zero_levels; do
+    echo "  $z: tally returned 0 results — see $(wave_log $z) for build errors" \
+      | tee -a "$LOG"
+  done
+fi
 
 # Cross-O summary of the most recent recorded run per opt_level.
 sqlite3 "$DB" <<SQL | tee -a "$LOG"

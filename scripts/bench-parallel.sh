@@ -6,6 +6,10 @@
 #   2. delete stale *.c.o               (ninja is blind to compiler mtime)
 #   3. ninja -k 0 -C ...                (parallel across waves)
 #
+# Lit phase, once per invocation (cheap, ~1s):
+#   3.5 llvm-lit -v test/CodeGen/MC6809/ → one runs row with
+#       opt_level='lit' + one results row per lit test.
+#
 # Tally phase, once across all levels:
 #   4. run-mc6809-tests --record --jobs N --multi LEVEL:DIR,LEVEL:DIR,…
 #
@@ -157,6 +161,64 @@ _build_wave() {
 # run-mc6809-tests --multi (see _tally_multi below). No per-level
 # self-reinvoke needed.
 
+_lit_tally() {
+  # Run llvm-lit against test/CodeGen/MC6809/ and record one runs row
+  # (opt_level='lit') + one results row per test. Cheap (~1s) and
+  # independent of the picolibc build dirs.
+  local lit="$LLVM_BIN/llvm-lit"
+  local llvm_root="$(cd "$LLVM_BIN/../.." && pwd)"
+  local testdir="$llvm_root/test/CodeGen/MC6809"
+  local outfile="/tmp/bench-parallel-lit.log"
+
+  echo "==[ $(ts) lit tally start ]==" | tee -a "$LOG"
+
+  if [ ! -x "$lit" ] || [ ! -d "$testdir" ]; then
+    echo "  lit: skipped (binary or testdir missing)" | tee -a "$LOG"
+    return 0
+  fi
+
+  "$lit" -v --no-progress-bar "$testdir" > "$outfile" 2>&1
+  local lit_rc=$?
+
+  local commit picolibc_commit usim_commit timestamp host
+  commit=$(cd /Users/markmurray/GitHub/llvm-mc6809 && git rev-parse HEAD 2>/dev/null || echo unknown)
+  picolibc_commit=$(cd "$PICO" && git rev-parse HEAD 2>/dev/null || echo unknown)
+  usim_commit=$(cd "$USIM" && git rev-parse HEAD 2>/dev/null || echo unknown)
+  timestamp=$(date -u +%Y-%m-%dT%H:%M:%S+00:00)
+  host=$(hostname -s)
+
+  local run_id
+  run_id=$(sqlite3 "$DB" "
+    INSERT INTO runs (timestamp, llvm_commit, picolibc_commit, usim_commit, host, opt_level)
+    VALUES ('$timestamp', '$commit', '$picolibc_commit', '$usim_commit', '$host', 'lit');
+    SELECT last_insert_rowid();
+  ")
+
+  # Parse lit verbose output; emit one INSERT per test.
+  awk -v rid="$run_id" '
+    /^(PASS|FAIL|XFAIL|UNRESOLVED|UNSUPPORTED|XPASS|TIMEOUT|FLAKY): / {
+      status=$1; sub(/:$/,"",status)
+      path=$4
+      n=split(path,parts,"/")
+      tn=parts[n]
+      printf "INSERT INTO results (run_id, test_name, suite, status, opt_level) VALUES (%s, '\''%s'\'', '\''lit-codegen'\'', '\''%s'\'', '\''lit'\'');\n", rid, tn, status
+    }
+  ' "$outfile" | sqlite3 "$DB"
+
+  local pass fail xfail unsupp unres
+  pass=$(grep -c   '^PASS: '        "$outfile" 2>/dev/null)
+  fail=$(grep -c   '^FAIL: '        "$outfile" 2>/dev/null)
+  xfail=$(grep -c  '^XFAIL: '       "$outfile" 2>/dev/null)
+  unsupp=$(grep -c '^UNSUPPORTED: ' "$outfile" 2>/dev/null)
+  unres=$(grep -c  '^UNRESOLVED: '  "$outfile" 2>/dev/null)
+
+  local tag=" ok "
+  [ "${fail:-0}"  -gt 0 ] 2>/dev/null && tag="FAIL"
+  [ "${unres:-0}" -gt 0 ] 2>/dev/null && tag="UNRESOLVED"
+
+  echo "==[ $(ts) lit tally done: $tag PASS=${pass:-0} FAIL=${fail:-0} XFAIL=${xfail:-0} UNSUPP=${unsupp:-0} UNRES=${unres:-0} run_id=$run_id ]==" | tee -a "$LOG"
+}
+
 # --- Self-reinvoke hooks (bash 3.2 compatible; avoids export -f) --------
 # xargs can't see shell functions; re-exec $0 with an internal tag instead.
 case "${1:-}" in
@@ -278,6 +340,11 @@ if [ $skip_build -eq 0 ]; then
 fi
 
 if [ $skip_tally -eq 0 ]; then
+  # Lit gate first (cheap; records its own runs row with opt_level='lit'
+  # so a broken lit suite is captured in the ledger before the long
+  # picolibc tally runs).
+  _lit_tally
+
   # Build "LEVEL:DIR,LEVEL:DIR,…" for run-mc6809-tests --multi.
   multi=""
   for lvl in "${LEVEL_LIST[@]}"; do

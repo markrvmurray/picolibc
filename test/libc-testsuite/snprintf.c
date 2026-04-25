@@ -182,7 +182,10 @@ test_snprintf(void)
     TEST_S(b, "123", "incorrect output");
     TEST(i, b[5], 'x', "buffer overrun");
 
-#if __SIZEOF_DOUBLE__ == 8
+#if __SIZEOF_DOUBLE__ == 8                                                    \
+    && (!defined(__PICOLIBC__)                                                \
+        || (_PICOLIBC_PRINTF != __IO_VARIANT_INTEGER                          \
+            && _PICOLIBC_PRINTF != __IO_VARIANT_MINIMAL))
     /* Perform ascii arithmetic to test printing tiny doubles */
     TEST(i, snprintf(b, sizeof b, "%.1022f", 0x1p-1021), 1024, "%d != %d");
     b[1] = '0';
@@ -252,7 +255,11 @@ test_snprintf(void)
 
     (void)fp_tests;
     (void)k;
-#if (!defined(__PICOLIBC__) || defined(__IO_FLOAT_EXACT)) && __SIZEOF_DOUBLE__ == 8
+#if (!defined(__PICOLIBC__) || defined(__IO_FLOAT_EXACT))                     \
+    && __SIZEOF_DOUBLE__ == 8                                                 \
+    && (!defined(__PICOLIBC__)                                                \
+        || (_PICOLIBC_PRINTF != __IO_VARIANT_INTEGER                          \
+            && _PICOLIBC_PRINTF != __IO_VARIANT_MINIMAL))
     for (j = 0; fp_tests[j].fmt; j++) {
         TEST(i, snprintf(b, sizeof b, fp_tests[j].fmt, fp_tests[j].f), (int)strlen(b), "%d != %d");
         TEST_S(b, fp_tests[j].expect, "bad floating point conversion");

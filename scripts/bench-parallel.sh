@@ -130,11 +130,11 @@ _clean_stale_c_o() {
   local label="$1"
   local bd
   bd="$(wave_bd "$label")"
-  find "$bd" -name '*.c.o' -delete 2>/dev/null
+  find "$bd" \( -name '*.c.o' -o -name '*.cpp.o' \) -delete 2>/dev/null
   # ninja is blind to compiler-binary mtime. Without this, a rebuilt
-  # clang/llc with unchanged picolibc sources leaves stale .c.o on disk
-  # — the tally then records the OLD codegen against the NEW SHA.
-  # (feedback_ninja_compiler_dep.md)
+  # clang/llc with unchanged picolibc sources leaves stale .c.o / .cpp.o
+  # on disk — the tally then records the OLD codegen against the NEW SHA.
+  # (feedback_ninja_compiler_dep.md, bug #169)
 }
 
 _build_wave() {

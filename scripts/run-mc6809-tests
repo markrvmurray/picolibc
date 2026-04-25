@@ -551,6 +551,13 @@ def run_multi(args):
                 print(f"[{lvl}] skipping {t['name']} (FAKE_FS_TESTS; "
                       f"USim semihost has no real FS; pass "
                       f"--include-fake-fs to include)", flush=True)
+        if args.tests:
+            subs = [s for s in args.tests.split(",") if s]
+            before = len(tests)
+            tests = [t for t in tests
+                     if any(s in t["name"] for s in subs)]
+            print(f"[{lvl}] --tests filter: {before} → {len(tests)} "
+                  f"({','.join(subs)})", flush=True)
         for t in tests:
             t["_level"] = lvl
             t["_builddir"] = bd
@@ -576,11 +583,19 @@ def run_multi(args):
     run_ids = {}
     if args.record:
         conn = ensure_db(Path(args.db))
+        # When --tests filtered the queue down, tag opt_level with a
+        # "-quick" suffix so the cross-O summary's
+        # `MAX(run_id) GROUP BY opt_level` doesn't shadow the most
+        # recent FULL run at this level. Quick runs are still
+        # recorded (so per-test cycle history works) but kept in a
+        # separate taxonomy. (bug #168)
+        suffix = "-quick" if args.tests else ""
         for lvl, _ in pairs:
-            run_ids[lvl] = insert_run_row(conn, lvl)
+            run_ids[lvl] = insert_run_row(conn, f"{lvl}{suffix}")
         print("recording to {} as {}".format(
             args.db,
-            ", ".join(f"{lvl}=run_id {run_ids[lvl]}" for lvl, _ in pairs),
+            ", ".join(f"{lvl}{suffix}=run_id {run_ids[lvl]}"
+                      for lvl, _ in pairs),
         ), flush=True)
 
     db_lock = threading.Lock()
@@ -634,8 +649,12 @@ def run_multi(args):
                 flog.write("\n")
         if conn is not None:
             with db_lock:
+                # Match the suffix used on the runs row (see insert_run_row
+                # call above) so cross-O summary queries can filter quick
+                # runs out symmetrically. (bug #168)
+                rec_lvl = f"{lvl}-quick" if args.tests else lvl
                 insert_result(conn, run_ids[lvl], pname, result, rc, dur,
-                              cycles, lvl)
+                              cycles, rec_lvl)
 
     try:
         if args.jobs == 1:
@@ -722,6 +741,17 @@ def main():
                          "unwanted extra rebuilds). Off by default: the "
                          "preflight keeps the bench ledger honest by "
                          "making every recorded ELF match current source.")
+    ap.add_argument("--tests", default=None, metavar="SUBSTR[,SUBSTR…]",
+                    help="comma-separated list of substrings; only tests "
+                         "whose name contains any listed substring will run. "
+                         "Useful for fast-turnaround sanity-checks on a "
+                         "single fix. Substring match is case-sensitive and "
+                         "applies to the full meson test name "
+                         "(e.g. 'newlib.string - picolibc:strcmp-1'); "
+                         "unanchored, so 'snprintf' matches both snprintf "
+                         "and nulprintf if both contain the substring. "
+                         "Combine with --opt-level for a single-level run, "
+                         "or with --multi for cross-level. Bug #168.")
     ap.add_argument("--multi", default=None, metavar="LEVEL:DIR,…",
                     help="multi-builddir mode: comma-separated list of "
                          "LEVEL:BUILDDIR pairs. Flattens every (level, "
@@ -753,6 +783,12 @@ def main():
             print(f"skipping {t['name']} (FAKE_FS_TESTS; USim semihost has "
                   f"no real FS; pass --include-fake-fs to include)",
                   flush=True)
+    if args.tests:
+        subs = [s for s in args.tests.split(",") if s]
+        before = len(tests)
+        tests = [t for t in tests if any(s in t["name"] for s in subs)]
+        print(f"--tests filter: {before} → {len(tests)} "
+              f"({','.join(subs)})", flush=True)
     if not tests:
         print("no buildable test binaries found", file=sys.stderr)
         return 1
@@ -766,7 +802,11 @@ def main():
 
     conn, run_id = (None, None)
     if args.record:
-        conn, run_id = open_run(Path(args.db), args.opt_level)
+        # See run_multi() for the rationale on the -quick suffix.
+        ol = args.opt_level
+        if ol and args.tests:
+            ol = f"{ol}-quick"
+        conn, run_id = open_run(Path(args.db), ol)
         print(f"recording to {args.db} as run_id={run_id}", flush=True)
 
     # SQLite stdlib connection isn't thread-safe; serialise writes
@@ -817,8 +857,12 @@ def main():
                 flog.write("\n")
         if conn is not None:
             with db_lock:
+                # Mirror the suffix used on the runs row above. (bug #168)
+                rec_ol = args.opt_level
+                if rec_ol and args.tests:
+                    rec_ol = f"{rec_ol}-quick"
                 insert_result(conn, run_id, pname, result, rc, dur, cycles,
-                              args.opt_level)
+                              rec_ol)
 
     try:
         if args.jobs == 1:

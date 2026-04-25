@@ -37,6 +37,10 @@
 #   --skip-build         reuse existing binaries (tally-only rerun)
 #   --skip-tally         build phase only
 #   --no-preflight       pass through to run-mc6809-tests --multi
+#   --tests SUBSTRS      comma-sep substrings; only matching tests run.
+#                        Combine with --skip-build --levels O1 for fast
+#                        single-test sanity checks (~5-30s vs ~13min full).
+#                        Bug #168.
 #   -h, --help           show this header
 
 set -u
@@ -238,6 +242,7 @@ slow=0
 skip_build=0
 skip_tally=0
 no_preflight=0
+tests_filter=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -249,6 +254,7 @@ while [ $# -gt 0 ]; do
     --skip-build)       skip_build=1; shift ;;
     --skip-tally)       skip_tally=1; shift ;;
     --no-preflight)     no_preflight=1; shift ;;
+    --tests)            tests_filter="$2"; shift 2 ;;
     -h|--help)          sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)                  echo "unknown option: $1" >&2; exit 2 ;;
   esac
@@ -359,14 +365,15 @@ if [ $skip_tally -eq 0 ]; then
   if [ -z "$multi" ]; then
     echo "==[ $(ts) no tally levels available ]==" | tee -a "$LOG"
   else
-    slow_arg="";  [ $slow         -eq 1 ] && slow_arg="--slow"
-    np_arg="";    [ $no_preflight -eq 1 ] && np_arg="--no-preflight"
-    echo "==[ $(ts) tally SHARED POOL (--jobs $test_jobs over $multi) ]==" \
+    slow_arg="";   [ $slow         -eq 1 ] && slow_arg="--slow"
+    np_arg="";     [ $no_preflight -eq 1 ] && np_arg="--no-preflight"
+    tests_arg="";  [ -n "$tests_filter" ]   && tests_arg="--tests $tests_filter"
+    echo "==[ $(ts) tally SHARED POOL (--jobs $test_jobs over $multi${tests_filter:+ tests=$tests_filter}) ]==" \
       | tee -a "$LOG"
     MC6809_BENCH_DB="$DB" \
       "$PICO/scripts/run-mc6809-tests" \
         --record --jobs "$test_jobs" --multi "$multi" \
-        $slow_arg $np_arg 2>&1 | tee -a "$LOG"
+        $slow_arg $np_arg $tests_arg 2>&1 | tee -a "$LOG"
     echo "==[ $(ts) tally pool done ]==" | tee -a "$LOG"
   fi
 fi

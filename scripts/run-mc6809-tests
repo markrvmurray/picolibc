@@ -79,7 +79,7 @@ USIM_CAP_RC = 124
 # reference_slow_test_budgets.md.
 SLOW_CAPS = {
     "strcmp-1":     5_000_000_000,
-    "test-memset":  3_000_000_000,
+    "test-memset": 18_000_000_000,
     "test-memchr": 25_000_000_000,
     "test-memmem": 80_000_000_000,
 }

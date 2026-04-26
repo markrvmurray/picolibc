@@ -122,9 +122,70 @@ FAKE_FS_TESTS = {
 DEFAULT_USIM_TIMEOUT = 2_000_000_000
 
 
+def _compiler_binaries(builddir):
+    """Return the absolute paths of the C/C++ compiler executables this
+    builddir was configured with, derived from meson's intro-compilers
+    JSON. Skips compiler driver flags (anything starting with `-`).
+
+    Best-effort: returns an empty set if the file is missing or
+    malformed, so the staleness check degrades to a no-op rather than
+    aborting the tally."""
+    try:
+        with open(f"{builddir}/meson-info/intro-compilers.json") as f:
+            doc = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return set()
+    paths = set()
+    for lang_map in doc.values():
+        for lang in lang_map.values():
+            for tok in lang.get("exelist", []):
+                if tok and not tok.startswith("-") and os.path.isabs(tok):
+                    paths.add(tok)
+                    break  # first abs path is the executable
+    # Also include sibling `llc` if clang lives in an LLVM bin dir;
+    # picolibc itself doesn't invoke llc, but a backend rebuild updates
+    # both binaries as a unit, so `llc` is a fine proxy for "did the
+    # backend change" too.
+    for p in list(paths):
+        sib = Path(p).with_name("llc")
+        if sib.exists():
+            paths.add(str(sib))
+    return paths
+
+
+def _archive_path(builddir):
+    """Return Path to libc.a in the builddir, or None if absent."""
+    p = Path(builddir) / "libc.a"
+    return p if p.exists() else None
+
+
+def _wipe_stale_objects(builddir, verbose=True):
+    """Delete every `.c.o` under the builddir. Idempotent.
+
+    Called before ninja when a backend rebuild has been detected — ninja
+    can't see compiler-binary mtimes (see `feedback_ninja_compiler_dep.md`),
+    so without this wipe the stale objects would be linked into a
+    fresh-looking ELF and the recorded result would not match the current
+    backend."""
+    n = 0
+    for root, _, files in os.walk(builddir):
+        for name in files:
+            if name.endswith(".c.o"):
+                try:
+                    os.unlink(os.path.join(root, name))
+                    n += 1
+                except OSError:
+                    pass
+    if verbose and n:
+        print(f"preflight: wiped {n} stale .c.o (backend changed since libc.a)",
+              flush=True)
+    return n
+
+
 def preflight_fresh_binaries(skip_ninja=False, verbose=True, builddir=None):
     """Read intro-tests.json, refresh every test binary, return the
-    subset that now exists and is executable.
+    subset that now exists, is executable, AND is no older than the
+    backend / libc.a inputs that would invalidate it.
 
     Without the refresh, `meson test --no-rebuild` runs whatever ELF
     happens to be on disk — even if its source has been edited since
@@ -132,35 +193,58 @@ def preflight_fresh_binaries(skip_ninja=False, verbose=True, builddir=None):
     picolibc `4092ca7a1` (which includes the gate fix `18d9bb4d2`)
     because the on-disk `snprintf.elf` predated that commit; a later
     rebuild produced an ELF that passes. The preflight prevents that
-    class of phantom regression.
+    class of phantom regression. Bug #141.
 
-    All test binaries go through `ninja -k 0` in one batch; ninja's
-    `.ninja_deps` tracking handles staleness, and `-k 0` keeps the
-    batch going past permanently-broken FP-gated targets (see
-    `project_fp_not_enabled.md`).
+    Three layers of staleness defence:
 
-    `skip_ninja=True` disables the refresh step (for callers that know
-    their binaries are fresh, e.g. immediately after a manual
-    `cmake --build`). Still runs the existence check and drops tests
-    whose link failed.
+    1. **Backend-rebuild detection.** Before ninja, compare the mtime
+       of every compiler binary (from meson's intro-compilers.json) to
+       libc.a. If any compiler is newer, wipe every `.c.o` in the
+       builddir so ninja rebuilds them all. Plugs the gap that ninja
+       doesn't track compiler-binary mtimes — the manual `.c.o`-delete
+       step the bench-session skill mandates is now automatic.
+
+    2. **Source-change refresh.** All test binaries go through
+       `ninja -k 0` in one batch; ninja's `.ninja_deps` tracking
+       handles `.c` mtime staleness, and `-k 0` keeps the batch going
+       past permanently-broken FP-gated targets (see
+       `project_fp_not_enabled.md`).
+
+    3. **Per-ELF freshness audit.** After ninja, each ELF's mtime is
+       checked against libc.a and the compiler binaries. Any ELF still
+       older than its inputs is dropped from the candidate set with a
+       loud warning rather than silently recorded as a result.
+
+    `skip_ninja=True` (`--no-preflight`) disables ALL three layers
+    (for callers that know their binaries are fresh, e.g. immediately
+    after a manual `cmake --build`). Still runs the existence check
+    and drops tests whose link failed.
 
     `builddir` overrides the module-level `BUILDDIR` for multi-builddir
-    callers; legacy single-builddir callers leave it None.
-
-    CAVEAT: ninja tracks source mtimes, not compiler-binary mtimes.
-    If `llc`/`clang` was rebuilt but no picolibc source changed, the
-    stale `.c.o` files won't be regenerated by this preflight. Manual
-    `.c.o` deletion is still required after a backend rebuild (see
-    `feedback_ninja_compiler_dep.md`)."""
+    callers; legacy single-builddir callers leave it None."""
     bd = builddir or BUILDDIR
+    tag = f" [{os.path.basename(bd)}]" if builddir else ""
     with open(f"{bd}/meson-info/intro-tests.json") as f:
         tests = json.load(f)
     cands = [t for t in tests
              if "picolibc:headers" not in t["suite"] and t["cmd"]]
     if not skip_ninja:
+        compilers = _compiler_binaries(bd)
+        archive = _archive_path(bd)
+        if archive and compilers:
+            arch_mtime = archive.stat().st_mtime
+            newer = [c for c in compilers
+                     if os.path.exists(c)
+                     and os.stat(c).st_mtime > arch_mtime]
+            if newer:
+                if verbose:
+                    names = ", ".join(os.path.basename(c) for c in newer)
+                    print(f"preflight{tag}: backend rebuilt since libc.a "
+                          f"({names}); wiping stale objects",
+                          flush=True)
+                _wipe_stale_objects(bd, verbose=verbose)
         targets = [os.path.relpath(t["cmd"][0], bd) for t in cands]
         if verbose:
-            tag = f" [{os.path.basename(bd)}]" if builddir else ""
             print(f"preflight{tag}: ninja-refresh {len(targets)} test binaries…",
                   flush=True)
         try:
@@ -180,6 +264,33 @@ def preflight_fresh_binaries(skip_ninja=False, verbose=True, builddir=None):
     # rescue path.
     keep = [t for t in cands
             if os.path.isfile(t["cmd"][0]) and os.access(t["cmd"][0], os.X_OK)]
+    if not skip_ninja:
+        # Defensive per-ELF freshness check. After the backend-detect-and-
+        # wipe + ninja-refresh, this should be a no-op — but if ninja
+        # silently skipped a target (broken dep, missing rule), the stale
+        # ELF would otherwise be recorded as a current-SHA result. Drop
+        # it instead, with a warning that names the offending input.
+        archive = _archive_path(bd)
+        compilers = _compiler_binaries(bd)
+        inputs = [(p, os.stat(p).st_mtime) for p in
+                  ([str(archive)] if archive else []) + list(compilers)
+                  if os.path.exists(p)]
+        fresh = []
+        for t in keep:
+            elf = t["cmd"][0]
+            elf_mtime = os.stat(elf).st_mtime
+            stale_inputs = [(p, m) for p, m in inputs if m > elf_mtime]
+            if stale_inputs:
+                if verbose:
+                    names = ", ".join(os.path.basename(p)
+                                      for p, _ in stale_inputs)
+                    print(f"preflight{tag}: dropping {t['name']} — ELF older "
+                          f"than {names} (build input newer than binary; "
+                          f"would record stale result)",
+                          flush=True)
+                continue
+            fresh.append(t)
+        keep = fresh
     return keep
 
 

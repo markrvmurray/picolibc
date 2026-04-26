@@ -52,6 +52,13 @@ from pathlib import Path
 REPO     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILDDIR = os.environ.get("PICOLIBC_BUILDDIR", f"{REPO}/builddir-mc6809")
 
+# Suppress llvm-symbolizer + Apple crash reporter noise from clang FP
+# aborts (e.g. G_FCMP not legalised) during the preflight ninja step.
+# bench-parallel.sh sets these too, but this script is often invoked
+# standalone (single-level quick check per bench-session skill).
+os.environ.setdefault("LLVM_DISABLE_CRASH_REPORT", "1")
+os.environ.setdefault("LLVM_SYMBOLIZER_PATH", "/dev/null")
+
 OUT     = "/tmp/picolibc-results.txt"
 FAILLOG = "/tmp/picolibc-failures.log"
 LOGBASE = "mc6809-tally"

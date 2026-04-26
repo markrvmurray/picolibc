@@ -155,10 +155,17 @@ _build_wave() {
   # Sidecar for the driver to surface in the top-level summary so a
   # silent libc.a-link failure is no longer indistinguishable from a
   # clean build. (bug #157)
-  local failed_n elf_n
+  local failed_n bin_n
   failed_n=$(grep -c '^FAILED: ' "$wl" 2>/dev/null || echo 0)
-  elf_n=$(find "$bd" -type f -name '*.elf' 2>/dev/null | wc -l | tr -d ' ')
-  printf '%s\t%s\t%s\n' "$rc" "$failed_n" "$elf_n" > "/tmp/bench-parallel-$label.rc"
+  # Count picolibc test binaries (bug #170): they live under $bd/test,
+  # have no `.elf` extension, and are owner-executable. The previous
+  # `find -name '*.elf'` returned 0 unconditionally because picolibc
+  # doesn't suffix its test executables. `-perm -u+x` is POSIX (BSD
+  # find on macOS plus GNU find both accept it). The `*.p/*` exclusion
+  # skips meson's intermediate object directories.
+  bin_n=$(find "$bd/test" -type f -perm -u+x -not -path '*.p/*' \
+                2>/dev/null | wc -l | tr -d ' ')
+  printf '%s\t%s\t%s\n' "$rc" "$failed_n" "$bin_n" > "/tmp/bench-parallel-$label.rc"
 }
 
 # Tally phase is now a single flat invocation of
@@ -316,14 +323,22 @@ if [ $skip_build -eq 0 ]; then
   # WARN line at the top level, instead of leaving them only in the
   # per-wave logs. (bug #157)
   echo "==[ $(ts) build summary per level ]==" | tee -a "$LOG"
-  max_elf=0
+  max_bin=0
   for lvl in "${LEVEL_LIST[@]}"; do
     rcfile="/tmp/bench-parallel-$lvl.rc"
     if [ -f "$rcfile" ]; then
       read rc fn en < "$rcfile"
-      [ "$en" -gt "$max_elf" ] 2>/dev/null && max_elf=$en
+      [ "$en" -gt "$max_bin" ] 2>/dev/null && max_bin=$en
     fi
   done
+  # Top-level WARN when EVERY level produced zero test binaries (bug
+  # #170). Without this, the per-level "fewer than half of best" check
+  # below silently produces ` ok ` for every level when max_bin=0 — a
+  # confusing false negative when libc.a failed to link across all
+  # levels (which is the most likely cause of zero binaries everywhere).
+  if [ "$max_bin" -eq 0 ]; then
+    echo "==[ $(ts) WARN: every level produced zero test binaries — libc.a likely failed to link ]==" | tee -a "$LOG"
+  fi
   for lvl in "${LEVEL_LIST[@]}"; do
     rcfile="/tmp/bench-parallel-$lvl.rc"
     if [ ! -f "$rcfile" ]; then
@@ -331,17 +346,20 @@ if [ $skip_build -eq 0 ]; then
       continue
     fi
     read rc fn en < "$rcfile"
-    # WARN when this level produced substantially fewer test ELFs than
-    # the best-performing level — a strong signal that libc.a (or one
-    # of its objects) failed to link and downstream test binaries are
-    # missing. The threshold is half: anything that built less than
-    # half of the best-built level's ELFs is almost certainly broken.
-    if [ "$max_elf" -gt 0 ] && [ "$en" -lt $(( max_elf / 2 )) ]; then
+    # WARN when this level produced zero binaries OR substantially fewer
+    # binaries than the best-performing level — both are strong signals
+    # that libc.a (or one of its objects) failed to link. The "less than
+    # half" threshold catches per-level partial failures; the max_bin==0
+    # arm catches the case where all levels failed identically (was the
+    # bug #170 false negative).
+    if [ "$max_bin" -eq 0 ]; then
+      tag="WARN"
+    elif [ "$en" -lt $(( max_bin / 2 )) ]; then
       tag="WARN"
     else
       tag=" ok "
     fi
-    echo "  $lvl: $tag rc=$rc FAILED=$fn elfs=$en/$max_elf" | tee -a "$LOG"
+    echo "  $lvl: $tag rc=$rc FAILED=$fn bins=$en/$max_bin" | tee -a "$LOG"
   done
 fi
 

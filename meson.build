@@ -1001,13 +1001,31 @@ foreach params : [default_target] + targets
     picolibc_ld_data.set('EXTRA_SBSS_SECTIONS',
                                   meson.get_external_property('extra_sbss_sections', ''))
 
-    # Bug #192: optional MC6809 direct-page MEMORY region + SECTIONS block.
-    # Both default to empty strings on targets that don't use direct-page
-    # addressing; the MC6809 cross-file populates them.
-    picolibc_ld_data.set('DIRECTPAGE_MEMORY',
-                                  meson.get_external_property('directpage_memory', ''))
-    picolibc_ld_data.set('DIRECTPAGE_BLOCK',
-                                  meson.get_external_property('directpage_block', ''))
+    # Bug #192/#193: optional MC6809 direct-page MEMORY region +
+    # SECTIONS block, parameterised by `directpage_base` (decimal
+    # string, default '0' = DP=$00). Both DIRECTPAGE_MEMORY and
+    # DIRECTPAGE_BLOCK default to empty strings on targets that don't
+    # use direct-page addressing; the MC6809 cross-file populates them.
+    #
+    # configure_file's template substitution is single-pass — it can't
+    # resolve a `@VAR@` placeholder embedded inside another substituted
+    # value. So we precompute @DIRECTPAGE_ORIGIN@ here in meson and
+    # string-replace it into the directpage_memory template BEFORE
+    # passing the resolved string to picolibc_ld_data. @DIRECTPAGE_BASE@
+    # is similarly substituted into directpage_block.
+    dp_base_str = meson.get_external_property('directpage_base', '0')
+    dp_base_int = dp_base_str.to_int()
+    dp_origin_int = dp_base_int * 256 + 0x21
+
+    dp_memory_raw = meson.get_external_property('directpage_memory', '')
+    dp_block_raw  = meson.get_external_property('directpage_block', '')
+
+    dp_memory = dp_memory_raw.replace('@DIRECTPAGE_ORIGIN@',
+                                                                  dp_origin_int.to_string())
+    dp_block  = dp_block_raw.replace('@DIRECTPAGE_BASE@', dp_base_str)
+
+    picolibc_ld_data.set('DIRECTPAGE_MEMORY', dp_memory)
+    picolibc_ld_data.set('DIRECTPAGE_BLOCK',  dp_block)
 
     # We need to use different alignment flags for .tdata/.tbss for ld.bfd
     # (ALIGN_WITH_INPUT, which is not supported by ld.lld) and ld.lld

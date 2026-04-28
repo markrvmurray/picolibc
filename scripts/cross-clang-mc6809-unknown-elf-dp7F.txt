@@ -51,7 +51,12 @@ default_ram_size   = '0xFEC0'
 # `directpage_base = '31'` (= $1F) — meson.build precomputes the
 # dependent ORIGIN value because configure_file's template substitution
 # is single-pass and can't resolve nested @VARS@.
-directpage_base = '0'
+# Bug #193 verification: relocate DP to $7F (= 127). Imaginary regs
+# at $7F00-$7F1F, __scratch at $7F20, directpage MEMORY at $7F21-$7FFF.
+# Stays clear of typical small-test .text/.data growth (which starts
+# at $0100 and grows up) and stack drop (which starts at $FFC0 and
+# grows down). Used by the DP-relocation smoke test for bug #193.
+directpage_base = '127'
 
 directpage_memory = '''
 	directpage (rw!x) :

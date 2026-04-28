@@ -47,10 +47,57 @@ set -u
 
 PICO=/Users/markmurray/GitHub/picolibc
 LLVM_BIN=/Users/markmurray/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin
+LLVM_REPO=/Users/markmurray/GitHub/llvm-mc6809
 USIM=/Users/markmurray/GitHub/usim
 CROSS=$PICO/scripts/cross-clang-mc6809-unknown-elf.txt
 DB=${MC6809_BENCH_DB:-$HOME/Documents/mc6809-bench/results.sqlite}
 LOG=/tmp/bench-parallel.log
+
+# Cross-platform mtime helper. macOS uses `stat -f %m`, Linux `stat -c %Y`.
+file_mtime() {
+  stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo ""
+}
+
+# Bug #191: bench typically launches BEFORE the user commits the
+# changes that produced the binaries — so plain `git rev-parse HEAD`
+# records the previous commit, not the binary's actual provenance.
+# We can't synthesise a SHA for uncommitted edits, but we CAN flag
+# the discrepancy two ways:
+#   (1) tag the recorded SHA with "+dirty" if the source tree has
+#       uncommitted changes RIGHT NOW, or if the binary's mtime is
+#       later than HEAD's commit time (indicating a build-then-
+#       commit window we haven't crossed yet).
+#   (2) Capture the binary mtime separately so a future analyst can
+#       correlate to the actual commit (the one immediately AFTER
+#       the recorded SHA in chronological order).
+get_llvm_commit() {
+  local sha
+  sha=$(cd "$LLVM_REPO" && git rev-parse HEAD 2>/dev/null || echo unknown)
+  local dirty=""
+  # (a) Compare binary mtime to HEAD commit time.
+  if [ -x "$LLVM_BIN/llc" ]; then
+    local bin_mtime head_ctime
+    bin_mtime=$(file_mtime "$LLVM_BIN/llc")
+    head_ctime=$(cd "$LLVM_REPO" && git log -n1 --format=%ct HEAD 2>/dev/null)
+    if [ -n "$bin_mtime" ] && [ -n "$head_ctime" ] && \
+       [ "$bin_mtime" -gt "$head_ctime" ]; then
+      dirty="+dirty"
+    fi
+  fi
+  # (b) Tree has uncommitted changes RIGHT NOW.
+  if (cd "$LLVM_REPO" && ! git diff --quiet HEAD -- 2>/dev/null); then
+    dirty="+dirty"
+  fi
+  echo "${sha}${dirty}"
+}
+
+get_llvm_binary_mtime() {
+  if [ -x "$LLVM_BIN/llc" ]; then
+    file_mtime "$LLVM_BIN/llc"
+  else
+    echo ""
+  fi
+}
 
 export PATH="$LLVM_BIN:$USIM:$PATH"
 export LLVM_OBJCOPY="$LLVM_BIN/llvm-objcopy"
@@ -191,17 +238,21 @@ _lit_tally() {
   "$lit" -v --no-progress-bar "$testdir" > "$outfile" 2>&1
   local lit_rc=$?
 
-  local commit picolibc_commit usim_commit timestamp host
-  commit=$(cd /Users/markmurray/GitHub/llvm-mc6809 && git rev-parse HEAD 2>/dev/null || echo unknown)
+  local commit picolibc_commit usim_commit timestamp host bin_mtime
+  commit=$(get_llvm_commit)
+  bin_mtime=$(get_llvm_binary_mtime)
   picolibc_commit=$(cd "$PICO" && git rev-parse HEAD 2>/dev/null || echo unknown)
   usim_commit=$(cd "$USIM" && git rev-parse HEAD 2>/dev/null || echo unknown)
   timestamp=$(date -u +%Y-%m-%dT%H:%M:%S+00:00)
   host=$(hostname -s)
 
+  # Idempotent schema migration for bug #191's new column.
+  sqlite3 "$DB" "ALTER TABLE runs ADD COLUMN llvm_binary_mtime INTEGER;" 2>/dev/null
+
   local run_id
   run_id=$(sqlite3 "$DB" "
-    INSERT INTO runs (timestamp, llvm_commit, picolibc_commit, usim_commit, host, opt_level)
-    VALUES ('$timestamp', '$commit', '$picolibc_commit', '$usim_commit', '$host', 'lit');
+    INSERT INTO runs (timestamp, llvm_commit, picolibc_commit, usim_commit, host, opt_level, llvm_binary_mtime)
+    VALUES ('$timestamp', '$commit', '$picolibc_commit', '$usim_commit', '$host', 'lit', ${bin_mtime:-NULL});
     SELECT last_insert_rowid();
   ")
 

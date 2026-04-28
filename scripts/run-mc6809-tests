@@ -372,6 +372,64 @@ def git_head(path):
         return None
 
 
+def llvm_commit_for_binary(repo, binary_path):
+    """Return the SHA, suffixed with `+dirty` if the binary may not match HEAD.
+
+    Bug #191: bench typically launches BEFORE the user commits the
+    changes that produced the binaries — so plain `rev-parse HEAD`
+    records the previous commit, not the binary's actual provenance.
+    Two heuristics flag the discrepancy:
+      (a) binary mtime is later than HEAD's commit time (a build-
+          then-commit window we haven't crossed yet).
+      (b) tree has uncommitted changes RIGHT NOW.
+    Either fires → suffix `+dirty`.
+    """
+    sha = git_head(repo) or "unknown"
+    dirty = ""
+    # (a) binary mtime vs HEAD ctime
+    try:
+        if binary_path and os.path.isfile(binary_path):
+            bin_mtime = int(os.path.getmtime(binary_path))
+            head_ctime_out = subprocess.run(
+                ["git", "-C", str(repo), "log", "-n1", "--format=%ct", "HEAD"],
+                capture_output=True, text=True, check=True,
+            )
+            head_ctime = int(head_ctime_out.stdout.strip())
+            if bin_mtime > head_ctime:
+                dirty = "+dirty"
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError, ValueError):
+        pass
+    # (b) uncommitted changes right now
+    try:
+        rc = subprocess.run(
+            ["git", "-C", str(repo), "diff", "--quiet", "HEAD", "--"],
+        ).returncode
+        if rc != 0:
+            dirty = "+dirty"
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+    return f"{sha}{dirty}"
+
+
+def llvm_binary_mtime(binary_path):
+    """Return Unix mtime of the llc binary, or None."""
+    try:
+        if binary_path and os.path.isfile(binary_path):
+            return int(os.path.getmtime(binary_path))
+    except OSError:
+        pass
+    return None
+
+
+def find_llc():
+    """Locate the llc binary on PATH so we can stat its mtime."""
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        candidate = os.path.join(entry, "llc")
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
 def ensure_db(path):
     """Create the SQLite ledger if absent; return a connection."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -409,6 +467,8 @@ def ensure_db(path):
     cols = {row[1] for row in conn.execute("PRAGMA table_info(runs)")}
     if "opt_level" not in cols:
         conn.execute("ALTER TABLE runs ADD COLUMN opt_level TEXT")
+    if "llvm_binary_mtime" not in cols:  # bug #191
+        conn.execute("ALTER TABLE runs ADD COLUMN llvm_binary_mtime INTEGER")
     cols = {row[1] for row in conn.execute("PRAGMA table_info(results)")}
     if "opt_level" not in cols:
         conn.execute("ALTER TABLE results ADD COLUMN opt_level TEXT")
@@ -423,18 +483,21 @@ def insert_run_row(conn, opt_level):
     single SQLite handle (simpler and safe under WAL)."""
     usim_path = os.environ.get("USIM09BATCH") or "/Users/markmurray/GitHub/usim"
     usim_repo = Path(usim_path).parent if Path(usim_path).is_file() else Path(usim_path)
+    llc_path = find_llc()  # bug #191
     run_row = (
         datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        git_head("/Users/markmurray/GitHub/llvm-mc6809"),
+        llvm_commit_for_binary("/Users/markmurray/GitHub/llvm-mc6809", llc_path),
         git_head(REPO),
         git_head(str(usim_repo)),
         os.uname().nodename,
         opt_level,
+        llvm_binary_mtime(llc_path),
     )
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO runs (timestamp, llvm_commit, picolibc_commit, "
-        "usim_commit, host, opt_level) VALUES (?, ?, ?, ?, ?, ?)",
+        "usim_commit, host, opt_level, llvm_binary_mtime) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
         run_row,
     )
     conn.commit()

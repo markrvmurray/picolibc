@@ -34,8 +34,41 @@
  */
 
 #include "../../crt0.h"
+#include <string.h>
 
 extern char __stack[];
+
+/*
+ * Bug #192: direct-page (.dp.bss / .dp.data / .dp.rodata) section
+ * boundaries provided by the linker script (cross-file's
+ * directpage_block in scripts/cross-clang-mc6809-unknown-elf.txt).
+ */
+extern char __dp_bss_start[];
+extern char __dp_bss_size[];   /* opaque size: cast to uintptr_t */
+extern char __dp_data_start[];
+extern char __dp_data_source[];
+extern char __dp_data_size[];
+
+/*
+ * The MC6809 backend strongly-references __do_zero_dp_bss /
+ * __do_copy_dp_data only when a TU contains .dp.bss / .dp.data
+ * (see MC6809TargetStreamer.cpp:35-45 in llvm-mc6809). When no
+ * user __directpage globals exist anywhere in the link, these
+ * symbols are unreferenced and the linker drops them. When they
+ * ARE referenced, __dp_bss_size / __dp_data_size are non-zero
+ * and the loops do useful work.
+ */
+void
+__do_zero_dp_bss(void)
+{
+    memset(__dp_bss_start, 0, (uintptr_t)__dp_bss_size);
+}
+
+void
+__do_copy_dp_data(void)
+{
+    memcpy(__dp_data_start, __dp_data_source, (uintptr_t)__dp_data_size);
+}
 
 /*
  * MC6809 compiler imaginary register allocation in direct page (DP=0).
@@ -95,6 +128,18 @@ __asm__(
 static void __used
 _cstart(void)
 {
+    /* Bug #192: explicit DP register init. Hardware reset defaults
+     * DP=0, but a soft-reset path could leave it non-zero — and any
+     * non-zero DP would silently break every direct-page access
+     * (LDAd / STAd / LDDd / STDd plus all imaginary-reg accesses).
+     * MC6809's CLR instruction is memory-only; the canonical idiom
+     * to zero DP is `clra; tfr a,dp`. */
+    __asm__ volatile (
+        "clra\n\t"
+        "tfr a,dp"
+        : : : "a"
+    );
+
     /* Initialise the MC6850 ACIA semihost device.
      *
      * USim's mc6850 emulation works without explicit initialisation
@@ -106,6 +151,13 @@ _cstart(void)
     volatile unsigned char *acia_status_ctrl = (volatile unsigned char *)0xFFD0;
     *acia_status_ctrl = 0x03;   /* master reset */
     *acia_status_ctrl = 0x15;   /* /16 clock, 8N1, no IRQ */
+
+    /* Bug #192: zero .dp.bss and copy .dp.data initialisers. The
+     * backend strongly-references these symbols only when the link
+     * actually contains .dp.* sections, so they cost nothing on
+     * builds without __directpage globals. */
+    __do_zero_dp_bss();
+    __do_copy_dp_data();
 
     __start();
 }

@@ -1001,6 +1001,14 @@ foreach params : [default_target] + targets
     picolibc_ld_data.set('EXTRA_SBSS_SECTIONS',
                                   meson.get_external_property('extra_sbss_sections', ''))
 
+    # Bug #192: optional MC6809 direct-page MEMORY region + SECTIONS block.
+    # Both default to empty strings on targets that don't use direct-page
+    # addressing; the MC6809 cross-file populates them.
+    picolibc_ld_data.set('DIRECTPAGE_MEMORY',
+                                  meson.get_external_property('directpage_memory', ''))
+    picolibc_ld_data.set('DIRECTPAGE_BLOCK',
+                                  meson.get_external_property('directpage_block', ''))
+
     # We need to use different alignment flags for .tdata/.tbss for ld.bfd
     # (ALIGN_WITH_INPUT, which is not supported by ld.lld) and ld.lld
     # (ALIGN(__tls_align), which is rejected as non-constant by ld.bfd), so we use

@@ -48,6 +48,7 @@ MEMORY
 	ram (@RAM_MODE@) :
 		ORIGIN = DEFINED(@PREFIX@__ram) ? @PREFIX@__ram : @DEFAULT_RAM_ADDR@,
 		LENGTH = DEFINED(@PREFIX@__ram_size) ? @PREFIX@__ram_size : @DEFAULT_RAM_SIZE@
+@DIRECTPAGE_MEMORY@
 }
 
 PHDRS
@@ -63,6 +64,7 @@ SECTIONS
 {
 	PROVIDE(@PREFIX@@STACK@ = ORIGIN(ram) + LENGTH(ram));
 @INIT_SECTIONS@
+@DIRECTPAGE_BLOCK@
 	.text : {
 
 		/* code */

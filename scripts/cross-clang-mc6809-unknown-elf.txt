@@ -35,7 +35,7 @@ default_ram_size   = '0xFEC0'
 
 # Bug #192: direct-page support. The compiler's imaginary registers
 # (RC0..RC15, RS0..RS7) claim $00-$1F via .set directives in crt0.c,
-# plus __scratch at $20 (1 byte). User __directpage globals fill
+# User __directpage globals fill
 # $21-$FF (223 bytes); link-time ASSERT catches overflow. The
 # DIRECTPAGE_MEMORY string is appended to the MEMORY block in
 # picolibc.ld.in; DIRECTPAGE_BLOCK is appended after the .heap
@@ -67,8 +67,8 @@ directpage_block = '''
 	PROVIDE(__dp_base = @DIRECTPAGE_BASE@);
 	PROVIDE(__dp_base_addr = __dp_base << 8);
 
-	/* MC6809 backend imaginary registers (RC0..RC15, RS0..RS7) +
-	 * __scratch. The compiler emits LDA <__rcN-style direct-mode
+	/* MC6809 backend imaginary registers (RC0..RC15, RS0..RS7).
+	 * The compiler emits LDA <__rcN-style direct-mode
 	 * accesses; the R_MC6809_DIRECT8 reloc takes the low 8 bits of the
 	 * resolved value, which equals N regardless of __dp_base_addr.
 	 * Defined here (rather than via .set in crt0.c) so the binding
@@ -99,7 +99,6 @@ directpage_block = '''
 	PROVIDE(__rs5  = __dp_base_addr + 0x1A);
 	PROVIDE(__rs6  = __dp_base_addr + 0x1C);
 	PROVIDE(__rs7  = __dp_base_addr + 0x1E);
-	PROVIDE(__scratch = __dp_base_addr + 0x20);
 
 	.dp_data : {
 		PROVIDE(__dp_data_start = .);

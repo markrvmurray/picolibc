@@ -63,12 +63,19 @@ if [ ! -x "$WRAPPER" ]; then
   exit 1
 fi
 
-# MAME timeout. The headless wrapper defaults to 5 s; for picolibc
-# tests (slow string suite hits >1B simulated cycles) bump to 30 s.
-# usim's USIM_TIMEOUT env var is in instructions, not seconds; we
-# don't translate — picolibc bench tooling sets a generous default
-# regardless and reclassifies rc=124 as TIMEOUT either way.
-mame_timeout="${PICOLIBC_MAME_TIMEOUT:-30}"
+# MAME timeout. The headless wrapper defaults to 5 s; picolibc bench
+# tests run anywhere from ~5 K cycles (test-hello) to ~25 B cycles
+# (test-memchr, ~3200 simulated seconds at the HD6309's 8 MHz E
+# clock). Pick 1800 simulated seconds as a generous cap that covers
+# the slow string tests with comfortable headroom; MAME's
+# `-nothrottle` runs ~1000 % real-time, so this is at most ~3 minutes
+# wall-clock per individual test in the worst case (essentially the
+# usim parity case).
+#
+# Tests that exceed even this cap return rc=124 (GNU timeout(1)
+# convention) so run-mc6809-tests reclassifies them as TIMEOUT — the
+# same outcome usim produces when --timeout is exhausted.
+mame_timeout="${PICOLIBC_MAME_TIMEOUT:-1800}"
 
 # Note: `--stdin` is currently dropped on the floor for MAME. test-gets
 # and test-gets-failure (the only two picolibc tests using it) will

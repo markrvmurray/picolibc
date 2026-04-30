@@ -120,6 +120,15 @@ FAKE_FS_TESTS = {
     "test-dprintf",
     "test-posix-io",
     "tzset",
+    # test-getdate calls `fopen("test-getdate.txt", "w")` to write the
+    # DATEMSK file the test reads back via getdate(). Our semihost has
+    # no real filesystem, so fopen-for-write fails immediately and the
+    # test errors out (`test-getdate.txt: No such file or directory`).
+    # Invisible at non-LTO levels because .text is ~87 KB and overflows
+    # the 64-KB address space — link silently fails, no binary built.
+    # LTO whole-program DCE compresses it small enough to link, so the
+    # test starts running and surfaces the same fake-FS limitation.
+    "test-getdate",
 }
 
 # Default usim cap for tests not in SLOW_CAPS. Matches run-mc6809's

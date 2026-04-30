@@ -1,0 +1,82 @@
+#!/bin/sh
+#
+# run-mc6809-mame — picolibc test runner for MC6809/HD6309 (MAME llvm6309)
+#
+# Usage: run-mc6809-mame <elf> [--stdin "string"] [--args "args"]
+#
+# Sibling of `run-mc6809` (which targets usim09batch). Picks up the
+# llvm-mc6809 ELF, hands it to the MAME-repo `run-mc6809-mame` wrapper
+# (which converts ELF→64-KB cart and invokes mamellvm6309-headless),
+# returns its stdout/exit unchanged.
+#
+# The `--stdin` and `--args` flags are accepted for symmetry with
+# run-mc6809 (meson test invocations may pass them via test_args), but
+# only --stdin currently has a meaningful behavior — and only if MAME
+# has been configured with bitbanger input. Without that, --stdin data
+# is silently dropped. Two picolibc tests use --stdin (test-gets and
+# test-gets-failure); both will fail under MAME until bitbanger input
+# is wired up. Bug #194 Phase B+ tracks this; not blocking initial
+# bring-up.
+#
+# Environment:
+#   MAME_LLVM6309_DIR  override (default: ~/GitHub/mame). The wrapper
+#                      lives at $MAME_LLVM6309_DIR/run-mc6809-mame.
+#   USIM_TIMEOUT       passed through as MAME timeout in seconds when
+#                      set, else default 30 (a generous wall-clock cap;
+#                      MAME's -nothrottle runs >1000% real-time so
+#                      30 s ≈ 5 minutes of simulated wall time, enough
+#                      for the slow string tests).
+
+MAME_DIR="${MAME_LLVM6309_DIR:-$HOME/GitHub/mame}"
+WRAPPER="$MAME_DIR/run-mc6809-mame"
+
+elf="$1"
+shift
+
+stdin=""
+args=""
+done=0
+while [ $# -gt 0 -a $done -eq 0 ]; do
+  case "$1" in
+    --stdin)
+      stdin="$2"
+      shift 2
+      ;;
+    --args)
+      args="$2"
+      shift 2
+      ;;
+    *)
+      done=1
+      ;;
+  esac
+done
+
+if [ -z "$elf" ]; then
+  echo "usage: run-mc6809-mame <elf> [--stdin string] [--args string]" >&2
+  exit 1
+fi
+
+if [ ! -x "$WRAPPER" ]; then
+  echo "run-mc6809-mame: cannot find MAME wrapper at $WRAPPER" >&2
+  echo "  set \$MAME_LLVM6309_DIR or symlink mame/run-mc6809-mame onto PATH" >&2
+  exit 1
+fi
+
+# MAME timeout. The headless wrapper defaults to 5 s; for picolibc
+# tests (slow string suite hits >1B simulated cycles) bump to 30 s.
+# usim's USIM_TIMEOUT env var is in instructions, not seconds; we
+# don't translate — picolibc bench tooling sets a generous default
+# regardless and reclassifies rc=124 as TIMEOUT either way.
+mame_timeout="${PICOLIBC_MAME_TIMEOUT:-30}"
+
+# Note: `--stdin` is currently dropped on the floor for MAME. test-gets
+# and test-gets-failure (the only two picolibc tests using it) will
+# either fail or hang; the bench harness will reclassify hangs as
+# TIMEOUT. Wiring stdin through MAME's null_modem bitbanger is on the
+# Phase B+ followup.
+if [ -n "$stdin" ]; then
+  : # TODO: pipe $stdin into a bitb input file and add -bitbngr_in_file
+fi
+
+exec "$WRAPPER" "$elf" "$mame_timeout"

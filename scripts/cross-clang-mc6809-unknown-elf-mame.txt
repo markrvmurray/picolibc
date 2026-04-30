@@ -1,0 +1,121 @@
+[binaries]
+c = ['/Users/markmurray/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin/clang', '--target=mc6809-unknown-unknown', '-nostdlib']
+cpp = ['/Users/markmurray/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin/clang', '--target=mc6809-unknown-unknown', '-nostdlib']
+ar = '/Users/markmurray/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin/llvm-ar'
+nm = '/Users/markmurray/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin/llvm-nm'
+strip = '/Users/markmurray/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin/llvm-strip'
+exe_wrapper = ['/Users/markmurray/GitHub/picolibc/scripts/run-mc6809-mame']
+
+[host_machine]
+system = 'none'
+cpu_family = 'mc6809'
+cpu = 'mc6809'
+endian = 'big'
+
+[properties]
+skip_sanity_check = true
+# Memory layout (top-to-bottom; $0000 at the top, $FFFF at the
+# bottom). The emulated machine has no real flash — the whole
+# $0000-$FFCF range is one writable RAM, with USim's IO slab + vector
+# ROM at $FFD0-$FFFF. picolibc's template still requires two MEMORY
+# regions ('flash' and 'ram'), so we keep a 16-byte 'flash' stub at
+# $FFC0 (just above the IO slab) holding only the .init reset entry,
+# and let 'ram' cover everything else. picolibc_ld_data is patched
+# upstream in meson.build to put .text + .rodata + .data + .bss +
+# heap + stack ALL into ram, so the full 64-KB-minus-IO is available
+# to the program no matter the section mix.
+#   ram    $0100-$FFBF  (~63.7 KB) — text + rodata + data + bss + heap + stack
+#   flash  $FFC0-$FFCF  (16 bytes) — .init only (reset entry stub)
+#   IO     $FFD0-$FFEF              — USim ACIA + halt + tracectl
+#   vrom   $FFF0-$FFFF              — vector ROM
+default_flash_addr = '0xFFC0'
+default_flash_size = '0x0010'
+default_ram_addr   = '0x0100'
+default_ram_size   = '0xFEC0'
+
+# Bug #192: direct-page support. The compiler's imaginary registers
+# (RC0..RC15, RS0..RS7) claim $00-$1F via .set directives in crt0.c,
+# User __directpage globals fill
+# $21-$FF (223 bytes); link-time ASSERT catches overflow. The
+# DIRECTPAGE_MEMORY string is appended to the MEMORY block in
+# picolibc.ld.in; DIRECTPAGE_BLOCK is appended after the .heap
+# SECTIONS entry.
+#
+# Bug #193: `directpage_base` (decimal string, default '0' = DP=$00) is
+# a single knob driving the value of the DP register at runtime AND
+# the link-time placement of the directpage MEMORY region. The four
+# DP=$00 assumptions (linker MEMORY origin, ASSERT, CRT0 DP-register
+# init, imaginary-reg .set arithmetic in crt0.c) all derive from the
+# `__dp_base` / `__dp_base_addr` linker symbols PROVIDE'd in
+# directpage_block below. To put DP elsewhere, set e.g.
+# `directpage_base = '31'` (= $1F) — meson.build precomputes the
+# dependent ORIGIN value because configure_file's template substitution
+# is single-pass and can't resolve nested @VARS@.
+directpage_base = '0'
+
+directpage_memory = '''
+	directpage (rw!x) :
+		ORIGIN = @DIRECTPAGE_ORIGIN@,
+		LENGTH = 0x00DF'''
+
+directpage_block = '''
+	/* Bug #193: single-source-of-truth for the DP register value and
+	 * direct-page MEMORY placement. Override at meson-configure time
+	 * via the cross-file's `directpage_base` property; CLI override at
+	 * link time also works (`-Wl,--defsym=__dp_base=0x1F`) because
+	 * PROVIDE only defines the symbol if it isn't already defined. */
+	PROVIDE(__dp_base = @DIRECTPAGE_BASE@);
+	PROVIDE(__dp_base_addr = __dp_base << 8);
+
+	/* MC6809 backend imaginary registers (RC0..RC15, RS0..RS7).
+	 * The compiler emits LDA <__rcN-style direct-mode
+	 * accesses; the R_MC6809_DIRECT8 reloc takes the low 8 bits of the
+	 * resolved value, which equals N regardless of __dp_base_addr.
+	 * Defined here (rather than via .set in crt0.c) so the binding
+	 * survives even when crt0.c does not itself reference the symbol —
+	 * llvm-mc drops .set aliases whose RHS depends on an undefined
+	 * external if the LHS is unreferenced in the same TU. */
+	PROVIDE(__rc0  = __dp_base_addr + 0x00);
+	PROVIDE(__rc1  = __dp_base_addr + 0x01);
+	PROVIDE(__rc2  = __dp_base_addr + 0x02);
+	PROVIDE(__rc3  = __dp_base_addr + 0x03);
+	PROVIDE(__rc4  = __dp_base_addr + 0x04);
+	PROVIDE(__rc5  = __dp_base_addr + 0x05);
+	PROVIDE(__rc6  = __dp_base_addr + 0x06);
+	PROVIDE(__rc7  = __dp_base_addr + 0x07);
+	PROVIDE(__rs0  = __dp_base_addr + 0x08);
+	PROVIDE(__rs1  = __dp_base_addr + 0x0A);
+	PROVIDE(__rs2  = __dp_base_addr + 0x0C);
+	PROVIDE(__rs3  = __dp_base_addr + 0x0E);
+	PROVIDE(__rc8  = __dp_base_addr + 0x10);
+	PROVIDE(__rc9  = __dp_base_addr + 0x11);
+	PROVIDE(__rc10 = __dp_base_addr + 0x12);
+	PROVIDE(__rc11 = __dp_base_addr + 0x13);
+	PROVIDE(__rc12 = __dp_base_addr + 0x14);
+	PROVIDE(__rc13 = __dp_base_addr + 0x15);
+	PROVIDE(__rc14 = __dp_base_addr + 0x16);
+	PROVIDE(__rc15 = __dp_base_addr + 0x17);
+	PROVIDE(__rs4  = __dp_base_addr + 0x18);
+	PROVIDE(__rs5  = __dp_base_addr + 0x1A);
+	PROVIDE(__rs6  = __dp_base_addr + 0x1C);
+	PROVIDE(__rs7  = __dp_base_addr + 0x1E);
+
+	.dp_data : {
+		PROVIDE(__dp_data_start = .);
+		*(.dp.data .dp.data.*)
+		PROVIDE(__dp_data_end = .);
+		*(.dp.rodata .dp.rodata.*)
+	} > directpage :ram_init
+
+	.dp_bss (NOLOAD) : {
+		PROVIDE(__dp_bss_start = .);
+		*(.dp.bss .dp.bss.*)
+		PROVIDE(__dp_bss_end = .);
+	} > directpage :NONE
+
+	PROVIDE(__dp_data_size = __dp_data_end - __dp_data_start);
+	PROVIDE(__dp_data_source = ADDR(.dp_data));
+	PROVIDE(__dp_bss_size = __dp_bss_end - __dp_bss_start);
+
+	ASSERT(__dp_bss_end <= __dp_base_addr + 0x100,
+		"Direct page overflow: .dp.* sections exceed the 256-byte DP window.")'''

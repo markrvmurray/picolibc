@@ -41,6 +41,11 @@
 #                        Combine with --skip-build --levels O1 for fast
 #                        single-test sanity checks (~5-30s vs ~13min full).
 #                        Bug #168.
+#   --simulator BACKEND  usim (default, 6809-only) or mame (HD6309-capable
+#                        llvm6309 SBC). MAME runs use the
+#                        cross-clang-mc6809-unknown-elf-mame.txt cross-
+#                        file, append `-mame` to builddirs and ledger
+#                        opt_level rows. Bug #194 Phase B.
 #   -h, --help           show this header
 
 set -u
@@ -49,9 +54,20 @@ PICO=/Users/markmurray/GitHub/picolibc
 LLVM_BIN=/Users/markmurray/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin
 LLVM_REPO=/Users/markmurray/GitHub/llvm-mc6809
 USIM=/Users/markmurray/GitHub/usim
-CROSS=$PICO/scripts/cross-clang-mc6809-unknown-elf.txt
 DB=${MC6809_BENCH_DB:-$HOME/Documents/mc6809-bench/results.sqlite}
 LOG=/tmp/bench-parallel.log
+
+# Bug #194 Phase B: simulator backend selector. Default is usim
+# (canonical for 6809). MAME's `llvm6309` SBC is the HD6309-capable
+# alternative; identical memory map, different exe_wrapper. Selected
+# via `--simulator=mame` on the CLI; bench rows are tagged with
+# `-mame` suffixed opt_level (e.g. `Os-mame`) for easy DB filtering
+# and to avoid stomping the canonical usim history.
+SIMULATOR="usim"
+USIM_CROSS=$PICO/scripts/cross-clang-mc6809-unknown-elf.txt
+MAME_CROSS=$PICO/scripts/cross-clang-mc6809-unknown-elf-mame.txt
+CROSS=$USIM_CROSS
+BD_SUFFIX=""
 
 # Cross-platform mtime helper. macOS uses `stat -f %m`, Linux `stat -c %Y`.
 file_mtime() {
@@ -151,8 +167,8 @@ level_opts() {
 
 # --- Per-wave phase implementations (also invoked via self-reinvoke) ----
 
-wave_log() { echo "/tmp/bench-parallel-$1.log"; }
-wave_bd()  { echo "$PICO/builddir-mc6809-$1"; }
+wave_log() { echo "/tmp/bench-parallel-$1${BD_SUFFIX}.log"; }
+wave_bd()  { echo "$PICO/builddir-mc6809-$1${BD_SUFFIX}"; }
 ts()       { date '+%H:%M:%S'; }
 
 _setup_wave() {
@@ -332,10 +348,36 @@ while [ $# -gt 0 ]; do
     --skip-tally)       skip_tally=1; shift ;;
     --no-preflight)     no_preflight=1; shift ;;
     --tests)            tests_filter="$2"; shift 2 ;;
+    --simulator)        SIMULATOR="$2"; shift 2 ;;
+    --simulator=*)      SIMULATOR="${1#--simulator=}"; shift ;;
     -h|--help)          sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)                  echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
+
+# Bug #194 Phase B: dispatch to MAME llvm6309 SBC. Switches the cross-
+# file (so meson `exe_wrapper` resolves to `run-mc6809-mame`) and tags
+# all builddirs and ledger opt_level rows with `-mame` so MAME and
+# usim runs don't stomp each other's history.
+case "$SIMULATOR" in
+  usim)
+    CROSS=$USIM_CROSS
+    BD_SUFFIX=""
+    ;;
+  mame)
+    CROSS=$MAME_CROSS
+    BD_SUFFIX="-mame"
+    if [ ! -x "$HOME/GitHub/mame/run-mc6809-mame" ]; then
+      echo "bench-parallel: --simulator=mame but $HOME/GitHub/mame/run-mc6809-mame missing/non-executable" >&2
+      exit 1
+    fi
+    ;;
+  *)
+    echo "bench-parallel: unknown --simulator value '$SIMULATOR' (use usim or mame)" >&2
+    exit 2
+    ;;
+esac
+export SIMULATOR BD_SUFFIX CROSS
 
 IFS=',' read -ra LEVEL_LIST <<< "$levels"
 
@@ -440,6 +482,9 @@ if [ $skip_tally -eq 0 ]; then
   _lit_tally
 
   # Build "LEVEL:DIR,LEVEL:DIR,…" for run-mc6809-tests --multi.
+  # Bug #194 Phase B: when --simulator=mame, tag the LEVEL with
+  # `-mame` so the bench ledger records MAME runs as e.g. `Os-mame`,
+  # `O0-mame`, ... — distinct from the canonical usim history.
   multi=""
   for lvl in "${LEVEL_LIST[@]}"; do
     bd="$(wave_bd "$lvl")"
@@ -448,7 +493,7 @@ if [ $skip_tally -eq 0 ]; then
         | tee -a "$LOG"
       continue
     fi
-    multi="${multi:+$multi,}${lvl}:${bd}"
+    multi="${multi:+$multi,}${lvl}${BD_SUFFIX}:${bd}"
   done
   if [ -z "$multi" ]; then
     echo "==[ $(ts) no tally levels available ]==" | tee -a "$LOG"

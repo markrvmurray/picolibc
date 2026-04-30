@@ -220,22 +220,40 @@ _build_wave() {
 # self-reinvoke needed.
 
 _lit_tally() {
-  # Run llvm-lit against test/CodeGen/MC6809/ and record one runs row
-  # (opt_level='lit') + one results row per test. Cheap (~1s) and
+  # Run llvm-lit against all MC6809 codegen + Sema tests and record one runs
+  # row (opt_level='lit') + one results row per test. Cheap (~1s) and
   # independent of the picolibc build dirs.
+  #
+  # Test directories:
+  #   llvm/test/CodeGen/MC6809/          -- backend codegen sentinels
+  #   clang/test/CodeGen/MC6809/         -- clang CodeGen tests (builtins)
+  #   clang/test/Sema/asm-mc6809-*.c     -- inline asm constraint Sema tests
+  #   clang/test/Sema/mc6809-*.c         -- target builtin Sema tests
+  #   clang/test/Sema/mc6809-directpage.c
   local lit="$LLVM_BIN/llvm-lit"
   local llvm_root="$(cd "$LLVM_BIN/../.." && pwd)"
-  local testdir="$llvm_root/test/CodeGen/MC6809"
+  local clang_root="$(cd "$llvm_root/../clang" && pwd)"
   local outfile="/tmp/bench-parallel-lit.log"
 
   echo "==[ $(ts) lit tally start ]==" | tee -a "$LOG"
 
-  if [ ! -x "$lit" ] || [ ! -d "$testdir" ]; then
+  if [ ! -x "$lit" ] || [ ! -d "$llvm_root/test/CodeGen/MC6809" ]; then
     echo "  lit: skipped (binary or testdir missing)" | tee -a "$LOG"
     return 0
   fi
 
-  "$lit" -v --no-progress-bar "$testdir" > "$outfile" 2>&1
+  # Build the test list: always the llvm backend tests; add clang tests if present.
+  local testpaths="$llvm_root/test/CodeGen/MC6809"
+  if [ -d "$clang_root/test/CodeGen/MC6809" ]; then
+    testpaths="$testpaths $clang_root/test/CodeGen/MC6809"
+  fi
+  for f in "$clang_root"/test/Sema/asm-mc6809-*.c \
+            "$clang_root"/test/Sema/mc6809-*.c; do
+    [ -f "$f" ] && testpaths="$testpaths $f"
+  done
+
+  # shellcheck disable=SC2086
+  "$lit" -v --no-progress-bar $testpaths > "$outfile" 2>&1
   local lit_rc=$?
 
   local commit picolibc_commit usim_commit timestamp host bin_mtime

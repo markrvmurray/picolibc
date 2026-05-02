@@ -98,6 +98,34 @@ SLOW_TESTS = {
     "test-memmem",
 }
 
+# Bug #204: under MAME (HD6309), these additional tests are genuinely
+# too slow for routine tallies — MAME's `-nothrottle` runs ~10x the
+# emulated CPU's real speed, which is ~15-18x slower than USim. Tests
+# that finish in seconds-to-minutes wall under USim run for tens of
+# minutes (and in test-memchr's case, ~27 minutes for all 4 inner
+# loop iterations) under MAME. Skipping them under MAME keeps the
+# bench tally tractable (~5 min total) without losing coverage —
+# they continue to run under USim where the budget IS practical.
+#
+# Background: PICOLIBC_MAME_TIMEOUT=1800 (the canonical default; see
+# feedback_mame_timeout_1800.md) gives MAME 1800 simulated seconds.
+# At nothrottle that's ~180-225 s wall — enough for memcpy-1/memmove1
+# to pass, but NOT enough for the tests below. Empirically verified
+# 2026-05-02: even at PICOLIBC_MAME_TIMEOUT=4000 (sim-sec), test-memchr
+# was still in iteration 0 of 4. Increasing the cap into the practical-
+# wall-time range would multi-hour every bench, so skip is the right
+# move.
+#
+# Skipped under --simulator=mame only; --slow opts back in if you
+# really want to wait.
+MAME_SLOW_TESTS = {
+    "test-iconv",
+    "test-memchr",
+    "test-memset",
+    "test-timegm",
+    "strcmp-1",
+}
+
 # Tests that need a real-FS semihost (open/read/write/lseek/stat against
 # the host filesystem). USim's semihost is the picolibc "fake" stub set
 # — it returns -1 for everything — so these tests universally FAIL at
@@ -616,6 +644,16 @@ def run_multi(args):
             for t in skipped:
                 print(f"[{lvl}] skipping {t['name']} (SLOW_TESTS; "
                       f"pass --slow to include)", flush=True)
+        # Bug #204: under MAME, additional tests are too slow to run
+        # routinely (~tens of minutes wall each). Skip them only when
+        # the level is a -mame variant; --slow opts back in.
+        if not args.slow and lvl.endswith("-mame"):
+            skipped = [t for t in tests if t["name"] in MAME_SLOW_TESTS]
+            tests = [t for t in tests if t["name"] not in MAME_SLOW_TESTS]
+            for t in skipped:
+                print(f"[{lvl}] skipping {t['name']} (MAME_SLOW_TESTS; "
+                      f"too slow under MAME's emulation rate; "
+                      f"pass --slow to include)", flush=True)
         if not args.include_fake_fs:
             skipped = [t for t in tests if t["name"] in FAKE_FS_TESTS]
             tests = [t for t in tests if t["name"] not in FAKE_FS_TESTS]
@@ -848,6 +886,14 @@ def main():
         for t in skipped:
             print(f"skipping {t['name']} (SLOW_TESTS; pass --slow to include)",
                   flush=True)
+    # Bug #204: MAME-only slow-test skip (mirrors the --multi path).
+    if not args.slow and args.opt_level and args.opt_level.endswith("-mame"):
+        skipped = [t for t in tests if t["name"] in MAME_SLOW_TESTS]
+        tests = [t for t in tests if t["name"] not in MAME_SLOW_TESTS]
+        for t in skipped:
+            print(f"skipping {t['name']} (MAME_SLOW_TESTS; "
+                  f"too slow under MAME's emulation rate; "
+                  f"pass --slow to include)", flush=True)
     if not args.include_fake_fs:
         skipped = [t for t in tests if t["name"] in FAKE_FS_TESTS]
         tests = [t for t in tests if t["name"] not in FAKE_FS_TESTS]

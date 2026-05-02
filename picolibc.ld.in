@@ -403,7 +403,7 @@ SECTIONS
 	PROVIDE( @PREFIX@__bss_size = @PREFIX@__bss_end - @PREFIX@__bss_start );
 
 	/* Make the rest of memory available for heap storage */
-	PROVIDE( @PREFIX@__heap_start = @PREFIX@__end );
+	PROVIDE( @PREFIX@__heap_start = @PREFIX@_end );
 	PROVIDE( @PREFIX@__heap_end = @PREFIX@@STACK@ - (DEFINED(@PREFIX@@STACK@_size) ? @PREFIX@@STACK@_size : @DEFAULT_STACK_SIZE@) );
 	PROVIDE( @PREFIX@__heap_size = @PREFIX@__heap_end - @PREFIX@__heap_start );
 

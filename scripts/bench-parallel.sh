@@ -161,6 +161,7 @@ level_opts() {
     Oz)     echo "-Doptimization=plain -Dc_args=-Oz -Dcpp_args=-Oz" ;;
     Ofast)  echo "-Doptimization=plain -Dc_args=-Ofast -Dcpp_args=-Ofast" ;;
     Os-lto) echo "-Doptimization=s -Db_lto=true" ;;
+    Os-hd6309) echo "-Doptimization=s -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309" ;;
     *)     echo "unknown level $1" >&2; return 2 ;;
   esac
 }
@@ -318,8 +319,16 @@ _lit_tally() {
 
 # --- Self-reinvoke hooks (bash 3.2 compatible; avoids export -f) --------
 # xargs can't see shell functions; re-exec $0 with an internal tag instead.
+# The xargs re-exec spawns a fresh bash that doesn't see the parent's
+# CLI parsing — restore BD_SUFFIX/CROSS from env vars the parent exports
+# before dispatch (BENCH_BD_SUFFIX/BENCH_CROSS). Without this, --simulator
+# mame would set BD_SUFFIX="-mame" in the parent, but each xargs subshell
+# would default to BD_SUFFIX="" and build the wrong directory
+# (builddir-mc6809-Os-hd6309 instead of builddir-mc6809-Os-hd6309-mame).
 case "${1:-}" in
   _setup_wave|_clean_stale_c_o|_build_wave)
+    BD_SUFFIX="${BENCH_BD_SUFFIX-}"
+    CROSS="${BENCH_CROSS-$USIM_CROSS}"
     fn="$1"; shift
     "$fn" "$@"; exit $?
     ;;
@@ -414,9 +423,14 @@ dispatch() {
   # dispatch PAR_N FN ARGS...
   # Invokes "$0 FN arg" for each arg, with PAR_N concurrent slots via
   # xargs -P.  Uses NUL-delimited input so arbitrary whitespace is safe.
+  # Set BENCH_BD_SUFFIX/BENCH_CROSS in xargs's env so the re-exec'd
+  # subshells (which skip CLI parsing) recover the simulator selection.
+  # xargs propagates its environment into spawned processes by default.
   local n="$1"; shift
   local fn="$1"; shift
-  printf '%s\0' "$@" | xargs -0 -P "$n" -n 1 "$0" "$fn"
+  printf '%s\0' "$@" | \
+    BENCH_BD_SUFFIX="$BD_SUFFIX" BENCH_CROSS="$CROSS" \
+    xargs -0 -P "$n" -n 1 "$0" "$fn"
 }
 
 if [ $skip_build -eq 0 ]; then

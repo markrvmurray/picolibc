@@ -30,7 +30,7 @@
 #   bench-parallel.sh --levels O0,O1,O2,Os --test-jobs 8
 #
 # Options:
-#   --levels LIST        comma-sep subset (default: O0,O1,O2,O3,Og,Os,Oz,Ofast)
+#   --levels LIST        comma-sep subset (default: O0,O1,O2,O3,Og,Os,Oz,Ofast,Os-lto)
 #   --build-jobs N       parallel waves during build phase (default: 6)
 #   --test-jobs N        workers in the shared tally pool (default: 6)
 #   --slow               include SLOW_TESTS (test-memmem, ~25 min wall)
@@ -142,8 +142,9 @@ level_opts() {
     O3)    echo "-Doptimization=3" ;;
     Os)    echo "-Doptimization=s" ;;
     Og)    echo "-Doptimization=g" ;;
-    Oz)    echo "-Doptimization=plain -Dc_args=-Oz -Dcpp_args=-Oz" ;;
-    Ofast) echo "-Doptimization=plain -Dc_args=-Ofast -Dcpp_args=-Ofast" ;;
+    Oz)     echo "-Doptimization=plain -Dc_args=-Oz -Dcpp_args=-Oz" ;;
+    Ofast)  echo "-Doptimization=plain -Dc_args=-Ofast -Dcpp_args=-Ofast" ;;
+    Os-lto) echo "-Doptimization=s -Db_lto=true" ;;
     *)     echo "unknown level $1" >&2; return 2 ;;
   esac
 }
@@ -310,7 +311,7 @@ esac
 
 # --- CLI parsing --------------------------------------------------------
 
-DEFAULT_LEVELS="O0,O1,O2,O3,Og,Os,Oz,Ofast"
+DEFAULT_LEVELS="O0,O1,O2,O3,Og,Os,Oz,Ofast,Os-lto"
 levels="$DEFAULT_LEVELS"
 build_jobs=6
 test_jobs=6
@@ -502,7 +503,7 @@ SELECT opt_level,
        SUM(CASE WHEN status='TIMEOUT'      THEN 1 ELSE 0 END) AS tout,
        SUM(cycles)                                            AS total_cycles
   FROM results
- WHERE opt_level IN ('O0','O1','O2','O3','Os','Og','Oz','Ofast')
+ WHERE opt_level IN ('O0','O1','O2','O3','Os','Og','Oz','Ofast','Os-lto')
    AND run_id IN (
      SELECT MAX(run_id) FROM runs
       WHERE opt_level IS NOT NULL
@@ -512,5 +513,5 @@ SELECT opt_level,
  ORDER BY CASE opt_level
             WHEN 'O0' THEN 1 WHEN 'O1' THEN 2 WHEN 'O2' THEN 3
             WHEN 'O3' THEN 4 WHEN 'Og' THEN 5 WHEN 'Os' THEN 6
-            WHEN 'Oz' THEN 7 WHEN 'Ofast' THEN 8 END;
+            WHEN 'Oz' THEN 7 WHEN 'Ofast' THEN 8 WHEN 'Os-lto' THEN 9 END;
 SQL

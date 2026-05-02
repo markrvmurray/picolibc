@@ -95,10 +95,13 @@ directpage_block = '''
 	PROVIDE(__rc13 = __dp_base_addr + 0x15);
 	PROVIDE(__rc14 = __dp_base_addr + 0x16);
 	PROVIDE(__rc15 = __dp_base_addr + 0x17);
-	PROVIDE(__rs4  = __dp_base_addr + 0x18);
-	PROVIDE(__rs5  = __dp_base_addr + 0x1A);
-	PROVIDE(__rs6  = __dp_base_addr + 0x1C);
-	PROVIDE(__rs7  = __dp_base_addr + 0x1E);
+	/* RS4..RS7 (and RS8..RS127) removed 2026-05-02 after the LLVM-side
+	 * audit (bug-#207 follow-up) showed zero references to __rs4+ across
+	 * 564 .o files of HD6309 -Oz codegen. ACC16 was trimmed back to
+	 * RS0..RS3. Bytes 0x18..0x1F are now available for user
+	 * `__attribute__((directpage))` claims via .dp.data / .dp.bss.
+	 * To restore the larger pool: re-add the four PROVIDEs here AND
+	 * re-add RS4..RS63 in MC6809RegisterInfo.td's ACC16 class. */
 
 	.dp_data : {
 		PROVIDE(__dp_data_start = .);

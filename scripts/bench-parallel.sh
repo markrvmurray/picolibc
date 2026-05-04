@@ -134,6 +134,9 @@ export LLVM_SYMBOLIZER_PATH=/dev/null
 
 # Canonical meson options, taken verbatim from the single-O builddir.
 # The only between-wave delta is the opt-level args injected by level_opts.
+# Bug #220: --cross-file is NOT in COMMON — `level_cross` returns the
+# correct cross-file per level, so a single sweep can mix usim and
+# MAME wrappers (e.g. `Os-hd6309-mame` alongside `O2` in DEFAULT_LEVELS).
 COMMON=(
   -Dformat-default=integer
   -Dprintf-aliases=false
@@ -145,7 +148,6 @@ COMMON=(
   -Dio-long-long=false
   -Dtests=true
   -Dtests-enable-stack-protector=false
-  --cross-file=$CROSS
 )
 
 level_opts() {
@@ -162,35 +164,66 @@ level_opts() {
     Ofast)  echo "-Doptimization=plain -Dc_args=-Ofast -Dcpp_args=-Ofast" ;;
     Os-lto) echo "-Doptimization=s -Db_lto=true" ;;
     Os-hd6309) echo "-Doptimization=s -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309" ;;
+    Os-hd6309-mame) echo "-Doptimization=s -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309" ;;
     *)     echo "unknown level $1" >&2; return 2 ;;
+  esac
+}
+
+# Bug #220: per-level cross-file selection. Levels whose name ends in
+# `-mame` use the MAME cross-file (exe_wrapper = run-mc6809-mame); all
+# others use the global $CROSS (controlled by --simulator). This lets
+# `Os-hd6309-mame` be a first-class level in DEFAULT_LEVELS alongside
+# the usim levels — a single sweep covers both simulator backends.
+level_cross() {
+  case "$1" in
+    *-mame) echo "$MAME_CROSS" ;;
+    *)      echo "$CROSS" ;;
+  esac
+}
+
+# Bug #220: per-level builddir suffix. Returns "-mame" for *-mame
+# levels (so Os-hd6309-mame's builddir is `builddir-mc6809-Os-hd6309-mame`
+# whether reached via `--levels Os-hd6309-mame` directly or via
+# legacy `--simulator mame --levels Os-hd6309`) and "" otherwise.
+# Falls back to the global $BD_SUFFIX for compatibility with the
+# legacy --simulator flag.
+level_bd_suffix() {
+  case "$1" in
+    *-mame) echo "" ;;  # already in label
+    *)      echo "$BD_SUFFIX" ;;
   esac
 }
 
 # --- Per-wave phase implementations (also invoked via self-reinvoke) ----
 
-wave_log() { echo "/tmp/bench-parallel-$1${BD_SUFFIX}.log"; }
-wave_bd()  { echo "$PICO/builddir-mc6809-$1${BD_SUFFIX}"; }
+# Bug #220: wave_log / wave_bd use level_bd_suffix so *-mame levels
+# resolve to `builddir-mc6809-<level>` (the -mame is in the label
+# itself), while non-mame levels still pick up the legacy global
+# BD_SUFFIX (set by `--simulator mame`).
+wave_log() { local s; s="$(level_bd_suffix "$1")"; echo "/tmp/bench-parallel-$1${s}.log"; }
+wave_bd()  { local s; s="$(level_bd_suffix "$1")"; echo "$PICO/builddir-mc6809-$1${s}"; }
 ts()       { date '+%H:%M:%S'; }
 
 _setup_wave() {
   local label="$1"
-  local bd wl opts
+  local bd wl opts cross
   bd="$(wave_bd "$label")"
   wl="$(wave_log "$label")"
   opts="$(level_opts "$label")" || return 2
-  echo "==[ $(ts) $label setup ]== bd=$bd opts=$opts" >>"$wl"
+  cross="$(level_cross "$label")"
+  echo "==[ $(ts) $label setup ]== bd=$bd cross=$cross opts=$opts" >>"$wl"
   if [ ! -f "$bd/build.ninja" ]; then
     # shellcheck disable=SC2086
-    ( cd "$PICO" && meson setup "$bd" "${COMMON[@]}" $opts ) >>"$wl" 2>&1
+    ( cd "$PICO" && meson setup "$bd" "${COMMON[@]}" --cross-file="$cross" $opts ) >>"$wl" 2>&1
   else
     # `meson setup --reconfigure` re-reads the cross-file (so any
-    # edits to scripts/cross-clang-mc6809-unknown-elf.txt — e.g. a
+    # edits to scripts/cross-clang-mc6809-unknown-elf*.txt — e.g. a
     # MEMORY-layout change — propagate). `meson configure` after
     # then applies the per-level options. Both are idempotent and
     # cheap when nothing has changed.
     # shellcheck disable=SC2086
     ( cd "$PICO" \
-      && meson setup --reconfigure --cross-file=$CROSS "$bd" \
+      && meson setup --reconfigure --cross-file="$cross" "$bd" \
       && meson configure "$bd" $opts ) >>"$wl" 2>&1
   fi
 }
@@ -336,7 +369,7 @@ esac
 
 # --- CLI parsing --------------------------------------------------------
 
-DEFAULT_LEVELS="O0,O1,O2,O3,Og,Os,Oz,Ofast,Os-lto"
+DEFAULT_LEVELS="O0,O1,O2,O3,Og,Os,Oz,Ofast,Os-lto,Os-hd6309-mame"
 levels="$DEFAULT_LEVELS"
 build_jobs=6
 test_jobs=6
@@ -389,6 +422,19 @@ esac
 export SIMULATOR BD_SUFFIX CROSS
 
 IFS=',' read -ra LEVEL_LIST <<< "$levels"
+
+# Bug #220: any *-mame level requires the MAME runner. Check once
+# up-front so a missing runner errors loudly before any builds run.
+for _lvl in "${LEVEL_LIST[@]}"; do
+  case "$_lvl" in
+    *-mame)
+      if [ ! -x "$HOME/GitHub/mame/run-mc6809-mame" ]; then
+        echo "bench-parallel: level '$_lvl' requires MAME runner at $HOME/GitHub/mame/run-mc6809-mame (missing/non-executable)" >&2
+        exit 1
+      fi
+      ;;
+  esac
+done
 
 # --- Guardrails ---------------------------------------------------------
 
@@ -507,7 +553,10 @@ if [ $skip_tally -eq 0 ]; then
         | tee -a "$LOG"
       continue
     fi
-    multi="${multi:+$multi,}${lvl}${BD_SUFFIX}:${bd}"
+    # Bug #220: per-level suffix so *-mame levels record under their
+    # own opt_level label without double-stamping the -mame.
+    lvl_suffix="$(level_bd_suffix "$lvl")"
+    multi="${multi:+$multi,}${lvl}${lvl_suffix}:${bd}"
   done
   if [ -z "$multi" ]; then
     echo "==[ $(ts) no tally levels available ]==" | tee -a "$LOG"

@@ -43,10 +43,14 @@ tests = [
   'test-sprintf-s',
   'test-sprintf-time',
   'test-vfprintf-s',
-  'test-vfscanf-percent-a',
   'test-vsnprintf-s',
   'test-ungetc',
 ]
+
+# %a is hex float — only build when libm/FP is enabled.
+if get_option('want-libm')
+  tests += ['test-vfscanf-percent-a']
+endif
 
 tests_failure = []
 

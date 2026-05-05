@@ -40,9 +40,12 @@ tests = [
   'test-malloc',
   'test-malloc-stress',
   'test-on_exit',
-  'test-rand',
-  'test-strtod',
   ]
+
+# test-rand and test-strtod use FP — gate on libm.
+if get_option('want-libm')
+  tests += ['test-rand', 'test-strtod']
+endif
 
 tests_failure = [
   'test-abort',

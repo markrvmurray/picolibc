@@ -40,11 +40,15 @@ libc_tests_common = [
   'qsort',
   'snprintf',
   'sno',
-  'sscanf',
   'string',
   'strtol',
   'wcstol',
 ]
+
+# sscanf pulls in vfscanf's %f / %e / %g / %a (FP) handling — gate on libm.
+if get_option('want-libm')
+  libc_tests_common += ['sscanf']
+endif
 
 libc_tests_picolibc = libc_tests_common
 

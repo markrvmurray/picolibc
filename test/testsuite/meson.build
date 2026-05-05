@@ -36,13 +36,17 @@
 dirs = [
         'newlib.iconv',
 	'newlib.locale',
-        'newlib.math',
 	'newlib.search',
 	'newlib.stdio',
 	'newlib.stdlib',
 	'newlib.string',
 	'newlib.time',
 	'newlib.wctype']
+
+# newlib.math is a heavy FP testsuite — only attempt when libm is enabled.
+if get_option('want-libm')
+  dirs += ['newlib.math']
+endif
 
 skip_dirs = [
   'newlib.elix', # depends on mmap(2)

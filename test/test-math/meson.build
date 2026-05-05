@@ -33,6 +33,17 @@
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
+# MC6809 / cross-target convenience: the entire test-math suite needs
+# libm and FP support. When picolibc is configured with
+# `-Dwant-libm=false` (e.g. for the MC6809 backend bring-up where FP
+# is not yet a release target), short-circuit the whole subdir so
+# the tests don't even attempt to compile. Avoids spurious clang
+# IR-verifier crashes on FP code that the MC6809 backend can't model
+# yet, and removes recurring build friction.
+if not get_option('want-libm')
+  subdir_done()
+endif
+
 tests_real_trig = [
   'test-acos',
   'test-acosh',

@@ -29,6 +29,8 @@ tests_mc6809_dp = [
   # __mulhi3 / __mulsi3. Lives here for now (no FP, integer-only, runs
   # under the same MC6809-only gating).
   'test-mc6809-mul-corners',
+  # Bug #161 Phase 3 sentinel — HD6309 DIVD __udivhi3 / __umodhi3.
+  'test-mc6809-divd',
 ]
 
 foreach params : targets

@@ -12,6 +12,7 @@
 #include <stdio.h>
 
 volatile uint16_t in_a, in_b;
+volatile int16_t in_sa, in_sb;
 volatile uint32_t in_a32, in_b32;
 
 #define ARR(x) (sizeof(x) / sizeof((x)[0]))
@@ -108,8 +109,50 @@ int main(void)
         }
     }
 
+    /* ---- signed i16 ---- */
+    struct { int16_t a, b, q, r; } scases[] = {
+        /* divisor == 1 */
+        {1, 1, 1, 0},
+        {-1, 1, -1, 0},
+        {127, 1, 127, 0},
+        {-32767, 1, -32767, 0},
+        /* divisor == -1 */
+        {1, -1, -1, 0},
+        {-1, -1, 1, 0},
+        {127, -1, -127, 0},
+        /* fast path: positive divisor ∈ [2, 127] */
+        {100, 10, 10, 0},
+        {-100, 10, -10, 0},
+        {100, -10, -10, 0},
+        {-100, -10, 10, 0},
+        {32767, 127, 258, 1},
+        {-32767, 127, -258, -1},
+        {32767, 2, 16383, 1},
+        {-32768, 2, -16384, 0},
+        /* fast path: negative divisor ∈ [-2, -127] */
+        {100, -7, -14, 2},
+        {-100, -7, 14, -2},
+        /* slow path: |b| ≥ 128 */
+        {10000, 200, 50, 0},
+        {-10000, 200, -50, 0},
+        /* slow path: |b| ≥ 256 */
+        {32767, 1000, 32, 767},
+        {-32767, 1000, -32, -767},
+    };
+    for (unsigned i = 0; i < ARR(scases); i++) {
+        in_sa = scases[i].a;
+        in_sb = scases[i].b;
+        int16_t q = in_sa / in_sb;
+        int16_t r = in_sa % in_sb;
+        if (q != scases[i].q || r != scases[i].r) {
+            printf("DIVHI SIGNED FAIL [%u]: %d / %d = q=%d r=%d (expect q=%d r=%d)\n",
+                   i, scases[i].a, scases[i].b, q, r, scases[i].q, scases[i].r);
+            errs++;
+        }
+    }
+
     if (errs == 0)
-        printf("OK: __udivhi3 / __umodhi3 / __udivsi3 / __umodsi3 corner cases pass (%u u16, %u u32)\n",
-               (unsigned)ARR(cases), (unsigned)ARR(cases32));
+        printf("OK: __udivhi3 / __umodhi3 / __divhi3 / __modhi3 / __udivsi3 / __umodsi3 corner cases pass (%u u16, %u i16, %u u32)\n",
+               (unsigned)ARR(cases), (unsigned)ARR(scases), (unsigned)ARR(cases32));
     return errs;
 }

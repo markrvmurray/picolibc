@@ -39,7 +39,14 @@
 # long roadmap lands. See machine/_types.h for the rationale.
 subdir('machine')
 
-srcs_machine = []
+# Bug #161 Phase 2: HD6309 TFM memcpy/memmove (and tighter 6809 byte
+# loops) override the generic libc/string/memcpy.c / memmove.c. Picked
+# up by libc/string/meson.build's filter-out-of-srcs-string logic when
+# a same-base-name file appears in srcs_machine.
+srcs_machine = [
+  'memcpy.S',
+  'memmove.S',
+]
 
 foreach params : targets
   target = params['name']

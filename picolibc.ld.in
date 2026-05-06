@@ -72,6 +72,7 @@ SECTIONS
 		*(.literal.startup .text.startup .literal.startup.* .text.startup.*)
 		*(SORT(.text.sorted.*))
 		*(.literal .text .literal.* .text.* .opd .opd.* .branch_lt .branch_lt.* @EXTRA_TEXT_SECTIONS@)
+		*(.mc6839_rom)
 		*(.gnu.linkonce.t.*)
 		KEEP (*(.fini .fini.*))
 		@PREFIX@__text_end = .;

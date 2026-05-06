@@ -165,6 +165,14 @@ level_opts() {
     Os-lto) echo "-Doptimization=s -Db_lto=true" ;;
     Os-hd6309) echo "-Doptimization=s -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
     Os-hd6309-mame) echo "-Doptimization=s -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
+    # Bug #162: FP-enabled levels. Override the COMMON float-disabled flags;
+    # meson takes the last -D value so these come after COMMON in the setup call.
+    # Both levels use LTO: whole-program optimisation is the most effective tool
+    # for stripping unused libm + picolibc code on a 64 KB machine.
+    # format-default stays 'integer' (the COMMON default) — FP printf is only
+    # pulled in when the test explicitly requests %f/%g, keeping binary size down.
+    Os-fp)     echo "-Doptimization=s -Db_lto=true -Dstdio-float=true -Dwant-libm=true" ;;
+    Os-lto-fp) echo "-Doptimization=s -Db_lto=true -Dstdio-float=true -Dwant-libm=true" ;;
     *)     echo "unknown level $1" >&2; return 2 ;;
   esac
 }

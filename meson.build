@@ -254,12 +254,12 @@ if get_option('freestanding')
   c_args += ['-ffreestanding']
 endif
 
-# We don't need '-fdata-sections' currently as there aren't any
-# files with data used in separate code paths. This works around
-# versions of gcc for RISC-V which have a bug that mis-names
-# initialized read-only data segments when -fdata-sections
-# is defined
-c_args += cc.get_supported_arguments(['-ffunction-sections'])
+# -ffunction-sections: one ELF section per function, enabling --gc-sections
+# to eliminate unreferenced library functions at link time.
+# -fdata-sections: same for data/rodata. The original comment noted a
+# RISC-V GCC bug with mis-named rodata sections; that bug does not affect
+# clang on mc6809, and -fdata-sections is essential for libm rodata GC.
+c_args += cc.get_supported_arguments(['-ffunction-sections', '-fdata-sections'])
 
 sanitize_flag = get_option('sanitize')
 if sanitize_flag == 'none'

@@ -17,6 +17,7 @@ endif
 
 tests_mc6809_fp = [
   'test-mc6809-fp',
+  'clzsi2_test',
 ]
 
 foreach params : targets

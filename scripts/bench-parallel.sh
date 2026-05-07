@@ -377,7 +377,7 @@ esac
 
 # --- CLI parsing --------------------------------------------------------
 
-DEFAULT_LEVELS="O0,O1,O2,O3,Og,Os,Oz,Ofast,Os-lto,Os-hd6309-mame"
+DEFAULT_LEVELS="O0,O1,O2,O3,Og,Os,Oz,Ofast,Os-lto,Os-fp,Os-lto-fp,Os-hd6309-mame"
 levels="$DEFAULT_LEVELS"
 build_jobs=6
 test_jobs=6

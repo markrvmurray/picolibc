@@ -383,6 +383,7 @@ subdir('test-stdio')
 subdir('test-stdlib')
 subdir('testsuite')
 subdir('test-mc6809-dp')
+subdir('test-mc6809-fp')
 
 if has_arm_semihost and oslib_test_variant == 'semihost'
   subdir('semihost')

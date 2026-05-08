@@ -66,6 +66,42 @@ int main(void) {
     __mc6839_bindec_f32(bcd, 9, f);
     dump("bindec_f32(0.5, 9)", bcd);
 
+    /* edge: very small value with k=1 */
+    memset(bcd, 0xCC, 26);
+    f = 1.23456e-4f;
+    __mc6839_bindec_f32(bcd, 1, f);
+    dump("bindec_f32(1.23e-4,1)", bcd);
+    memset(bcd, 0xCC, 26);
+    __mc6839_bindec_f32(bcd, 2, f);
+    dump("bindec_f32(1.23e-4,2)", bcd);
+    memset(bcd, 0xCC, 26);
+    __mc6839_bindec_f32(bcd, 3, f);
+    dump("bindec_f32(1.23e-4,3)", bcd);
+    memset(bcd, 0xCC, 26);
+    f = 1.5f;
+    __mc6839_bindec_f32(bcd, 1, f);
+    dump("bindec_f32(1.5,1)", bcd);
+    memset(bcd, 0xCC, 26);
+    f = 9.5f;
+    __mc6839_bindec_f32(bcd, 1, f);
+    dump("bindec_f32(9.5,1)", bcd);
+    memset(bcd, 0xCC, 26);
+    f = 12345.0f;
+    __mc6839_bindec_f32(bcd, 1, f);
+    dump("bindec_f32(12345,1)", bcd);
+    memset(bcd, 0xCC, 26);
+    f = 1.0e-4f;
+    __mc6839_bindec_f32(bcd, 1, f);
+    dump("bindec_f32(1.0e-4,1)", bcd);
+    memset(bcd, 0xCC, 26);
+    f = 5.0e-4f;
+    __mc6839_bindec_f32(bcd, 1, f);
+    dump("bindec_f32(5.0e-4,1)", bcd);
+    memset(bcd, 0xCC, 26);
+    f = 0.5e-4f;
+    __mc6839_bindec_f32(bcd, 1, f);
+    dump("bindec_f32(0.5e-4,1)", bcd);
+
     /* round-trip: BINDEC then DECBIN, expect bit-equivalence */
     volatile double in = 1.5;
     uint8_t b[26];

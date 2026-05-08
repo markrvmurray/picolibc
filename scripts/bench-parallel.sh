@@ -232,7 +232,7 @@ _setup_wave() {
     # shellcheck disable=SC2086
     ( cd "$PICO" \
       && meson setup --reconfigure --cross-file="$cross" "$bd" \
-      && meson configure "$bd" $opts ) >>"$wl" 2>&1
+      && meson configure "$bd" "${COMMON[@]}" $opts ) >>"$wl" 2>&1
   fi
 }
 

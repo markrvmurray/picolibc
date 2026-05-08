@@ -171,8 +171,13 @@ level_opts() {
     # for stripping unused libm + picolibc code on a 64 KB machine.
     # format-default stays 'integer' (the COMMON default) — FP printf is only
     # pulled in when the test explicitly requests %f/%g, keeping binary size down.
-    Os-fp)     echo "-Doptimization=s -Db_lto=true -Dstdio-float=true -Dwant-libm=true" ;;
-    Os-lto-fp) echo "-Doptimization=s -Db_lto=true -Dstdio-float=true -Dwant-libm=true" ;;
+    # Bug #224: -Dprintf-aliases=true enables _PICOLIBC_SCANF/_PICOLIBC_PRINTF
+    # macros + linker --defsym aliases.  Tests built with
+    # printf_compile_args_d_scanf_only (currently libc-testsuite/sscanf)
+    # then route plain `sscanf` to `__d_sscanf` while keeping printf as
+    # the integer variant — closes the dispatch half of #224.
+    Os-fp)     echo "-Doptimization=s -Db_lto=true -Dstdio-float=true -Dwant-libm=true -Dprintf-aliases=true" ;;
+    Os-lto-fp) echo "-Doptimization=s -Db_lto=true -Dstdio-float=true -Dwant-libm=true -Dprintf-aliases=true" ;;
     *)     echo "unknown level $1" >&2; return 2 ;;
   esac
 }

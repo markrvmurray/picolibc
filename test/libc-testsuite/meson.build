@@ -112,7 +112,13 @@ foreach params : targets
     endif
 
     if t1 in scanf_only_tests
-      _c_args_t1   = printf_compile_args_d_scanf_only + _c_args
+      # Bug #224 follow-up: -DNO_MULTI_BYTE drops the multibyte/wide-char
+      # test sections; -DNO_NAN -DNO_INF drop NaN/Inf parens parsing
+      # tests (~15 cases each). All three are already gated upstream
+      # for build configs that lack the corresponding feature; we use
+      # the same gates here to fit on tight 64 KB targets.
+      _c_args_t1   = printf_compile_args_d_scanf_only + _c_args + \
+                     ['-DNO_MULTI_BYTE', '-DNO_NAN', '-DNO_INF']
       _link_args_t1 = printf_link_args_d_scanf_only + _link_args + test_extra_link_args.get(t1, [])
     else
       _c_args_t1   = printf_compile_args_d + _c_args

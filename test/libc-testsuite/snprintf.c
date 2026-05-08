@@ -116,8 +116,16 @@ static const struct {
     { "%.1f",  1.375,                                     "1.4"                  },
     { "%.15f", 1.1,                                       "1.100000000000000"    },
 #ifdef __PICOLIBC__
+#  ifdef __MC6839_BCD_ENGINES
+    /* Bug #230: BCD engines round the actual binary representation, so
+     * 1.1 (binary nearest = 1.1000000000000000888...) prints with the
+     * '1' bit visible at the trailing position rather than padded zeros. */
+    { "%.16f", 1.1,                                       "1.1000000000000001"   },
+    { "%.17f", 1.1,                                       "1.10000000000000010"  },
+#  else
     { "%.16f", 1.1,                                       "1.1000000000000000"   },
     { "%.17f", 1.1,                                       "1.10000000000000000"  },
+#  endif
 #else
     /* glibc stdio adds non-zero digits beyond needed precision */
     { "%.16f", 1.1, "1.1000000000000001" },
@@ -147,7 +155,12 @@ static const struct {
     /* pi in double precision, printed to a few extra places */
     { "%.15f", M_PI,                                      "3.141592653589793"    },
 #ifdef __PICOLIBC__
+#  ifdef __MC6839_BCD_ENGINES
+    /* Bug #230: BCD engine prints binary M_PI rounded to %.18f. */
+    { "%.18f", M_PI,                                      "3.141592653589793100" },
+#  else
     { "%.18f", M_PI,                                      "3.141592653589793000" },
+#  endif
 #else
     /* glibc stdio adds non-zero digits beyond needed precision */
     { "%.18f", M_PI, "3.141592653589793116" },
@@ -155,8 +168,15 @@ static const struct {
 
 /* exact conversion of large integers */
 #ifdef __PICOLIBC__
+#  ifdef __MC6839_BCD_ENGINES
+    /* Bug #230: BCD prints binary value of 340282366920938463463...456.0
+     * which rounds to ...46e38 rather than the .0f-friendly ...50e38. */
+    { "%.0f",  340282366920938463463374607431768211456.0,
+     "340282366920938460000000000000000000000"                                   },
+#  else
     { "%.0f",  340282366920938463463374607431768211456.0,
      "340282366920938500000000000000000000000"                                   },
+#  endif
 #else
     /* glibc stdio adds non-zero digits beyond needed precision */
     { "%.0f", 340282366920938463463374607431768211456.0,

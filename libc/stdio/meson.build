@@ -192,8 +192,27 @@ srcs_dtoa_float = [
   'ftoa_engine.c',
 ]
 
+# Bug #230: MC6839 ROM-backed float/string engines for MC6809 targets.
+# Drops ~30 KB off any FP-using binary by routing __[atof,atod,ftoa,
+# dtoa]_engine through DECBIN/BINDEC instead of picolibc's
+# multi-precision software path. Auto-on for mc6809; opt out via
+# -Dmc6809-bcd-engines=false to compare against the reference engines.
+srcs_dtoa_mc6809 = [
+  'atod_engine_mc6809.c',
+  'atof_engine_mc6809.c',
+  'dtoa_engine_mc6809.c',
+  'ftoa_engine_mc6809.c',
+]
+
 if stdio_float
-  if io_float_exact
+  if host_cpu_family == 'mc6809' and get_option('mc6809-bcd-engines')
+    # Bug #230: MC6839 ROM-backed engines take precedence over both
+    # Ryū (too big for our address space) and the picolibc software
+    # engines (also too big). The ROM is "exact" enough for IEEE 754
+    # double-precision printf/scanf round-tripping; equivalent to
+    # io-float-exact=true for practical purposes.
+    srcs_stdio += srcs_dtoa_mc6809
+  elif io_float_exact
     srcs_stdio += srcs_dtoa_ryu
   else
     srcs_stdio += srcs_dtoa_float

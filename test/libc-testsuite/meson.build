@@ -56,6 +56,16 @@ if io_float_exact
   libc_tests_picolibc += ['strtod']
 endif
 
+# Bug #224: tests that need the double-precision scanf variant. The
+# project default (format-default=integer in MC6809's COMMON config)
+# makes the unprefixed `vfscanf` symbol resolve to the integer-only
+# variant that lacks conv_flt — every %lf returns 0 fields. Per-test
+# --defsym redirect picks up the double variant from libc.a only for
+# binaries that actually need it. Now fits in flash thanks to Bug #230.
+test_extra_link_args = {
+  'sscanf' : ['-Wl,--defsym=vfscanf=__d_vfscanf'],
+}
+
 foreach params : targets
   target = params['name']
   target_dir = params['dir']
@@ -96,7 +106,7 @@ foreach params : targets
     test(t1 + target,
 	 executable(t1 + target, [t1_src] + test_lock_valid,
 		    c_args: printf_compile_args_d + _c_args,
-		    link_args: printf_link_args_d + _link_args,
+		    link_args: printf_link_args_d + _link_args + test_extra_link_args.get(t1, []),
 		    objects: _objs,
 		    link_depends:  _link_depends,
                     link_with: _libs,

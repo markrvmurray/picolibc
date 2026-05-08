@@ -144,6 +144,8 @@ option('io-long-double', type: 'boolean', value: false,
        description: 'enable long double type support in IO functions printf/scanf')
 option('io-float-exact', type: 'boolean', value: true,
        description: 'use float/string code which supports round-tripping')
+option('mc6809-bcd-engines', type: 'boolean', value: true,
+       description: 'On MC6809 targets, route the float-string engines through MC6839 ROM BINDEC/DECBIN ops instead of the picolibc software multi-precision path (Bug #230). Auto-on; set false to fall back to the reference engines for debugging.')
 option('atomic-ungetc', type: 'boolean', value: true,
        description: 'use atomics in fgetc/ungetc to make them re-entrant')
 option('posix-console', type: 'boolean', value: false,

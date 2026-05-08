@@ -19,6 +19,7 @@ tests_mc6809_fp = [
   'test-mc6809-fp',
   'clzsi2_test',
   'sqrt_probe',
+  'bcd_probe',
 ]
 
 foreach params : targets

@@ -64,6 +64,13 @@ test_extra_c_args = {
   'test-sprintf-time' : arg_fnobuiltin
 }
 
+# Bug #224: %a hex-float scanf needs the double-precision vfscanf,
+# but project default is integer-only. Per-test defsym redirect.
+# Now fits in flash thanks to Bug #230's MC6839 engines.
+test_extra_link_args = {
+  'test-vfscanf-percent-a' : ['-Wl,--defsym=vfscanf=__d_vfscanf'],
+}
+
 test_extra_libs = {}
 
 if enable_native_tests and oslib_test_variant == ''
@@ -164,7 +171,7 @@ foreach params : targets
     test(t1 + target,
 	 executable(t1 + target, [t1_src] + lock_source,
 		    c_args: printf_compile_args_d + test_file_name_arg + test_extra_c_args.get(t1, []) + _c_args,
-		    link_args: printf_link_args_d + _link_args,
+		    link_args: printf_link_args_d + _link_args + test_extra_link_args.get(t1, []),
 		    objects: _objs,
 		    link_depends:  _link_depends,
                     link_with: test_extra_libs.get(t1, []),

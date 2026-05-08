@@ -1492,6 +1492,9 @@ conf_data.set('__FSTAT_BUFSIZ', get_option('fstat-bufsiz'))
 conf_data.set('__IO_POS_ARGS', io_pos_args)
 conf_data.set('__IO_C99_FORMATS', io_c99_formats)
 conf_data.set('__IO_FLOAT_EXACT', io_float_exact)
+conf_data.set('__MC6839_BCD_ENGINES',
+              host_cpu_family == 'mc6809' and get_option('mc6809-bcd-engines'),
+              description: 'Bug #230: MC6839 BCD-backed float-string engines')
 conf_data.set('__IO_PERCENT_B', io_percent_b)
 conf_data.set('__IO_LONG_DOUBLE', io_long_double)
 conf_data.set('__IO_WCHAR', io_wchar)

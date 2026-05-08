@@ -170,6 +170,61 @@ srcs_stdio = [
   'vsnprintf_s.c',
 ]
 
+# Wide-char stdio functions — gated to keep targets without
+# io-wchar / mb-capable from compiling 39 small TUs that
+# --gc-sections strips anyway.  Compile-time + .a-size win.
+srcs_stdio_wide = [
+  'fgetwc.c',
+  'fgetws.c',
+  'filewstrget.c',
+  'fputwc.c',
+  'fputws.c',
+  'fwide.c',
+  'fwprintf.c',
+  'fwscanf.c',
+  'getwchar.c',
+  'putwchar.c',
+  'swprintf.c',
+  'swprintfd.c',
+  'swscanf.c',
+  'ungetwc.c',
+  'vfwprintf.c',
+  'vfwscanf.c',
+  'vswprintf.c',
+  'vswscanf.c',
+  'vwprintf.c',
+  'vwscanf.c',
+  'wcstod.c',
+  'wcstod_l.c',
+  'wcstof.c',
+  'wcstof_l.c',
+  'wcstoimax.c',
+  'wcstoimax_l.c',
+  'wcstol.c',
+  'wcstol_l.c',
+  'wcstold.c',
+  'wcstold_l.c',
+  'wcstoll.c',
+  'wcstoll_l.c',
+  'wcstoul.c',
+  'wcstoul_l.c',
+  'wcstoull.c',
+  'wcstoull_l.c',
+  'wcstoumax.c',
+  'wcstoumax_l.c',
+  'wprintf.c',
+  'wscanf.c',
+]
+if not (io_wchar or mb_capable)
+  srcs_stdio_narrow = []
+  foreach f : srcs_stdio
+    if not (f in srcs_stdio_wide)
+      srcs_stdio_narrow += f
+    endif
+  endforeach
+  srcs_stdio = srcs_stdio_narrow
+endif
+
 # exact float/string conversion code
 srcs_dtoa_ryu = [
   'atod_ryu.c',
@@ -251,12 +306,6 @@ if stdio_float
     'strtof_l.c',
     'strtold.c',
     'strtold_l.c',
-    'wcstod.c',
-    'wcstod_l.c',
-    'wcstof.c',
-    'wcstof_l.c',
-    'wcstold.c',
-    'wcstold_l.c',
     'vffprintf.c',
     'vffscanf.c',
     'vflprintf.c',
@@ -264,6 +313,16 @@ if stdio_float
     'vfprintf.c',
     'vfscanf.c',
   ]
+  if io_wchar or mb_capable
+    srcs_stdio += [
+      'wcstod.c',
+      'wcstod_l.c',
+      'wcstof.c',
+      'wcstof_l.c',
+      'wcstold.c',
+      'wcstold_l.c',
+    ]
+  endif
 endif
 
 # Wide-character formatted I/O depends on multibyte support.

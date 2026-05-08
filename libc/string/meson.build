@@ -98,6 +98,24 @@ srcs_string = [
     'swab.c',
     'timingsafe_bcmp.c',
     'timingsafe_memcmp.c',
+    'xpg_strerror_r.c',
+    'memcpy_s.c',
+    'memmove_s.c',
+    'memset_s.c',
+    'strcat_s.c',
+    'strcpy_s.c',
+    'strerror_s.c',
+    'strerrorlen_s.c',
+    'strncat_s.c',
+    'strncpy_s.c',
+    'strnlen_s.c',
+]
+
+# Wide-char string ops — gated to keep MC6809 (and any other target
+# without io-wchar / mb-capable) from compiling 36 small TUs that get
+# stripped by --gc-sections anyway.  Compile-time savings + smaller
+# .a archive.
+srcs_string_wide = [
     'wcpcpy.c',
     'wcpncpy.c',
     'wcscasecmp.c',
@@ -134,18 +152,10 @@ srcs_string = [
     'wmemmove.c',
     'wmempcpy.c',
     'wmemset.c',
-    'xpg_strerror_r.c',
-    'memcpy_s.c',
-    'memmove_s.c',
-    'memset_s.c',
-    'strcat_s.c',
-    'strcpy_s.c',
-    'strerror_s.c',
-    'strerrorlen_s.c',
-    'strncat_s.c',
-    'strncpy_s.c',
-    'strnlen_s.c',
 ]
+if io_wchar or mb_capable
+  srcs_string += srcs_string_wide
+endif
 
 hdrs_string = [
     'local.h',

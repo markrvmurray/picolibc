@@ -57,8 +57,10 @@ srcs_time = [
     'tzcalc_limits.c',
     'tzset.c',
     'tzvars.c',
-    'wcsftime.c',
 ]
+if io_wchar or mb_capable
+  srcs_time += ['wcsftime.c']
+endif
 
 hdrs_time = [
     'local.h',

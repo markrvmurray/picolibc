@@ -136,6 +136,38 @@ srcs_stdlib = [
     'ignore_handler_s.c',
 ]
 
+# Wide-char / multibyte stdlib functions — gated to keep targets
+# without io-wchar / mb-capable from compiling 17 small TUs that
+# --gc-sections strips anyway.  Compile-time + .a-size win.
+srcs_stdlib_wide = [
+    'btowc.c',
+    'mblen.c',
+    'mbrlen.c',
+    'mbrtowc.c',
+    'mbsinit.c',
+    'mbsnrtowcs.c',
+    'mbsrtowcs.c',
+    'mbstowcs.c',
+    'mbtowc.c',
+    'mbtowc_r.c',
+    'wcrtomb.c',
+    'wcsnrtombs.c',
+    'wcsrtombs.c',
+    'wcstombs.c',
+    'wctob.c',
+    'wctomb.c',
+    'wctomb_r.c',
+]
+if not (io_wchar or mb_capable)
+  srcs_stdlib_narrow = []
+  foreach f : srcs_stdlib
+    if not (f in srcs_stdlib_wide)
+      srcs_stdlib_narrow += f
+    endif
+  endforeach
+  srcs_stdlib = srcs_stdlib_narrow
+endif
+
 if enable_malloc
   srcs_stdlib += malloc_srcs_stdlib
 endif

@@ -136,37 +136,16 @@ srcs_stdlib = [
     'ignore_handler_s.c',
 ]
 
-# Wide-char / multibyte stdlib functions — gated to keep targets
-# without io-wchar / mb-capable from compiling 17 small TUs that
-# --gc-sections strips anyway.  Compile-time + .a-size win.
-srcs_stdlib_wide = [
-    'btowc.c',
-    'mblen.c',
-    'mbrlen.c',
-    'mbrtowc.c',
-    'mbsinit.c',
-    'mbsnrtowcs.c',
-    'mbsrtowcs.c',
-    'mbstowcs.c',
-    'mbtowc.c',
-    'mbtowc_r.c',
-    'wcrtomb.c',
-    'wcsnrtombs.c',
-    'wcsrtombs.c',
-    'wcstombs.c',
-    'wctob.c',
-    'wctomb.c',
-    'wctomb_r.c',
-]
-if not (io_wchar or mb_capable)
-  srcs_stdlib_narrow = []
-  foreach f : srcs_stdlib
-    if not (f in srcs_stdlib_wide)
-      srcs_stdlib_narrow += f
-    endif
-  endforeach
-  srcs_stdlib = srcs_stdlib_narrow
-endif
+# NOTE 2026-05-09: an earlier version of this trim (commit 23fc01e93)
+# moved the mb<->wc stdlib functions (mbrtowc, wcrtomb, wctomb_r,
+# btowc, etc.) into a gated `srcs_stdlib_wide` block. That broke
+# test-uchar / test-wctomb / test-iconv, because the libc/uchar
+# wrappers (c8rtomb, c16rtomb, c32rtomb, mbrtoc8/16/32) call
+# wcrtomb / mbrtowc internally — these need to stay in libc.a as the
+# upstream stub forms (which compile to ~10 bytes apiece when
+# !__MB_CAPABLE). Don't trim them; libc/string and libc/stdio handle
+# the bulk of the wide-char surface area. Keep the comment as a
+# warning to future readers.
 
 if enable_malloc
   srcs_stdlib += malloc_srcs_stdlib

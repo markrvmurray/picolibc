@@ -20,6 +20,8 @@ tests_mc6809_fp = [
   'clzsi2_test',
   'sqrt_probe',
   'bcd_probe',  # Bug #230 BINDEC/DECBIN smoke
+  'divsi_signed_probe',  # Bug ba5485d HD6309 DIVQ signed i32 fast paths
+  'muldi_probe',  # Bug aacd0b7 HD6309 MULD i64 multiply
 ]
 
 foreach params : targets

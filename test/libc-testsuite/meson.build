@@ -94,6 +94,14 @@ foreach params : targets
   _link_args = target_c_args + _lib_files + get_variable('test_link_args' + target, test_link_args)
   _link_depends = get_variable('test_link_depends' + target, test_link_depends)
 
+  # Bug #231: sscanf test uses %lf for input (needs FP-scanf) but its
+  # diagnostic printf only fires on FAIL paths.  On address-tight
+  # targets (MC6809) we can't afford to drag in FP-vfprintf (~22 KB)
+  # for a diagnostic that ideally never runs.  scanf-only build
+  # accepts degraded `%a`-in-failure-message output in exchange for
+  # fitting in the address space.
+  scanf_only_tests = ['sscanf']
+
   foreach t1 : libc_tests_picolibc
     t1_src = t1 + '.c'
 
@@ -103,10 +111,18 @@ foreach params : targets
       timeout = 900
     endif
 
+    if t1 in scanf_only_tests
+      _c_args_t1   = printf_compile_args_d_scanf_only + _c_args
+      _link_args_t1 = printf_link_args_d_scanf_only + _link_args + test_extra_link_args.get(t1, [])
+    else
+      _c_args_t1   = printf_compile_args_d + _c_args
+      _link_args_t1 = printf_link_args_d + _link_args + test_extra_link_args.get(t1, [])
+    endif
+
     test(t1 + target,
 	 executable(t1 + target, [t1_src] + test_lock_valid,
-		    c_args: printf_compile_args_d + _c_args,
-		    link_args: printf_link_args_d + _link_args + test_extra_link_args.get(t1, []),
+		    c_args: _c_args_t1,
+		    link_args: _link_args_t1,
 		    objects: _objs,
 		    link_depends:  _link_depends,
                     link_with: _libs,

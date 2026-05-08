@@ -547,29 +547,52 @@ stdio_locking = get_option('stdio-locking') and not get_option('single-thread')
 
 foreach format : ['d', 'f', 'l', 'i', 'm']
 
-  compile_variable = 'printf_compile_args_@0@'.format(format)
-  if printf_aliases
-    compile_value = ['-D_PICOLIBC_PRINTF=\'@0@\''.format(format),
-                     '-D_PICOLIBC_SCANF=\'@0@\''.format(format)]
-  else
-    compile_value = []
-  endif
-  set_variable(compile_variable, compile_value)
+  # Bug #231: emit three flavours per format level
+  #   _printf_only  — printf macro + vfprintf defsym only
+  #   _scanf_only   — scanf  macro + vfscanf  defsym only
+  #   (combined)    — both, for backward compat with existing tests
+  # Splitting lets a test that uses %lf for input but only %d/%s for
+  # output opt into FP-scanf without dragging the FP-vfprintf body
+  # (~22 KB on MC6809) into the binary.
 
-  link_variable = 'printf_link_args_@0@'.format(format)
-  link_value = compile_value
+  if printf_aliases
+    printf_compile_arg = ['-D_PICOLIBC_PRINTF=\'@0@\''.format(format)]
+    scanf_compile_arg  = ['-D_PICOLIBC_SCANF=\'@0@\''.format(format)]
+  else
+    printf_compile_arg = []
+    scanf_compile_arg  = []
+  endif
+
+  printf_compile_value = printf_compile_arg
+  scanf_compile_value  = scanf_compile_arg
+  compile_value = printf_compile_arg + scanf_compile_arg
+
+  set_variable('printf_compile_args_@0@_printf_only'.format(format), printf_compile_value)
+  set_variable('printf_compile_args_@0@_scanf_only'.format(format),  scanf_compile_value)
+  set_variable('printf_compile_args_@0@'.format(format),             compile_value)
+
+  printf_link_value = printf_compile_value
+  scanf_link_value  = scanf_compile_value
+  link_value        = compile_value
   if printf_aliases
     if format_default != format
       if has_link_defsym
-        link_value += '-Wl,--defsym=@0@vfprintf=@0@__@1@_vfprintf'.format(global_prefix, format)
-        link_value += '-Wl,--defsym=@0@vfscanf=@0@__@1@_vfscanf'.format(global_prefix, format)
+        printf_defsym = '-Wl,--defsym=@0@vfprintf=@0@__@1@_vfprintf'.format(global_prefix, format)
+        scanf_defsym  = '-Wl,--defsym=@0@vfscanf=@0@__@1@_vfscanf'.format(global_prefix, format)
       else
-        link_value += '-Wl,-alias,@0@__@1@_vfprintf,@0@vfprintf'.format(global_prefix, format)
-        link_value += '-Wl,-alias,@0@__@1@_vfscanf,@0@vfscanf'.format(global_prefix, format)
+        printf_defsym = '-Wl,-alias,@0@__@1@_vfprintf,@0@vfprintf'.format(global_prefix, format)
+        scanf_defsym  = '-Wl,-alias,@0@__@1@_vfscanf,@0@vfscanf'.format(global_prefix, format)
       endif
+      printf_link_value += printf_defsym
+      scanf_link_value  += scanf_defsym
+      link_value        += printf_defsym
+      link_value        += scanf_defsym
     endif
   endif
-  set_variable(link_variable, link_value)
+
+  set_variable('printf_link_args_@0@_printf_only'.format(format), printf_link_value)
+  set_variable('printf_link_args_@0@_scanf_only'.format(format),  scanf_link_value)
+  set_variable('printf_link_args_@0@'.format(format),             link_value)
 
 endforeach
 

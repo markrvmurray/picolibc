@@ -112,14 +112,25 @@ foreach params : targets
     endif
 
     if t1 in scanf_only_tests
-      # Bug #224 follow-up: -DNO_MULTI_BYTE drops the multibyte/wide-char
-      # test sections; -DNO_NAN -DNO_INF drop NaN/Inf parens parsing
-      # tests (~15 cases each). All three are already gated upstream
-      # for build configs that lack the corresponding feature; we use
-      # the same gates here to fit on tight 64 KB targets.
-      _c_args_t1   = printf_compile_args_d_scanf_only + _c_args + \
-                     ['-DNO_MULTI_BYTE', '-DNO_NAN', '-DNO_INF']
-      _link_args_t1 = printf_link_args_d_scanf_only + _link_args + test_extra_link_args.get(t1, [])
+      # Bug #224: hard-code the FP-scanf dispatch for this test
+      # regardless of the global -Dprintf-aliases setting, so that
+      # turning the global flag on doesn't drag __d_vfprintf into
+      # every other test in the build (causing widespread overflow).
+      #
+      # `-D_PICOLIBC_SCANF='d'` makes plain `sscanf` resolve to
+      # `__d_sscanf` at compile time; the linker --defsym wires up
+      # the underlying vfscanf jump.  `-DNO_MULTI_BYTE -DNO_NAN
+      # -DNO_INF` drop upstream-gated test sections that wouldn't fit
+      # otherwise on a 64 KB target.
+      _c_args_t1   = _c_args + [
+                       '-D_PICOLIBC_SCANF=\'d\'',
+                       '-DNO_MULTI_BYTE',
+                       '-DNO_NAN',
+                       '-DNO_INF',
+                     ]
+      _link_args_t1 = _link_args + test_extra_link_args.get(t1, []) + [
+                        '-Wl,--defsym=vfscanf=__d_vfscanf',
+                      ]
     else
       _c_args_t1   = printf_compile_args_d + _c_args
       _link_args_t1 = printf_link_args_d + _link_args + test_extra_link_args.get(t1, [])

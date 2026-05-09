@@ -1,13 +1,19 @@
 /* Bug #245: hand-written __ctzsi2 in compiler-rt/lib/builtins/mc6809/.
- * Mirrors clzsi2_test.c — exercises the byte-scan + bit-shift loop. */
+ * Mirrors clzsi2_test.c — exercises the byte-scan + bit-shift loop.
+ *
+ * Bug #255: __ctzsi2 now uses LLVM-MC6809's i32-sret libcall ABI (caller
+ * passes 4-byte buffer in X, reads result from offset 2). Direct C-ABI
+ * calls to __ctzsi2(uint32_t) → int no longer work. Use __builtin_ctz
+ * which clang lowers via the libcall path.
+ *
+ * (a == 0 is undefined for __builtin_ctz, so the explicit zero case is
+ * dropped — the underlying .S still defensively returns 32.) */
 #include <stdio.h>
 #include <stdint.h>
 
-extern int __ctzsi2(uint32_t);
-
 static int fail;
 static void chk(uint32_t a, int want) {
-    int got = __ctzsi2(a);
+    int got = __builtin_ctz(a);
     if (got != want) {
         printf("FAIL __ctzsi2(0x%08lx): got %d want %d\n",
                (unsigned long)a, got, want);
@@ -28,8 +34,6 @@ int main(void) {
     chk(0xFF000000, 24);
     chk(0x00000003, 0);
     chk(0x00000005, 0);
-    /* a == 0 is undefined per gcc but our impl returns 32 */
-    chk(0x00000000, 32);
     if (!fail) printf("PASSED\n");
     return fail;
 }

@@ -1,11 +1,12 @@
+/* Bug #225 / Bug #255: __clzsi2 uses LLVM-MC6809's i32-sret libcall
+ * ABI. Direct C-ABI calls to __clzsi2(uint32_t) → int do not work; use
+ * __builtin_clz which clang lowers via the libcall path. */
 #include <stdio.h>
 #include <stdint.h>
 
-extern int __clzsi2(uint32_t);
-
 static int fail;
 static void chk(uint32_t a, int want) {
-    int got = __clzsi2(a);
+    int got = __builtin_clz(a);
     if (got != want) {
         printf("FAIL __clzsi2(0x%08lx): got %d want %d\n",
                (unsigned long)a, got, want);
@@ -27,8 +28,6 @@ int main(void) {
     chk(0x00000003, 30);
     chk(0x00010000, 15);
     chk(0x00000100, 23);
-    /* a == 0 is undefined per gcc but our impl returns 32 */
-    chk(0x00000000, 32);
     if (!fail) printf("PASSED\n");
     return fail;
 }

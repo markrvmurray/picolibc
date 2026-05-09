@@ -1,57 +1,36 @@
-/* Bug #247: HD6309-LTO test-timegm tm_hour/min/sec all return 0.
- *
- * Sentinel for the i64 rem-decomposition pattern that LTO -O2
- * produces for `lcltime % SECSPERDAY`:
- *
- *   div = lcltime / 86400         (sdiv i64 → __divdi3)
- *   neg = div * 4294880896        (mul i64 → __muldi3, where
- *                                   4294880896 = -86400 mod 2^32, zext)
- *   rem32 = trunc((neg + lcltime), i32)
- *
- * In isolation this lowers correctly; the actual test-timegm fails only
- * when full gmtime/timegm cross-TU LTO inlining inflates main and the
- * surrounding regalloc pressure perturbs codegen. This probe stays as
- * a regression sentinel for the *isolated* pattern. */
-
+/* Bug #247 probe: full 1024-entry table, gmtime+timegm pair. */
+#define _DEFAULT_SOURCE 1
 #include <stdio.h>
-#include <stdint.h>
+#include <time.h>
+extern time_t timegm(struct tm *);
 
-__attribute__((noinline))
-static int32_t rem_decomp(int64_t lcltime) {
-    int64_t div = lcltime / 86400;
-    int64_t neg = div * (int64_t)4294880896LL;
-    return (int32_t)(neg + lcltime);
-}
+#define NUM_TEST 1024
 
-__attribute__((noinline))
-static int32_t rem_srem(int64_t lcltime) {
-    return (int32_t)(lcltime % 86400);
-}
-
-static int fail;
-
-static void chk(int64_t t, int32_t want) {
-    int32_t r1 = rem_decomp(t);
-    int32_t r2 = rem_srem(t);
-    if (r1 != want || r2 != want) {
-        printf("FAIL t=%lld decomp=%ld srem=%ld want=%ld\n",
-               (long long)t, (long)r1, (long)r2, (long)want);
-        fail = 1;
-    }
-}
+const struct _test {
+    struct tm tm;
+    time_t time;
+} tests[NUM_TEST] = {
+#include "../test-timegm.h"
+};
 
 int main(void) {
-    chk(0LL, 0);
-    chk(86400LL, 0);
-    chk(86400LL * 1000, 0);
-    chk(100000LL, 13600);
-    chk(86399LL, 86399);
-    chk(86401LL, 1);
-    chk(1700000000LL, 80000);
-    chk(86400LL * 25000 + 79123, 79123);
-    chk(86400LL * 12345 + 53, 53);
-    chk(0x12345678LL, 0x12345678LL % 86400);
-    chk(0x7FFFFFFFLL, 0x7FFFFFFFLL % 86400);
-    if (!fail) printf("PASS\n");
-    return fail;
+    int ret = 0;
+    for (unsigned i = 0; i < NUM_TEST; i++) {
+        time_t t = tests[i].time;
+        struct tm *p = gmtime(&t);
+        if (p->tm_sec != tests[i].tm.tm_sec ||
+            p->tm_min != tests[i].tm.tm_min ||
+            p->tm_hour != tests[i].tm.tm_hour) {
+            if (ret < 3)
+                printf("[%u] t=%ld got h%d m%d s%d want h%d m%d s%d\n",
+                       i, (long)t, p->tm_hour, p->tm_min, p->tm_sec,
+                       tests[i].tm.tm_hour, tests[i].tm.tm_min, tests[i].tm.tm_sec);
+            ret++;
+        }
+        struct tm tmp = tests[i].tm;
+        if (timegm(&tmp) != tests[i].time) ret++;
+    }
+    if (!ret) printf("PASS\n");
+    else printf("FAIL count=%d\n", ret);
+    return !!ret;
 }

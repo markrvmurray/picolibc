@@ -25,6 +25,7 @@ tests_mc6809_fp = [
   'divdi_probe',  # Bug f98d69f HD6309 DIVQ i64 divide/mod
   'umulodi4_probe',  # Bug #239 __umulodi4 i64 multiply with overflow
   'ctzsi2_test',  # Bug #245 hand-written __ctzsi2
+  'timegm_rem_probe',  # Bug #247 HD6309-LTO i64 rem decomposition
 ]
 
 foreach params : targets

@@ -410,33 +410,29 @@ def git_head(path):
 
 
 def llvm_commit_for_binary(repo, binary_path):
-    """Return the SHA, suffixed with `+dirty` if the binary may not match HEAD.
+    """Return the SHA, suffixed with `+dirty` if the working tree has
+    uncommitted tracked-file changes RIGHT NOW.
 
-    Bug #191: bench typically launches BEFORE the user commits the
-    changes that produced the binaries — so plain `rev-parse HEAD`
-    records the previous commit, not the binary's actual provenance.
-    Two heuristics flag the discrepancy:
-      (a) binary mtime is later than HEAD's commit time (a build-
-          then-commit window we haven't crossed yet).
-      (b) tree has uncommitted changes RIGHT NOW.
-    Either fires → suffix `+dirty`.
+    Bug #191 originally added a second heuristic — flag dirty when the
+    binary mtime postdates HEAD's commit time — to catch the
+    'build-then-commit' case where the binary was built before the
+    most recent commit was made.  Bug #236 retired that heuristic: in
+    practice it fired on every post-commit rebuild (commit, then
+    rebuild → mtime > commit-time → spurious +dirty for the rest of
+    the session).  The `llvm_binary_mtime` column already records the
+    binary's mtime independently, so analysts can correlate post hoc
+    when needed; the SHA itself should be clean when the tree is
+    clean.
+
+    `binary_path` is unused now but retained to keep the call sites
+    stable.
     """
+    del binary_path  # retained for ABI; mtime check retired by #236
     sha = git_head(repo) or "unknown"
     dirty = ""
-    # (a) binary mtime vs HEAD ctime
-    try:
-        if binary_path and os.path.isfile(binary_path):
-            bin_mtime = int(os.path.getmtime(binary_path))
-            head_ctime_out = subprocess.run(
-                ["git", "-C", str(repo), "log", "-n1", "--format=%ct", "HEAD"],
-                capture_output=True, text=True, check=True,
-            )
-            head_ctime = int(head_ctime_out.stdout.strip())
-            if bin_mtime > head_ctime:
-                dirty = "+dirty"
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError, ValueError):
-        pass
-    # (b) uncommitted changes right now
+    # `git diff --quiet HEAD` checks tracked-file modifications
+    # (working tree + index vs HEAD).  Untracked files like cfg/,
+    # snap/ etc. don't count — exactly the right semantic.
     try:
         rc = subprocess.run(
             ["git", "-C", str(repo), "diff", "--quiet", "HEAD", "--"],

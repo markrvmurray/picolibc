@@ -23,6 +23,7 @@ tests_mc6809_fp = [
   'divsi_signed_probe',  # Bug ba5485d HD6309 DIVQ signed i32 fast paths
   'muldi_probe',  # Bug aacd0b7 HD6309 MULD i64 multiply
   'divdi_probe',  # Bug f98d69f HD6309 DIVQ i64 divide/mod
+  'umulodi4_probe',  # Bug #239 __umulodi4 i64 multiply with overflow
 ]
 
 foreach params : targets

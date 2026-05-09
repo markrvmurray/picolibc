@@ -153,26 +153,59 @@ COMMON=(
 level_opts() {
   # Levels without a native meson mapping (z, fast) go through
   # optimization=plain + an explicit -O flag injected into c/cpp_args.
+  #
+  # Naming convention:
+  #   <opt>           plain MC6809, no LTO
+  #   <opt>-lto       plain MC6809 with LTO (whole-program optimisation)
+  #   <opt>-fp        FP-enabled (libm + stdio-float), no LTO
+  #   <opt>-lto-fp    FP-enabled with LTO
+  #   <opt>-hd6309-mame   HD6309 instructions, MAME simulator
+  #   <opt>-lto-hd6309-mame  HD6309 + LTO + MAME
   case "$1" in
+    # ---- plain MC6809, no LTO ----
     O0)    echo "-Doptimization=0" ;;
     O1)    echo "-Doptimization=1" ;;
     O2)    echo "-Doptimization=2" ;;
     O3)    echo "-Doptimization=3" ;;
     Os)    echo "-Doptimization=s" ;;
     Og)    echo "-Doptimization=g" ;;
-    Oz)     echo "-Doptimization=plain -Dc_args=-Oz -Dcpp_args=-Oz" ;;
-    Ofast)  echo "-Doptimization=plain -Dc_args=-Ofast -Dcpp_args=-Ofast" ;;
+    Oz)    echo "-Doptimization=plain -Dc_args=-Oz -Dcpp_args=-Oz" ;;
+    Ofast) echo "-Doptimization=plain -Dc_args=-Ofast -Dcpp_args=-Ofast" ;;
+
+    # ---- plain MC6809, LTO ----
+    O2-lto) echo "-Doptimization=2 -Db_lto=true" ;;
+    O3-lto) echo "-Doptimization=3 -Db_lto=true" ;;
     Os-lto) echo "-Doptimization=s -Db_lto=true" ;;
+
+    # ---- HD6309 (USim), kept for ad-hoc use only — not in DEFAULT_LEVELS
+    # because USim is MC6809-only and HD6309 instructions trap at runtime.
     Os-hd6309) echo "-Doptimization=s -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
-    Os-hd6309-mame) echo "-Doptimization=s -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
-    # Bug #162: FP-enabled levels. Override the COMMON float-disabled flags;
-    # meson takes the last -D value so these come after COMMON in the setup call.
-    # Both levels use LTO: whole-program optimisation is the most effective tool
-    # for stripping unused libm + picolibc code on a 64 KB machine.
-    # format-default stays 'integer' (the COMMON default) — FP printf is only
-    # pulled in when the test explicitly requests %f/%g, keeping binary size down.
-    Os-fp)     echo "-Doptimization=s -Db_lto=true -Dstdio-float=true -Dwant-libm=true" ;;
+
+    # ---- HD6309 (MAME) ----
+    Os-hd6309-mame)     echo "-Doptimization=s -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
+    Os-lto-hd6309-mame) echo "-Doptimization=s -Db_lto=true -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
+
+    # ---- FP-enabled levels (Bug #162) ----
+    # Override the COMMON float-disabled flags; meson takes the last
+    # -D value so these come after COMMON in the setup call.  Many of
+    # these are expected to overflow the 64 KB address space (test
+    # binaries land in BUILDFAIL via Bug #237) — that's the point: the
+    # bench surfaces which combinations need slimming.  format-default
+    # stays 'integer' (the COMMON default); per-test #224-style alias
+    # routing pulls in FP printf/scanf only where needed.
+    O0-fp)     echo "-Doptimization=0 -Dstdio-float=true -Dwant-libm=true" ;;
+    O1-fp)     echo "-Doptimization=1 -Dstdio-float=true -Dwant-libm=true" ;;
+    O2-fp)     echo "-Doptimization=2 -Dstdio-float=true -Dwant-libm=true" ;;
+    O3-fp)     echo "-Doptimization=3 -Dstdio-float=true -Dwant-libm=true" ;;
+    Og-fp)     echo "-Doptimization=g -Dstdio-float=true -Dwant-libm=true" ;;
+    # Os-fp is now distinct from Os-lto-fp: non-LTO baseline.  Pre-2026-05-09
+    # it was identical to Os-lto-fp (both LTO=true) — the dedup was the
+    # change.
+    Os-fp)     echo "-Doptimization=s -Dstdio-float=true -Dwant-libm=true" ;;
+    Oz-fp)     echo "-Doptimization=plain -Dc_args=-Oz -Dcpp_args=-Oz -Dstdio-float=true -Dwant-libm=true" ;;
+    Ofast-fp)  echo "-Doptimization=plain -Dc_args=-Ofast -Dcpp_args=-Ofast -Dstdio-float=true -Dwant-libm=true" ;;
     Os-lto-fp) echo "-Doptimization=s -Db_lto=true -Dstdio-float=true -Dwant-libm=true" ;;
+
     *)     echo "unknown level $1" >&2; return 2 ;;
   esac
 }
@@ -377,7 +410,24 @@ esac
 
 # --- CLI parsing --------------------------------------------------------
 
-DEFAULT_LEVELS="O0,O1,O2,O3,Og,Os,Oz,Ofast,Os-lto,Os-fp,Os-lto-fp,Os-hd6309-mame"
+DEFAULT_LEVELS="\
+O0,O1,O2,O3,Og,Os,Oz,Ofast,\
+O2-lto,O3-lto,Os-lto,\
+O0-fp,O1-fp,O2-fp,O3-fp,Og-fp,Os-fp,Oz-fp,Ofast-fp,\
+Os-lto-fp,\
+Os-hd6309-mame,Os-lto-hd6309-mame"
+# 2026-05-09 expansion: previously 12 levels (8 plain + Os-lto + Os-fp +
+# Os-lto-fp + Os-hd6309-mame).  Now 22 levels:
+#   - plain non-LTO: O0..Ofast (8, unchanged)
+#   - plain LTO:     O2-lto, O3-lto, Os-lto (3, +2 new)
+#   - FP non-LTO:    O0-fp..Ofast-fp (8, +7 new + Os-fp redefined non-LTO)
+#   - FP LTO:        Os-lto-fp (1, unchanged)
+#   - HD6309 MAME:   Os-hd6309-mame, Os-lto-hd6309-mame (2, +1 new)
+#
+# Many of the FP non-LTO and LTO-HD6309 levels are expected to BUILDFAIL
+# (Bug #237 surfaces them in the ledger now).  The point of the
+# expansion is to learn which combinations need slimming work and which
+# are fundamentally too big for a 64 KB target.
 levels="$DEFAULT_LEVELS"
 build_jobs=6
 test_jobs=6

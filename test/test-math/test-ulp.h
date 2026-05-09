@@ -65,9 +65,19 @@ static TEST_CONST math_ulps_t math_ulps[] = {
     { .name = "exp2",       .b32 = 1,       .b64 = 1,       .b80 = 2,       .b128 = 0       },
     { .name = "expm1",      .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
     { .name = "log10",      .b32 = 2,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    /* Bug #253: -Ofast (-ffast-math) enables fast-math contracts that
+     * cause +1 ULP drift in the fdlibm log family. The user opts in to
+     * looser semantics with -Ofast, so bump the tolerance accordingly
+     * for log / log1p / log2 (b32 + b64 each gain 1 ULP). */
+#ifdef __FAST_MATH__
+    { .name = "log1p",      .b32 = 2,       .b64 = 2,       .b80 = 2,       .b128 = 1       },
+    { .name = "log2",       .b32 = 3,       .b64 = 2,       .b80 = 1,       .b128 = 1       },
+    { .name = "log",        .b32 = 2,       .b64 = 1,       .b80 = 0,       .b128 = 1       },
+#else
     { .name = "log1p",      .b32 = 1,       .b64 = 1,       .b80 = 2,       .b128 = 1       },
     { .name = "log2",       .b32 = 2,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
     { .name = "log",        .b32 = 1,       .b64 = 0,       .b80 = 0,       .b128 = 1       },
+#endif
     { .name = "pow",        .b32 = 1,       .b64 = 1,       .b80 = 6107,    .b128 = 1       },
 
     /* Misc functions */

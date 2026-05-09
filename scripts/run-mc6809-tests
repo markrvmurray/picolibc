@@ -303,11 +303,20 @@ def preflight_fresh_binaries(skip_ninja=False, verbose=True, builddir=None):
                       "skipping refresh (recorded tally may use stale ELFs)",
                       flush=True)
     # Tests whose link failed (e.g. text overflows the 16 KB flash
-    # region of the regular linker script) are simply absent from
-    # disk; drop them. There is only one memory map; no per-test
-    # rescue path.
-    keep = [t for t in cands
-            if os.path.isfile(t["cmd"][0]) and os.access(t["cmd"][0], os.X_OK)]
+    # region of the regular linker script) are absent from disk.
+    # Bug #237: split them into a separate `buildfail` list so the
+    # caller can record them as `BUILDFAIL` in the ledger instead
+    # of silently dropping them — a clean tally that hid 27 such
+    # build-excludes was exactly the trap that hid bug #224 for
+    # weeks.
+    keep = []
+    buildfail = []
+    for t in cands:
+        elf = t["cmd"][0]
+        if os.path.isfile(elf) and os.access(elf, os.X_OK):
+            keep.append(t)
+        else:
+            buildfail.append(t)
     if not skip_ninja:
         # Defensive per-ELF freshness check. After the backend-detect-and-
         # wipe + ninja-refresh, this should be a no-op — but if ninja
@@ -335,7 +344,7 @@ def preflight_fresh_binaries(skip_ninja=False, verbose=True, builddir=None):
                 continue
             fresh.append(t)
         keep = fresh
-    return keep
+    return keep, buildfail
 
 
 def run_single_test(test_name, logbase, builddir=None):
@@ -630,10 +639,29 @@ def run_multi(args):
     # Per-level preflight + test selection. SLOW_TESTS / FAKE_FS_TESTS
     # gating happens once here so it stays consistent across levels.
     queue = []
+    buildfails = []  # Bug #237: list of (lvl, t) pairs to record as BUILDFAIL
     for lvl, bd in pairs:
-        tests = preflight_fresh_binaries(
+        tests, level_buildfail = preflight_fresh_binaries(
             skip_ninja=args.no_preflight, builddir=bd,
         )
+        # Apply the same SLOW/FAKE/--tests filters to buildfails as to
+        # the runnable set: tests that would have been skipped anyway
+        # don't need a BUILDFAIL noise row.
+        if not args.slow:
+            level_buildfail = [t for t in level_buildfail
+                               if t["name"] not in SLOW_TESTS]
+        if not args.slow and lvl.endswith("-mame"):
+            level_buildfail = [t for t in level_buildfail
+                               if t["name"] not in MAME_SLOW_TESTS]
+        if not args.include_fake_fs:
+            level_buildfail = [t for t in level_buildfail
+                               if t["name"] not in FAKE_FS_TESTS]
+        if args.tests:
+            subs = [s for s in args.tests.split(",") if s]
+            level_buildfail = [t for t in level_buildfail
+                               if any(s in t["name"] for s in subs)]
+        for t in level_buildfail:
+            buildfails.append((lvl, t))
         if not args.slow:
             skipped = [t for t in tests if t["name"] in SLOW_TESTS]
             tests = [t for t in tests if t["name"] not in SLOW_TESTS]
@@ -711,6 +739,27 @@ def run_multi(args):
     counts = Counter()  # keyed by (level, status)
     ftally = open(OUT, "w", buffering=1)
     flog = open(FAILLOG, "w", buffering=1)
+
+    # Bug #237: record build-failed tests up front so the tally
+    # includes them. They have no ELF so we can't run them; status
+    # is BUILDFAIL with cycles=NULL and dur=0. Visible in the
+    # per-level summary alongside OK/FAIL/SKIP/TIMEOUT. Recorded
+    # before the pool starts, so no lock contention.
+    if buildfails:
+        for lvl, t in buildfails:
+            counts[(lvl, "BUILDFAIL")] += 1
+            results.append((lvl, (t["name"], "BUILDFAIL", -1, "", "", 0.0, None)))
+            line = (f"[{lvl:5s}] BUILDFAIL      rc=-1     0.00s            "
+                    f"{t['name']}")
+            print(line, flush=True)
+            ftally.write(line + "\n")
+            if conn is not None:
+                insert_result(conn, run_ids[lvl], t["name"],
+                              "BUILDFAIL", -1, 0.0, None,
+                              f"{lvl}{suffix}")
+        print(f"[BUILDFAIL] recorded {len(buildfails)} link-failed "
+              f"test(s) up front", flush=True)
+
     print(f"running {len(queue)} (level, test) pairs across "
           f"{len(pairs)} builddirs, --jobs {args.jobs}…", flush=True)
 
@@ -779,7 +828,8 @@ def run_multi(args):
         for lvl, _ in pairs:
             ftally.write(f"[{lvl}]\n")
             for k in ("OK", "EXPECTEDFAIL", "SKIP", "FAIL",
-                      "UNEXPECTEDPASS", "ERROR", "TIMEOUT"):
+                      "UNEXPECTEDPASS", "ERROR", "TIMEOUT",
+                      "BUILDFAIL"):
                 if per_level[lvl].get(k):
                     ftally.write(f"  {k:14s} {per_level[lvl][k]}\n")
             ftally.write(f"  TOTAL          {sum(per_level[lvl].values())}\n")
@@ -791,7 +841,8 @@ def run_multi(args):
     for lvl, _ in pairs:
         parts = [f"{k}={per_level[lvl][k]}"
                  for k in ("OK", "EXPECTEDFAIL", "SKIP", "FAIL",
-                           "UNEXPECTEDPASS", "ERROR", "TIMEOUT")
+                           "UNEXPECTEDPASS", "ERROR", "TIMEOUT",
+                           "BUILDFAIL")
                  if per_level[lvl].get(k)]
         print(f"[{lvl:5s}] " + "  ".join(parts) +
               f"  TOTAL={sum(per_level[lvl].values())}")
@@ -875,7 +926,20 @@ def main():
     if args.multi:
         return run_multi(args)
 
-    tests = preflight_fresh_binaries(skip_ninja=args.no_preflight)
+    tests, buildfail = preflight_fresh_binaries(skip_ninja=args.no_preflight)
+    # Bug #237: apply the same SLOW/FAKE/--tests filters to the
+    # buildfail list so noise rows match the runnable set's policy.
+    def _apply_filters(items):
+        if not args.slow:
+            items = [t for t in items if t["name"] not in SLOW_TESTS]
+        if not args.slow and args.opt_level and args.opt_level.endswith("-mame"):
+            items = [t for t in items if t["name"] not in MAME_SLOW_TESTS]
+        if not args.include_fake_fs:
+            items = [t for t in items if t["name"] not in FAKE_FS_TESTS]
+        if args.tests:
+            subs = [s for s in args.tests.split(",") if s]
+            items = [t for t in items if any(s in t["name"] for s in subs)]
+        return items
     if not args.slow:
         skipped = [t for t in tests if t["name"] in SLOW_TESTS]
         tests = [t for t in tests if t["name"] not in SLOW_TESTS]
@@ -903,7 +967,8 @@ def main():
         tests = [t for t in tests if any(s in t["name"] for s in subs)]
         print(f"--tests filter: {before} → {len(tests)} "
               f"({','.join(subs)})", flush=True)
-    if not tests:
+    buildfail = _apply_filters(buildfail)
+    if not tests and not buildfail:
         print("no buildable test binaries found", file=sys.stderr)
         return 1
 
@@ -935,6 +1000,24 @@ def main():
     # even if the harness is interrupted.
     ftally = open(OUT, "w", buffering=1)
     flog = open(FAILLOG, "w", buffering=1)
+
+    # Bug #237: record build-failed tests up front (no ELF to run).
+    if buildfail:
+        rec_ol = args.opt_level
+        if rec_ol and args.tests:
+            rec_ol = f"{rec_ol}-quick"
+        for t in buildfail:
+            counts["BUILDFAIL"] += 1
+            results.append((t["name"], "BUILDFAIL", -1, "", "", 0.0, None))
+            line = f"BUILDFAIL      rc=-1     0.00s            {t['name']}"
+            print(line, flush=True)
+            ftally.write(line + "\n")
+            if conn is not None:
+                insert_result(conn, run_id, t["name"], "BUILDFAIL",
+                              -1, 0.0, None, rec_ol)
+        print(f"[BUILDFAIL] recorded {len(buildfail)} link-failed "
+              f"test(s) up front", flush=True)
+
     mode = "one-at-a-time" if args.jobs == 1 else f"{args.jobs}-at-a-time"
     print(f"running {len(tests)} tests {mode}…", flush=True)
 
@@ -990,7 +1073,7 @@ def main():
     finally:
         ftally.write("-" * 50 + "\n")
         for k in ("OK", "EXPECTEDFAIL", "SKIP", "FAIL", "UNEXPECTEDPASS",
-                  "ERROR", "TIMEOUT"):
+                  "ERROR", "TIMEOUT", "BUILDFAIL"):
             if counts.get(k):
                 ftally.write(f"{k:14s} {counts[k]}\n")
         ftally.write(f"TOTAL          {sum(counts.values())}\n")
@@ -1001,7 +1084,8 @@ def main():
 
     parts = [f"{k}={counts[k]}"
              for k in ("OK", "EXPECTEDFAIL", "SKIP", "FAIL",
-                       "UNEXPECTEDPASS", "ERROR", "TIMEOUT")
+                       "UNEXPECTEDPASS", "ERROR", "TIMEOUT",
+                       "BUILDFAIL")
              if counts.get(k)]
     print("  ".join(parts) + f"  TOTAL={sum(counts.values())}")
     print(f"per-test: {OUT}")

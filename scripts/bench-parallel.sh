@@ -617,6 +617,7 @@ SELECT opt_level,
        SUM(CASE WHEN status='SKIP'         THEN 1 ELSE 0 END) AS skip,
        SUM(CASE WHEN status='FAIL'         THEN 1 ELSE 0 END) AS fail,
        SUM(CASE WHEN status='TIMEOUT'      THEN 1 ELSE 0 END) AS tout,
+       SUM(CASE WHEN status='BUILDFAIL'    THEN 1 ELSE 0 END) AS bfail,
        SUM(cycles)                                            AS total_cycles
   FROM results
  WHERE opt_level IN ('O0','O1','O2','O3','Os','Og','Oz','Ofast','Os-lto')

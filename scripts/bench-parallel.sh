@@ -182,8 +182,22 @@ level_opts() {
     Os-hd6309) echo "-Doptimization=s -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
 
     # ---- HD6309 (MAME) ----
-    Os-hd6309-mame)     echo "-Doptimization=s -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
-    Os-lto-hd6309-mame) echo "-Doptimization=s -Db_lto=true -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
+    Os-hd6309-mame)         echo "-Doptimization=s -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
+    Os-lto-hd6309-mame)     echo "-Doptimization=s -Db_lto=true -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
+    O2-hd6309-mame)         echo "-Doptimization=2 -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
+    # Debugger-friendly: -Og preserves enough source-level structure
+    # for lldb/gdb walks while still doing safe peepholes.  Useful for
+    # the bug-#222 lldb-on-MAME workflow when an HD6309-specific
+    # codegen issue needs source-level stepping.
+    Og-hd6309-mame)         echo "-Doptimization=g -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
+
+    # ---- HD6309 (MAME) + FP ----
+    # The same expectation applies as for the plain FP non-LTO levels:
+    # many of these will overflow on a 64 KB target (HD6309 instruction
+    # encodings are larger on average) and surface as BUILDFAIL via #237.
+    Os-hd6309-mame-fp)     echo "-Doptimization=s -Dstdio-float=true -Dwant-libm=true -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
+    Os-lto-hd6309-mame-fp) echo "-Doptimization=s -Db_lto=true -Dstdio-float=true -Dwant-libm=true -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
+    O2-hd6309-mame-fp)     echo "-Doptimization=2 -Dstdio-float=true -Dwant-libm=true -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
 
     # ---- FP-enabled levels (Bug #162) ----
     # Override the COMMON float-disabled flags; meson takes the last
@@ -216,9 +230,12 @@ level_opts() {
 # `Os-hd6309-mame` be a first-class level in DEFAULT_LEVELS alongside
 # the usim levels — a single sweep covers both simulator backends.
 level_cross() {
+  # 2026-05-09: also match *-mame-fp so HD6309 FP variants get the
+  # MAME cross-file. Glob `*-mame*` would over-match anything containing
+  # the substring; the explicit alternation keeps intent legible.
   case "$1" in
-    *-mame) echo "$MAME_CROSS" ;;
-    *)      echo "$CROSS" ;;
+    *-mame|*-mame-fp) echo "$MAME_CROSS" ;;
+    *)                echo "$CROSS" ;;
   esac
 }
 
@@ -230,8 +247,8 @@ level_cross() {
 # legacy --simulator flag.
 level_bd_suffix() {
   case "$1" in
-    *-mame) echo "" ;;  # already in label
-    *)      echo "$BD_SUFFIX" ;;
+    *-mame|*-mame-fp) echo "" ;;  # already in label
+    *)                echo "$BD_SUFFIX" ;;
   esac
 }
 
@@ -415,19 +432,22 @@ O0,O1,O2,O3,Og,Os,Oz,Ofast,\
 O2-lto,O3-lto,Os-lto,\
 O0-fp,O1-fp,O2-fp,O3-fp,Og-fp,Os-fp,Oz-fp,Ofast-fp,\
 Os-lto-fp,\
-Os-hd6309-mame,Os-lto-hd6309-mame"
-# 2026-05-09 expansion: previously 12 levels (8 plain + Os-lto + Os-fp +
-# Os-lto-fp + Os-hd6309-mame).  Now 22 levels:
-#   - plain non-LTO: O0..Ofast (8, unchanged)
-#   - plain LTO:     O2-lto, O3-lto, Os-lto (3, +2 new)
-#   - FP non-LTO:    O0-fp..Ofast-fp (8, +7 new + Os-fp redefined non-LTO)
-#   - FP LTO:        Os-lto-fp (1, unchanged)
-#   - HD6309 MAME:   Os-hd6309-mame, Os-lto-hd6309-mame (2, +1 new)
+O2-hd6309-mame,Og-hd6309-mame,Os-hd6309-mame,Os-lto-hd6309-mame,\
+O2-hd6309-mame-fp,Os-hd6309-mame-fp,Os-lto-hd6309-mame-fp"
+# 2026-05-09 expansion: previously 12 levels.  Now 27 levels:
+#   - plain non-LTO:       O0..Ofast                    (8, unchanged)
+#   - plain LTO:           O2-lto, O3-lto, Os-lto       (3, +2 new)
+#   - FP non-LTO:          O0-fp..Ofast-fp              (8, +7 new + Os-fp redefined non-LTO)
+#   - FP LTO:              Os-lto-fp                    (1, unchanged)
+#   - HD6309 MAME:         O2/Og/Os/Os-lto-hd6309-mame  (4, +3 new — Og is debugger-friendly)
+#   - HD6309 MAME + FP:    O2/Os/Os-lto-hd6309-mame-fp  (3, all new)
 #
-# Many of the FP non-LTO and LTO-HD6309 levels are expected to BUILDFAIL
+# Many of the FP non-LTO and HD6309-FP levels are expected to BUILDFAIL
 # (Bug #237 surfaces them in the ledger now).  The point of the
 # expansion is to learn which combinations need slimming work and which
-# are fundamentally too big for a 64 KB target.
+# are fundamentally too big for a 64 KB target.  HD6309+FP is a
+# particular new frontier: HD6309 instructions average larger encodings
+# than plain MC6809, so the FP machinery is even tighter.
 levels="$DEFAULT_LEVELS"
 build_jobs=6
 test_jobs=6

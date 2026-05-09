@@ -24,6 +24,7 @@ tests_mc6809_fp = [
   'muldi_probe',  # Bug aacd0b7 HD6309 MULD i64 multiply
   'divdi_probe',  # Bug f98d69f HD6309 DIVQ i64 divide/mod
   'umulodi4_probe',  # Bug #239 __umulodi4 i64 multiply with overflow
+  'ctzsi2_test',  # Bug #245 hand-written __ctzsi2
 ]
 
 foreach params : targets

@@ -25,6 +25,10 @@ tests_mc6809_dp = [
   'test-dp-static-local',
   'test-dp-mixed',
   'test-dp-loop',
+  # Bug #161 Phase 1 / 1.5 sentinel — corner cases for HD6309-MULD
+  # __mulhi3 / __mulsi3. Lives here for now (no FP, integer-only, runs
+  # under the same MC6809-only gating).
+  'test-mc6809-mul-corners',
 ]
 
 foreach params : targets

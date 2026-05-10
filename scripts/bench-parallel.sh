@@ -163,8 +163,8 @@ level_opts() {
     Oz)     echo "-Doptimization=plain -Dc_args=-Oz -Dcpp_args=-Oz" ;;
     Ofast)  echo "-Doptimization=plain -Dc_args=-Ofast -Dcpp_args=-Ofast" ;;
     Os-lto) echo "-Doptimization=s -Db_lto=true" ;;
-    Os-hd6309) echo "-Doptimization=s -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309" ;;
-    Os-hd6309-mame) echo "-Doptimization=s -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309" ;;
+    Os-hd6309) echo "-Doptimization=s -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
+    Os-hd6309-mame) echo "-Doptimization=s -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
     *)     echo "unknown level $1" >&2; return 2 ;;
   esac
 }

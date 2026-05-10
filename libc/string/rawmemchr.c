@@ -41,7 +41,12 @@ rawmemchr(const void *src_void, int c)
     unsigned char        d = c;
 
 #if !defined(__PREFER_SIZE_OVER_SPEED) && !defined(__OPTIMIZE_SIZE__) \
-    && !defined(_PICOLIBC_NO_OUT_OF_BOUNDS_READS)
+    && !defined(_PICOLIBC_NO_OUT_OF_BOUNDS_READS) \
+    && !defined(__mc6809__)
+    /* __mc6809__ guard (Bug #239): same reason as memccpy.c — the
+     * word-loop fast path below holds asrc + mask + the loaded *asrc + the
+     * XOR result simultaneously, exceeding HD6309's 5-slot ACC32 class.
+     * Force the byte-loop path on MC6809/HD6309. */
     unsigned long *asrc;
     unsigned long  mask;
     unsigned int   i;

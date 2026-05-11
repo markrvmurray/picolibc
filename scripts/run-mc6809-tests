@@ -124,6 +124,14 @@ MAME_SLOW_TESTS = {
     "test-memset",
     "test-timegm",
     "strcmp-1",
+    # Bug #266: at -Og hd6309 mame, test-ffs runs ~2.5G HD6309 cycles
+    # to completion (100k random-iteration outer loop × 3 ffs/ffsl/ffsll
+    # check pairs). Under USim it passes at every level in 13–25 wall-sec
+    # (runs 1058–1095). Under MAME the same cycle count exceeds the
+    # 1800 sim-sec / ~225 wall-sec budget, exactly like the other entries
+    # in this list. Skip-under-MAME, run-under-USim is the same disposition
+    # as test-iconv/test-memchr/etc.
+    "test-ffs",
 }
 
 # Tests that need a real-FS semihost (open/read/write/lseek/stat against

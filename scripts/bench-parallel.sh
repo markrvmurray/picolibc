@@ -168,6 +168,11 @@ level_opts() {
     O2)    echo "-Doptimization=2" ;;
     O3)    echo "-Doptimization=3" ;;
     Os)    echo "-Doptimization=s" ;;
+    # Bug #269: at Og variants, _setup_wave additionally appends
+    # `-mllvm -verify-machineinstrs` to c_args/cpp_args via a separate
+    # meson configure call (the comma-separated single-string form
+    # accepted by `-Dc_args=` here cannot encode multi-word args, but
+    # a separate `meson configure` step CAN take a quoted string).
     Og)    echo "-Doptimization=g" ;;
     Oz)    echo "-Doptimization=plain -Dc_args=-Oz -Dcpp_args=-Oz" ;;
     Ofast) echo "-Doptimization=plain -Dc_args=-Ofast -Dcpp_args=-Ofast" ;;
@@ -273,6 +278,31 @@ _setup_wave() {
   wl="$(wave_log "$label")"
   opts="$(level_opts "$label")" || return 2
   cross="$(level_cross "$label")"
+
+  # Bug #269: at Og variants, append `-mllvm -verify-machineinstrs`
+  # to c_args / cpp_args. The MachineVerifier catches the Bug #247 /
+  # #251 / #266-class regressions (pseudos lying about Defs/Uses) at
+  # COMPILE TIME — turning multi-session bisects into 1-bench-cycle
+  # diagnoses. Done as a separate `meson configure` call so the
+  # quoted multi-word string survives (meson's `-Dc_args=foo,bar`
+  # comma form is treated as a single-element array, useless here).
+  local existing_c existing_cpp full_c full_cpp
+  case "$label" in
+    Og|Og-fp|Og-hd6309-mame|Og-lto-hd6309-mame-fp)
+      # Read whatever the level's level_opts already set, append the
+      # verifier flag. The existing values appear in $opts as
+      # `-Dc_args=...` / `-Dcpp_args=...`. Use Bash array splitting to
+      # preserve atoms, then post-process.
+      existing_c=$(echo "$opts" | tr ' ' '\n' | grep -E '^-Dc_args=' | head -1 | sed 's/^-Dc_args=//')
+      existing_cpp=$(echo "$opts" | tr ' ' '\n' | grep -E '^-Dcpp_args=' | head -1 | sed 's/^-Dcpp_args=//')
+      full_c="${existing_c:+${existing_c} }-mllvm -verify-machineinstrs"
+      full_cpp="${existing_cpp:+${existing_cpp} }-mllvm -verify-machineinstrs"
+      # Strip the original -Dc_args= / -Dcpp_args= tokens from $opts
+      # (we'll re-add via meson configure with the full quoted value).
+      opts=$(echo "$opts" | tr ' ' '\n' | grep -v -E '^-D(c|cpp)_args=' | tr '\n' ' ')
+      ;;
+  esac
+
   echo "==[ $(ts) $label setup ]== bd=$bd cross=$cross opts=$opts" >>"$wl"
   if [ ! -f "$bd/build.ninja" ]; then
     # shellcheck disable=SC2086
@@ -287,6 +317,13 @@ _setup_wave() {
     ( cd "$PICO" \
       && meson setup --reconfigure --cross-file="$cross" "$bd" \
       && meson configure "$bd" "${COMMON[@]}" $opts ) >>"$wl" 2>&1
+  fi
+
+  # Bug #269: apply c_args / cpp_args separately so the verifier flag's
+  # space survives. The empty-default branch (full_c unset) skips.
+  if [ -n "${full_c:-}" ]; then
+    ( cd "$PICO" && meson configure "$bd" \
+        -Dc_args="$full_c" -Dcpp_args="$full_cpp" ) >>"$wl" 2>&1
   fi
 }
 
@@ -315,7 +352,7 @@ _build_wave() {
   # Sidecar for the driver to surface in the top-level summary so a
   # silent libc.a-link failure is no longer indistinguishable from a
   # clean build. (bug #157)
-  local failed_n bin_n
+  local failed_n bin_n verifier_n
   failed_n=$(grep -c '^FAILED: ' "$wl" 2>/dev/null || echo 0)
   # Count picolibc test binaries (bug #170): they live under $bd/test,
   # have no `.elf` extension, and are owner-executable. The previous
@@ -325,7 +362,12 @@ _build_wave() {
   # skips meson's intermediate object directories.
   bin_n=$(find "$bd/test" -type f -perm -u+x -not -path '*.p/*' \
                 2>/dev/null | wc -l | tr -d ' ')
-  printf '%s\t%s\t%s\n' "$rc" "$failed_n" "$bin_n" > "/tmp/bench-parallel-$label.rc"
+  # Bug #269: count MachineVerifier hits from `-mllvm -verify-machineinstrs`
+  # (enabled at Og variants in level_opts above). Zero for non-Og levels
+  # because the flag isn't on. Any non-zero count surfaces in the
+  # per-level summary as a VERIFY=N column + WARN line.
+  verifier_n=$(grep -c '\*\*\* Bad machine code:' "$wl" 2>/dev/null || echo 0)
+  printf '%s\t%s\t%s\t%s\n' "$rc" "$failed_n" "$bin_n" "$verifier_n" > "/tmp/bench-parallel-$label.rc"
 }
 
 # Tally phase is now a single flat invocation of
@@ -581,7 +623,7 @@ if [ $skip_build -eq 0 ]; then
   for lvl in "${LEVEL_LIST[@]}"; do
     rcfile="/tmp/bench-parallel-$lvl.rc"
     if [ -f "$rcfile" ]; then
-      read rc fn en < "$rcfile"
+      read rc fn en vn < "$rcfile"
       [ "$en" -gt "$max_bin" ] 2>/dev/null && max_bin=$en
     fi
   done
@@ -599,21 +641,26 @@ if [ $skip_build -eq 0 ]; then
       echo "  $lvl: NO SIDECAR (wave didn't run?)" | tee -a "$LOG"
       continue
     fi
-    read rc fn en < "$rcfile"
+    read rc fn en vn < "$rcfile"
     # WARN when this level produced zero binaries OR substantially fewer
     # binaries than the best-performing level — both are strong signals
     # that libc.a (or one of its objects) failed to link. The "less than
     # half" threshold catches per-level partial failures; the max_bin==0
     # arm catches the case where all levels failed identically (was the
-    # bug #170 false negative).
+    # bug #170 false negative). Bug #269: any non-zero verifier-hit count
+    # at an Og-variant level is also WARN — the MachineVerifier is a
+    # gate against the Bug #247/#251/#266-class lies-about-Defs/Uses
+    # regressions; a non-zero count means a fresh regression slipped in.
     if [ "$max_bin" -eq 0 ]; then
       tag="WARN"
     elif [ "$en" -lt $(( max_bin / 2 )) ]; then
       tag="WARN"
+    elif [ "${vn:-0}" -gt 0 ] 2>/dev/null; then
+      tag="WARN"
     else
       tag=" ok "
     fi
-    echo "  $lvl: $tag rc=$rc FAILED=$fn bins=$en/$max_bin" | tee -a "$LOG"
+    echo "  $lvl: $tag rc=$rc FAILED=$fn bins=$en/$max_bin VERIFY=${vn:-0}" | tee -a "$LOG"
   done
 fi
 

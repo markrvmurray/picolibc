@@ -326,32 +326,48 @@ def preflight_fresh_binaries(skip_ninja=False, verbose=True, builddir=None):
         else:
             buildfail.append(t)
     if not skip_ninja:
-        # Defensive per-ELF freshness check. After the backend-detect-and-
-        # wipe + ninja-refresh, this should be a no-op — but if ninja
-        # silently skipped a target (broken dep, missing rule), the stale
-        # ELF would otherwise be recorded as a current-SHA result. Drop
-        # it instead, with a warning that names the offending input.
+        # Bug #280: per-ELF mtime audit was over-aggressive. It compared
+        # each ELF against libc.a + compilers and dropped any ELF older
+        # than either. At verifier-heavy levels (Og variants under Bug
+        # #269's -mllvm -verify-machineinstrs gate), a partial libc.a
+        # rebuild (some .c.o's fail to compile due to verifier hits, the
+        # rest succeed) updates libc.a's mtime even though the test
+        # binaries' actual link inputs (the surviving .o's) haven't
+        # changed in a way that requires re-linking. ninja's per-target
+        # dep tracking already decided not to re-link those ELFs, but
+        # the mtime audit overruled it and dropped EVERY test in the
+        # level. Today's Og-fp 89→0 regression was exactly this failure
+        # mode (interacting with Bug #276's ADJCALLSTACK errors).
+        #
+        # Soften the audit: still emit a WARN for ELFs older than any
+        # build input, but do NOT drop them. ninja's `.ninja_deps`
+        # tracks per-source-file timestamps far more accurately than
+        # this mtime comparison; if ninja didn't relink, the existing
+        # ELF is still the right artefact to run against. Bug #279's
+        # delta-vs-previous-run summary surfaces any genuinely stale
+        # result as a regression in the per-level deltas.
+        #
+        # The existence check above (step 2) still catches link
+        # failures — those go to `buildfail` and record as BUILDFAIL,
+        # so a missing ELF is never silently treated as fresh.
         archive = _archive_path(bd)
         compilers = _compiler_binaries(bd)
         inputs = [(p, os.stat(p).st_mtime) for p in
                   ([str(archive)] if archive else []) + list(compilers)
                   if os.path.exists(p)]
-        fresh = []
+        warn_count = 0
         for t in keep:
             elf = t["cmd"][0]
             elf_mtime = os.stat(elf).st_mtime
             stale_inputs = [(p, m) for p, m in inputs if m > elf_mtime]
             if stale_inputs:
-                if verbose:
-                    names = ", ".join(os.path.basename(p)
-                                      for p, _ in stale_inputs)
-                    print(f"preflight{tag}: dropping {t['name']} — ELF older "
-                          f"than {names} (build input newer than binary; "
-                          f"would record stale result)",
-                          flush=True)
-                continue
-            fresh.append(t)
-        keep = fresh
+                warn_count += 1
+        if warn_count and verbose:
+            print(f"preflight{tag}: WARN {warn_count} ELFs older than "
+                  f"libc.a/compiler (ninja deemed re-link unnecessary; "
+                  f"keeping — if a result moves vs prior bench, the "
+                  f"delta column will surface it)",
+                  flush=True)
     return keep, buildfail
 
 

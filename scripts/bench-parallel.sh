@@ -754,7 +754,100 @@ if [ -n "$zero_levels" ]; then
   done
 fi
 
-# Cross-O summary of the most recent recorded run per opt_level.
+# Bug #279: delta-vs-previous-run summary table.
+# For each opt_level that THIS bench touched, fetch counts for the
+# most-recent run (= this bench's tally) AND the immediately-prior run,
+# then show absolute counts + parenthesised deltas. Emits REGRESSION
+# WARN when any |d_ok| >= 5 or d_fail > 0 — surfaces silent regressions
+# that the absolute-only summary masks (e.g. today's Og-fp 89→0).
+# Quote each level for embedding into a SQL IN(...) clause.
+this_run_levels=""
+for lvl in "${LEVEL_LIST[@]}"; do
+  this_run_levels="${this_run_levels:+$this_run_levels,}'$lvl'"
+done
+sqlite3 -separator $'\t' "$DB" <<SQL > /tmp/bench-parallel-delta.tsv 2>/dev/null
+WITH ranked AS (
+  SELECT opt_level, run_id,
+         ROW_NUMBER() OVER (PARTITION BY opt_level ORDER BY run_id DESC) AS rn
+    FROM runs
+   WHERE opt_level IN ($this_run_levels)
+),
+curr_r AS (SELECT opt_level, run_id FROM ranked WHERE rn = 1),
+prev_r AS (SELECT opt_level, run_id FROM ranked WHERE rn = 2),
+agg AS (
+  SELECT run_id,
+         SUM(status='OK')           AS ok,
+         SUM(status='EXPECTEDFAIL') AS xfail,
+         SUM(status='SKIP')         AS skip,
+         SUM(status='FAIL')         AS fail,
+         SUM(status='TIMEOUT')      AS tout,
+         SUM(status='BUILDFAIL')    AS bfail,
+         COUNT(*)                   AS total,
+         COALESCE(SUM(cycles), 0)   AS cyc
+    FROM results
+   GROUP BY run_id
+)
+SELECT curr_r.opt_level,
+       cc.ok,    (cc.ok    - COALESCE(pc.ok,    cc.ok)),
+       cc.xfail, (cc.xfail - COALESCE(pc.xfail, cc.xfail)),
+       cc.skip,  (cc.skip  - COALESCE(pc.skip,  cc.skip)),
+       cc.fail,  (cc.fail  - COALESCE(pc.fail,  cc.fail)),
+       cc.tout,  (cc.tout  - COALESCE(pc.tout,  cc.tout)),
+       cc.bfail, (cc.bfail - COALESCE(pc.bfail, cc.bfail)),
+       cc.total, (cc.total - COALESCE(pc.total, cc.total)),
+       cc.cyc,   (cc.cyc   - COALESCE(pc.cyc,   cc.cyc)),
+       CASE WHEN prev_r.run_id IS NULL THEN 'first' ELSE 'delta' END
+  FROM curr_r
+  JOIN agg cc ON cc.run_id = curr_r.run_id
+  LEFT JOIN prev_r ON prev_r.opt_level = curr_r.opt_level
+  LEFT JOIN agg pc ON pc.run_id = prev_r.run_id;
+SQL
+
+# Format per-level lines, accumulating a REGRESSION WARN flag.
+awk -F'\t' '
+function dpart(n,    s) {
+  if (n == 0)           return "";
+  if (n > 0)            return "(+" n ")";
+                        return "(" n ")";   # already has minus
+}
+function metric(name, val, d) {
+  if (val == 0 && d == 0) return "";   # uninteresting
+  if (d == 0)             return sprintf("%s=%d", name, val);
+                          return sprintf("%s=%d %s", name, val, dpart(d));
+}
+{
+  lvl=$1; ok=$2; d_ok=$3; xf=$4; d_xf=$5; sk=$6; d_sk=$7;
+  fl=$8; d_fl=$9; to=$10; d_to=$11; bf=$12; d_bf=$13;
+  tot=$14; d_tot=$15; cyc=$16; d_cyc=$17; tag=$18;
+
+  parts="";
+  for (i in arr) delete arr[i];
+  arr[1]=metric("OK",    ok, d_ok);
+  arr[2]=metric("XFAIL", xf, d_xf);
+  arr[3]=metric("SKIP",  sk, d_sk);
+  arr[4]=metric("FAIL",  fl, d_fl);
+  arr[5]=metric("TOUT",  to, d_to);
+  arr[6]=metric("BFAIL", bf, d_bf);
+  for (i=1; i<=6; i++) if (arr[i] != "") parts = parts (parts != "" ? "  " : "") arr[i];
+  printf("  [%-23s] %s  TOTAL=%d%s\n", lvl, parts, tot,
+         (d_tot != 0 ? "  " dpart(d_tot) : ""));
+  if (tag == "delta") {
+    if (d_ok <= -5 || d_ok >= 5 || d_fl > 0) regress[lvl] = sprintf("d_ok=%d d_fail=%d", d_ok, d_fl);
+  }
+}
+END {
+  if (length(regress) > 0) {
+    print "==[ REGRESSION WARN: levels with |d_ok|>=5 or new FAILs ]==";
+    for (l in regress) print "  " l ": " regress[l];
+  } else if (NR > 0) {
+    print "==[ no regression vs previous run ]==";
+  }
+}
+' /tmp/bench-parallel-delta.tsv | tee -a "$LOG"
+rm -f /tmp/bench-parallel-delta.tsv
+
+# Cross-O wide table at the end for at-a-glance comparison
+# (covers ALL 28 levels, not just the 9 plain ones).
 sqlite3 "$DB" <<SQL | tee -a "$LOG"
 .headers on
 .mode column
@@ -767,15 +860,12 @@ SELECT opt_level,
        SUM(CASE WHEN status='BUILDFAIL'    THEN 1 ELSE 0 END) AS bfail,
        SUM(cycles)                                            AS total_cycles
   FROM results
- WHERE opt_level IN ('O0','O1','O2','O3','Os','Og','Oz','Ofast','Os-lto')
+ WHERE opt_level IN ($this_run_levels)
    AND run_id IN (
      SELECT MAX(run_id) FROM runs
-      WHERE opt_level IS NOT NULL
+      WHERE opt_level IN ($this_run_levels)
       GROUP BY opt_level
    )
  GROUP BY opt_level
- ORDER BY CASE opt_level
-            WHEN 'O0' THEN 1 WHEN 'O1' THEN 2 WHEN 'O2' THEN 3
-            WHEN 'O3' THEN 4 WHEN 'Og' THEN 5 WHEN 'Os' THEN 6
-            WHEN 'Oz' THEN 7 WHEN 'Ofast' THEN 8 WHEN 'Os-lto' THEN 9 END;
+ ORDER BY opt_level;
 SQL

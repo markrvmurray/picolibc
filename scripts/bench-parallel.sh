@@ -353,7 +353,14 @@ _build_wave() {
   # silent libc.a-link failure is no longer indistinguishable from a
   # clean build. (bug #157)
   local failed_n bin_n verifier_n
-  failed_n=$(grep -c '^FAILED: ' "$wl" 2>/dev/null || echo 0)
+  # Bug #277: scope FAILED/VERIFY greps to the most recent build wave.
+  # The preflight scrub at the top of the driver truncates $wl, so this
+  # belt-and-braces step protects against external appenders (a manual
+  # ninja run, a CI tool, anything that adds to the log between waves).
+  # Print only lines from the most recent `==[ ... build start ]==` to
+  # the end; counts then reflect only THIS wave's output.
+  failed_n=$(awk '/^==\[ .* build start \]==/ {buf=""} {buf=buf $0 "\n"} END {printf "%s", buf}' "$wl" 2>/dev/null \
+             | grep -c '^FAILED: ' || echo 0)
   # Count picolibc test binaries (bug #170): they live under $bd/test,
   # have no `.elf` extension, and are owner-executable. The previous
   # `find -name '*.elf'` returned 0 unconditionally because picolibc
@@ -366,7 +373,9 @@ _build_wave() {
   # (enabled at Og variants in level_opts above). Zero for non-Og levels
   # because the flag isn't on. Any non-zero count surfaces in the
   # per-level summary as a VERIFY=N column + WARN line.
-  verifier_n=$(grep -c '\*\*\* Bad machine code:' "$wl" 2>/dev/null || echo 0)
+  # Bug #277: scoped to the most recent build wave (see failed_n above).
+  verifier_n=$(awk '/^==\[ .* build start \]==/ {buf=""} {buf=buf $0 "\n"} END {printf "%s", buf}' "$wl" 2>/dev/null \
+               | grep -c '\*\*\* Bad machine code:' || echo 0)
   printf '%s\t%s\t%s\t%s\n' "$rc" "$failed_n" "$bin_n" "$verifier_n" > "/tmp/bench-parallel-$label.rc"
 }
 
@@ -604,6 +613,23 @@ dispatch() {
 }
 
 if [ $skip_build -eq 0 ]; then
+  # Bug #277: scrub stale per-level state before launching the waves.
+  # The per-level build logs are `>>`-appended by _setup_wave /
+  # _clean_stale_c_o / _build_wave; without truncation, the FAILED=
+  # and VERIFY= counters in the build-summary block accumulate hits
+  # from every past invocation of that level. False WARN tags result,
+  # masking real regressions. Also remove any .rc sidecar from a
+  # past run so a level that fails to even reach _build_wave (e.g.
+  # unknown_level or meson setup failure) is visibly NO-SIDECAR
+  # rather than inheriting yesterday's tag. The lit-tally log is in
+  # the same boat.
+  echo "==[ $(ts) preflight scrub stale state ]==" | tee -a "$LOG"
+  for lvl in "${LEVEL_LIST[@]}"; do
+    : > "$(wave_log "$lvl")"   2>/dev/null || true
+    rm -f "/tmp/bench-parallel-$lvl.rc"
+  done
+  : > /tmp/bench-parallel-lit.log 2>/dev/null || true
+
   echo "==[ $(ts) setup waves ($build_jobs-way) ]==" | tee -a "$LOG"
   dispatch "$build_jobs" _setup_wave "${LEVEL_LIST[@]}"
 

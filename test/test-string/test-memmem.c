@@ -43,14 +43,18 @@
 #define HAY_MAX    256
 #define NEEDLE_MAX 16
 #elif defined(__MC6809__)
-/* MC6809 (USim ~30 Mcyc/s, MAME slower still) wall-times past the
- * 30 min PICOLIBC_TIMEOUT cap at stock 2048/256/LOOPS=10. Trim the
- * haystack to a realistic 1 KB and the needle to 64 B; both still
- * substantially exceed cache-line and typical short-string sizes.
+/* MC6809 (USim ~30 Mcyc/s, MAME ~19 Mcyc/s emulating HD6309 at
+ * 1800 sim-sec cap) wall-times past the 30 min PICOLIBC_TIMEOUT cap
+ * at stock 2048/256/LOOPS=10 and still hits MAME's cap at the
+ * 1024/64/LOOPS=6 first-pass trim. Measured: HAY_MAX=1024 reaches
+ * only 2 of 4 outer iterations in 1800 sim sec on Og-hd6309-mame.
+ *
+ * Final sizing: 512 B haystack × 32 B needle is still substantially
+ * larger than MSP430 (256/16) and exceeds typical short-string usage.
  * Alignment coverage (sizeof(long)==4 → 4×4 = 16 align combos) is
  * preserved unchanged. */
-#define HAY_MAX    1024
-#define NEEDLE_MAX 64
+#define HAY_MAX    512
+#define NEEDLE_MAX 32
 #else
 #define HAY_MAX    2048
 #define NEEDLE_MAX 256
@@ -125,10 +129,11 @@ rand_elt(size_t max)
 /* MSP430 emulator is rather slow */
 #define LOOPS 4
 #elif defined(__MC6809__)
-/* MC6809 USim/MAME budget: 6³ = 216 randomised combinations per
- * (hay_align, needle_align) pair × 16 align pairs = 3456 memmem
- * pairs. Stock LOOPS=10 ⇒ 16000 pairs — 4.6× too many for the cap. */
-#define LOOPS 6
+/* MC6809 USim/MAME budget (matches MSP430 — LOOPS=4 is what fits
+ * MAME's 1800 sim-sec cap with comfortable margin): 4³ = 64
+ * randomised combinations per (hay_align, needle_align) pair × 16
+ * align pairs = 1024 memmem pairs. */
+#define LOOPS 4
 #else
 #define LOOPS 10
 #endif

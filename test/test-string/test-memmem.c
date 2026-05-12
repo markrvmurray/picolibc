@@ -42,6 +42,15 @@
 #ifdef __MSP430__
 #define HAY_MAX    256
 #define NEEDLE_MAX 16
+#elif defined(__MC6809__)
+/* MC6809 (USim ~30 Mcyc/s, MAME slower still) wall-times past the
+ * 30 min PICOLIBC_TIMEOUT cap at stock 2048/256/LOOPS=10. Trim the
+ * haystack to a realistic 1 KB and the needle to 64 B; both still
+ * substantially exceed cache-line and typical short-string sizes.
+ * Alignment coverage (sizeof(long)==4 → 4×4 = 16 align combos) is
+ * preserved unchanged. */
+#define HAY_MAX    1024
+#define NEEDLE_MAX 64
 #else
 #define HAY_MAX    2048
 #define NEEDLE_MAX 256
@@ -115,6 +124,11 @@ rand_elt(size_t max)
 #ifdef __MSP430__
 /* MSP430 emulator is rather slow */
 #define LOOPS 4
+#elif defined(__MC6809__)
+/* MC6809 USim/MAME budget: 6³ = 216 randomised combinations per
+ * (hay_align, needle_align) pair × 16 align pairs = 3456 memmem
+ * pairs. Stock LOOPS=10 ⇒ 16000 pairs — 4.6× too many for the cap. */
+#define LOOPS 6
 #else
 #define LOOPS 10
 #endif

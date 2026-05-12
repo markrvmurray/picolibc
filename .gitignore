@@ -45,3 +45,7 @@ lost+found
 # ignore meson build directories
 
 build-*/
+
+# local toolchain configs / snapshots (not tracked)
+cfg/
+snap/

@@ -354,12 +354,14 @@ _build_wave() {
   # clean build. (bug #157)
   local failed_n bin_n verifier_n
   # Bug #277: scope FAILED/VERIFY greps to the most recent build wave.
-  # The preflight scrub at the top of the driver truncates $wl, so this
-  # belt-and-braces step protects against external appenders (a manual
-  # ninja run, a CI tool, anything that adds to the log between waves).
-  # Print only lines from the most recent `==[ ... build start ]==` to
-  # the end; counts then reflect only THIS wave's output.
-  failed_n=$(awk '/^==\[ .* build start \]==/ {buf=""} {buf=buf $0 "\n"} END {printf "%s", buf}' "$wl" 2>/dev/null \
+  # The preflight scrub at the top of the driver truncates $wl, so the
+  # only way old content reaches the log is via external appenders
+  # between scrub and wave. The scoping below sets a print-from-here
+  # flag at the most recent `==[ ... build start ]==` marker and pipes
+  # only post-marker lines into grep. Streaming form (not an
+  # accumulating buffer) so it's O(n) — earlier O(n^2) version stalled
+  # on multi-hundred-MB logs.
+  failed_n=$(awk '/^==\[ .* build start \]==/ {seen=1; next} seen' "$wl" 2>/dev/null \
              | grep -c '^FAILED: ' || echo 0)
   # Count picolibc test binaries (bug #170): they live under $bd/test,
   # have no `.elf` extension, and are owner-executable. The previous
@@ -374,7 +376,7 @@ _build_wave() {
   # because the flag isn't on. Any non-zero count surfaces in the
   # per-level summary as a VERIFY=N column + WARN line.
   # Bug #277: scoped to the most recent build wave (see failed_n above).
-  verifier_n=$(awk '/^==\[ .* build start \]==/ {buf=""} {buf=buf $0 "\n"} END {printf "%s", buf}' "$wl" 2>/dev/null \
+  verifier_n=$(awk '/^==\[ .* build start \]==/ {seen=1; next} seen' "$wl" 2>/dev/null \
                | grep -c '\*\*\* Bad machine code:' || echo 0)
   printf '%s\t%s\t%s\t%s\n' "$rc" "$failed_n" "$bin_n" "$verifier_n" > "/tmp/bench-parallel-$label.rc"
 }

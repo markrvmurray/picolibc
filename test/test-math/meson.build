@@ -155,6 +155,18 @@ test_args = {}
 test_skip_native = [
 ]
 
+# Memory-constrained-target knob (option `tests-math-tiny`): when
+# enabled, each test-*.h vector header gates its near-zero
+# identity-return and beyond-saturation cases behind
+# PICOLIBC_TINY_TEST, keeping only the algorithm-exercising middle
+# band.  Buys back ~hundreds of bytes of .rodata per math test
+# binary — enough to land Os-fp / Os-hd6309 test-math ELFs inside
+# MC6809's 16-bit address space.
+tiny_test_c_args = []
+if get_option('tests-math-tiny')
+  tiny_test_c_args = ['-DPICOLIBC_TINY_TEST']
+endif
+
 foreach params : targets
   target = params['name']
   target_dir = params['dir']
@@ -179,7 +191,7 @@ foreach params : targets
     _objs = []
   endif
 
-  _c_args = target_c_args + get_variable('test_c_args' + target, test_c_args)
+  _c_args = target_c_args + get_variable('test_c_args' + target, test_c_args) + tiny_test_c_args
   _link_args = target_c_args + _lib_files + get_variable('test_link_args' + target, test_link_args)
   _link_depends = get_variable('test_link_depends' + target, test_link_depends) + _libs
   foreach t1 : tests

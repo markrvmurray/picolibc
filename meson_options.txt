@@ -113,6 +113,8 @@ option('native-math-tests', type: 'boolean', value: true,
        description: 'Run math tests against native libm when native-tests is enabled')
 option('exhaustive-math-tests', type: 'combo', choices: ['true', 'false', 'native'], value: 'false',
        description: 'Run exhaustive binary32 math tests. If set to native, enable when native tests are enabled')
+option('tests-math-tiny', type: 'boolean', value: false,
+       description: 'Shrink math test vector tables to fit memory-constrained targets (MC6809-class, ~16 KB flash). When enabled, defines PICOLIBC_TINY_TEST in test-math compile flags so each test-*.h vector header drops near-zero identity-return and beyond-saturation cases while keeping the algorithm-exercising middle band. Reduces test-math .rodata size by ~10–50% per file at the cost of edge-case coverage.')
 option('use-stdlib', type: 'boolean', value: false,
        description: 'Do not bypass the standard system library with -nostdlib (useful for native testing)')
 option('semihost', type: 'boolean', value: true,

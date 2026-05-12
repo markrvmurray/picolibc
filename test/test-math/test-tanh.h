@@ -1,4 +1,9 @@
 { .x = REAL(FN32(0x1.f72258p-7), FN64(0x1.f72258p-7), FN80(0x1.f72258p-7), FN80M(0x1.f72258p-7), FN128(0x1.f72258p-7)), .y = REAL(FN32(0x1.f71838p-7), FN64(0x1.f71838fd304a2p-7), FN80(0x1.f71838fd304a2p-7), FN80M(0x1.f71838fd304a2p-7), FN128(0x1.f71838fd304a2000302e05da62ep-7)) },
+#ifndef PICOLIBC_TINY_TEST
+/* Near-zero identity-return band: |x| < 2^-55, tanh(x) ~ x via early
+ * return.  Gated for `tests-math-tiny` so the table fits the
+ * memory-constrained MC6809 family.  Line 1 above is retained as a
+ * single near-zero representative. */
 { .x = REAL(FN32(0x1.b38fb8p-127), FN64(0x1.b38fb9daa78e4p-127), FN80(0x1.b38fb9daa78e44acp-127), FN80M(0x1.b38fb9daa78e44acp-127), FN128(0x1.b38fb9daa78e44ab2dcf7a6b1921p-127)), .y = REAL(FN32(0x1.b38fb8p-127), FN64(0x1.b38fb9daa78e4p-127), FN80(0x1.b38fb9daa78e44acp-127), FN80M(0x1.b38fb9daa78e44acp-127), FN128(0x1.b38fb9daa78e44ab2dcf7a6b1921p-127)) },
 { .x = REAL(FN32(-0x1.b38fb8p-127), FN64(-0x1.b38fb9daa78e4p-127), FN80(-0x1.b38fb9daa78e44acp-127), FN80M(-0x1.b38fb9daa78e44acp-127), FN128(-0x1.b38fb9daa78e44ab2dcf7a6b1921p-127)), .y = REAL(FN32(-0x1.b38fb8p-127), FN64(-0x1.b38fb9daa78e4p-127), FN80(-0x1.b38fb9daa78e44acp-127), FN80M(-0x1.b38fb9daa78e44acp-127), FN128(-0x1.b38fb9daa78e44ab2dcf7a6b1921p-127)) },
 { .x = REAL(FN32(0x1.2b72dp-123), FN64(0x1.2b72cfc65331dp-123), FN80(0x1.2b72cfc65331cf36p-123), FN80M(0x1.2b72cfc65331cf36p-123), FN128(0x1.2b72cfc65331cf35af7ea429a146p-123)), .y = REAL(FN32(0x1.2b72dp-123), FN64(0x1.2b72cfc65331dp-123), FN80(0x1.2b72cfc65331cf36p-123), FN80M(0x1.2b72cfc65331cf36p-123), FN128(0x1.2b72cfc65331cf35af7ea429a146p-123)) },
@@ -41,6 +46,7 @@
 { .x = REAL(FN32(-0x1.690502p-61), FN64(-0x1.6905012296e7dp-61), FN80(-0x1.6905012296e7c9f4p-61), FN80M(-0x1.6905012296e7c9f4p-61), FN128(-0x1.6905012296e7c9f35f80c8f0411p-61)), .y = REAL(FN32(-0x1.690502p-61), FN64(-0x1.6905012296e7dp-61), FN80(-0x1.6905012296e7c9f4p-61), FN80M(-0x1.6905012296e7c9f4p-61), FN128(-0x1.6905012296e7c9f35f80c8f0411p-61)) },
 { .x = REAL(FN32(0x1.f066e2p-58), FN64(0x1.f066e18f8f7ebp-58), FN80(0x1.f066e18f8f7eb5aep-58), FN80M(0x1.f066e18f8f7eb5aep-58), FN128(0x1.f066e18f8f7eb5aea351144a5976p-58)), .y = REAL(FN32(0x1.f066e2p-58), FN64(0x1.f066e18f8f7ebp-58), FN80(0x1.f066e18f8f7eb5aep-58), FN80M(0x1.f066e18f8f7eb5aep-58), FN128(0x1.f066e18f8f7eb5aea351144a5976p-58)) },
 { .x = REAL(FN32(-0x1.f066e2p-58), FN64(-0x1.f066e18f8f7ebp-58), FN80(-0x1.f066e18f8f7eb5aep-58), FN80M(-0x1.f066e18f8f7eb5aep-58), FN128(-0x1.f066e18f8f7eb5aea351144a5976p-58)), .y = REAL(FN32(-0x1.f066e2p-58), FN64(-0x1.f066e18f8f7ebp-58), FN80(-0x1.f066e18f8f7eb5aep-58), FN80M(-0x1.f066e18f8f7eb5aep-58), FN128(-0x1.f066e18f8f7eb5aea351144a5976p-58)) },
+#endif /* !PICOLIBC_TINY_TEST */
 { .x = REAL(FN32(0x1.5546bcp-54), FN64(0x1.5546bb12b2a72p-54), FN80(0x1.5546bb12b2a71ce8p-54), FN80M(0x1.5546bb12b2a71ce8p-54), FN128(0x1.5546bb12b2a71ce81047bdf31d81p-54)), .y = REAL(FN32(0x1.5546bcp-54), FN64(0x1.5546bb12b2a72p-54), FN80(0x1.5546bb12b2a71ce8p-54), FN80M(0x1.5546bb12b2a71ce8p-54), FN128(0x1.5546bb12b2a71ce81047bdf31d74p-54)) },
 { .x = REAL(FN32(-0x1.5546bcp-54), FN64(-0x1.5546bb12b2a72p-54), FN80(-0x1.5546bb12b2a71ce8p-54), FN80M(-0x1.5546bb12b2a71ce8p-54), FN128(-0x1.5546bb12b2a71ce81047bdf31d81p-54)), .y = REAL(FN32(-0x1.5546bcp-54), FN64(-0x1.5546bb12b2a72p-54), FN80(-0x1.5546bb12b2a71ce8p-54), FN80M(-0x1.5546bb12b2a71ce8p-54), FN128(-0x1.5546bb12b2a71ce81047bdf31d74p-54)) },
 { .x = REAL(FN32(0x1.d54142p-51), FN64(0x1.d5414139b5a5cp-51), FN80(0x1.d5414139b5a5c7cp-51), FN80M(0x1.d5414139b5a5c7cp-51), FN128(0x1.d5414139b5a5c7bf1662a52e4891p-51)), .y = REAL(FN32(0x1.d54142p-51), FN64(0x1.d5414139b5a5cp-51), FN80(0x1.d5414139b5a5c7cp-51), FN80M(0x1.d5414139b5a5c7cp-51), FN128(0x1.d5414139b5a5c7bf1662a52e405bp-51)) },
@@ -87,6 +93,10 @@
 { .x = REAL(FN32(-0x1.0b66ap19), FN64(-0x1.0b669fc189113p19), FN80(-0x1.0b669fc189112feep19), FN80M(-0x1.0b669fc189112feep19), FN128(-0x1.0b669fc189112fed23844bf35061p19)), .y = REAL(FN32(-0x1p0), FN64(-0x1p0), FN80(-0x1p0), FN80M(-0x1p0), FN128(-0x1p0)) },
 { .x = REAL(FN32(0x1.6fad1cp22), FN64(0x1.6fad1baa1c77ap22), FN80(0x1.6fad1baa1c77a1e6p22), FN80M(0x1.6fad1baa1c77a1e6p22), FN128(0x1.6fad1baa1c77a1e610d5e86e8e86p22)), .y = REAL(FN32(0x1p0), FN64(0x1p0), FN80(0x1p0), FN80M(0x1p0), FN128(0x1p0)) },
 { .x = REAL(FN32(-0x1.6fad1cp22), FN64(-0x1.6fad1baa1c77ap22), FN80(-0x1.6fad1baa1c77a1e6p22), FN80M(-0x1.6fad1baa1c77a1e6p22), FN128(-0x1.6fad1baa1c77a1e610d5e86e8e86p22)), .y = REAL(FN32(-0x1p0), FN64(-0x1p0), FN80(-0x1p0), FN80M(-0x1p0), FN128(-0x1p0)) },
+#ifndef PICOLIBC_TINY_TEST
+/* Saturation tail: |x| > 22, tanh(x) ~ +/-1 via early return.  Gated
+ * for `tests-math-tiny`.  The ±2^22 pair above is retained as a
+ * single saturation representative. */
 { .x = REAL(FN32(0x1.f98e06p25), FN64(0x1.f98e0609e7248p25), FN80(0x1.f98e0609e7247e9cp25), FN80M(0x1.f98e0609e7247e9cp25), FN128(0x1.f98e0609e7247e9c57261f9803f8p25)), .y = REAL(FN32(0x1p0), FN64(0x1p0), FN80(0x1p0), FN80M(0x1p0), FN128(0x1p0)) },
 { .x = REAL(FN32(-0x1.f98e06p25), FN64(-0x1.f98e0609e7248p25), FN80(-0x1.f98e0609e7247e9cp25), FN80M(-0x1.f98e0609e7247e9cp25), FN128(-0x1.f98e0609e7247e9c57261f9803f8p25)), .y = REAL(FN32(-0x1p0), FN64(-0x1p0), FN80(-0x1p0), FN80M(-0x1p0), FN128(-0x1p0)) },
 { .x = REAL(FN32(0x1.5b91a4p29), FN64(0x1.5b91a426cee91p29), FN80(0x1.5b91a426cee9170cp29), FN80M(0x1.5b91a426cee9170cp29), FN128(0x1.5b91a426cee9170b7bea35b882bbp29)), .y = REAL(FN32(0x1p0), FN64(0x1p0), FN80(0x1p0), FN80M(0x1p0), FN128(0x1p0)) },
@@ -145,6 +155,7 @@
 { .x = REAL(FN32(-0x1.4e9e92p119), FN64(-0x1.4e9e9192b7f3p119), FN80(-0x1.4e9e9192b7f2fbe4p119), FN80M(-0x1.4e9e9192b7f2fbe4p119), FN128(-0x1.4e9e9192b7f2fbe425d77260432dp119)), .y = REAL(FN32(-0x1p0), FN64(-0x1p0), FN80(-0x1p0), FN80M(-0x1p0), FN128(-0x1p0)) },
 { .x = REAL(FN32(0x1.cc1a08p122), FN64(0x1.cc1a0829bcee2p122), FN80(0x1.cc1a0829bcee1a5ap122), FN80M(0x1.cc1a0829bcee1a5ap122), FN128(0x1.cc1a0829bcee1a59b4083d445c5ep122)), .y = REAL(FN32(0x1p0), FN64(0x1p0), FN80(0x1p0), FN80M(0x1p0), FN128(0x1p0)) },
 { .x = REAL(FN32(-0x1.cc1a08p122), FN64(-0x1.cc1a0829bcee2p122), FN80(-0x1.cc1a0829bcee1a5ap122), FN80M(-0x1.cc1a0829bcee1a5ap122), FN128(-0x1.cc1a0829bcee1a59b4083d445c5ep122)), .y = REAL(FN32(-0x1p0), FN64(-0x1p0), FN80(-0x1p0), FN80M(-0x1p0), FN128(-0x1p0)) },
+#endif /* !PICOLIBC_TINY_TEST */
 /*
  * SPDX-License-Identifier: BSD-3-Clause
  *

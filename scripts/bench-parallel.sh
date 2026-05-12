@@ -513,6 +513,8 @@ skip_build=0
 skip_tally=0
 no_preflight=0
 tests_filter=""
+verify_fail=1   # Bug #269: VERIFY>0 at any level fails the bench by default.
+                #          --no-verify-fail keeps the old WARN-only behavior.
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -524,6 +526,7 @@ while [ $# -gt 0 ]; do
     --skip-build)       skip_build=1; shift ;;
     --skip-tally)       skip_tally=1; shift ;;
     --no-preflight)     no_preflight=1; shift ;;
+    --no-verify-fail)   verify_fail=0; shift ;;
     --tests)            tests_filter="$2"; shift 2 ;;
     --simulator)        SIMULATOR="$2"; shift 2 ;;
     --simulator=*)      SIMULATOR="${1#--simulator=}"; shift ;;
@@ -663,6 +666,18 @@ if [ $skip_build -eq 0 ]; then
   if [ "$max_bin" -eq 0 ]; then
     echo "==[ $(ts) WARN: every level produced zero test binaries — libc.a likely failed to link ]==" | tee -a "$LOG"
   fi
+  # Bug #269 WARN→FAIL: track whether ANY level failed the verifier gate
+  # so the overall bench exit status reflects it. The build-summary tag
+  # itself is FAIL (red flag in the per-level line) when:
+  #  - max_bin == 0 (everything failed to build)
+  #  - bins less than half the best-performing level (partial build collapse)
+  #  - VERIFY > 0 AND --no-verify-fail not passed (MachineVerifier caught
+  #    a lies-about-Defs/Uses regression — Bug #247/#251/#266 class).
+  # When --no-verify-fail is passed, verifier hits demote to WARN
+  # (informational), and the bench still exits 0. Default is the strict
+  # gate.
+  bench_failed=0
+  failed_levels=""
   for lvl in "${LEVEL_LIST[@]}"; do
     rcfile="/tmp/bench-parallel-$lvl.rc"
     if [ ! -f "$rcfile" ]; then
@@ -670,26 +685,33 @@ if [ $skip_build -eq 0 ]; then
       continue
     fi
     read rc fn en vn < "$rcfile"
-    # WARN when this level produced zero binaries OR substantially fewer
-    # binaries than the best-performing level — both are strong signals
-    # that libc.a (or one of its objects) failed to link. The "less than
-    # half" threshold catches per-level partial failures; the max_bin==0
-    # arm catches the case where all levels failed identically (was the
-    # bug #170 false negative). Bug #269: any non-zero verifier-hit count
-    # at an Og-variant level is also WARN — the MachineVerifier is a
-    # gate against the Bug #247/#251/#266-class lies-about-Defs/Uses
-    # regressions; a non-zero count means a fresh regression slipped in.
     if [ "$max_bin" -eq 0 ]; then
-      tag="WARN"
+      tag="FAIL"
+      bench_failed=1
+      failed_levels="${failed_levels:+$failed_levels }$lvl(no-binaries)"
     elif [ "$en" -lt $(( max_bin / 2 )) ]; then
-      tag="WARN"
+      tag="FAIL"
+      bench_failed=1
+      failed_levels="${failed_levels:+$failed_levels }$lvl(partial-build)"
     elif [ "${vn:-0}" -gt 0 ] 2>/dev/null; then
-      tag="WARN"
+      if [ "$verify_fail" -eq 1 ]; then
+        tag="FAIL"
+        bench_failed=1
+        failed_levels="${failed_levels:+$failed_levels }$lvl(verify=${vn})"
+      else
+        tag="WARN"
+      fi
     else
       tag=" ok "
     fi
     echo "  $lvl: $tag rc=$rc FAILED=$fn bins=$en/$max_bin VERIFY=${vn:-0}" | tee -a "$LOG"
   done
+  if [ "$bench_failed" -eq 1 ]; then
+    echo "==[ $(ts) bench-parallel: BUILD GATE FAILED at: $failed_levels ]==" | tee -a "$LOG"
+    if [ "$verify_fail" -eq 1 ] && echo "$failed_levels" | grep -q 'verify='; then
+      echo "  (pass --no-verify-fail to demote verifier-hit FAILs to WARN)" | tee -a "$LOG"
+    fi
+  fi
 fi
 
 if [ $skip_tally -eq 0 ]; then
@@ -871,3 +893,15 @@ SELECT opt_level,
  GROUP BY opt_level
  ORDER BY opt_level;
 SQL
+
+# Bug #269 WARN→FAIL: surface the build-gate failure in the exit
+# status so CI / wrappers see the bench as failed. The tally results
+# are still recorded in the ledger (Bug #279's delta block surfaces
+# any test-level regression separately), but a non-zero verifier hit
+# count at any level — or a level that failed to build > 50% of its
+# test binaries — should not pass as a green bench. --no-verify-fail
+# demotes verifier hits to WARN only (build-collapse FAILs still gate).
+if [ "${bench_failed:-0}" -eq 1 ]; then
+  exit 1
+fi
+exit 0

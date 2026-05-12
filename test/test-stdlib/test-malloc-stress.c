@@ -40,8 +40,17 @@
 #include <stdio.h>
 #include <stdint.h>
 
+#ifdef __MC6809__
+/* MC6809 has a 16-bit address space (64 KB max). Stock 128 blocks ×
+ * up to 1 KB each = 128 KB peak working set — exceeds physical RAM
+ * and stresses heap to the point of timing out under MAME. Trim to
+ * 32 × 256 = 8 KB peak, well within typical 16-32 KB RAM. */
+#define NUM_MALLOC 32
+#define MAX_ALLOC  256
+#else
 #define NUM_MALLOC 128
 #define MAX_ALLOC  1024
+#endif
 
 static uint8_t *blocks[NUM_MALLOC];
 static size_t   block_size[NUM_MALLOC];
@@ -178,7 +187,15 @@ main(void)
 #ifdef __NANO_MALLOC
     start_info = mallinfo();
 #endif
+#ifdef __MC6809__
+    /* Halve the outer loop count to bring total wall below the 30 min
+     * PICOLIBC_TIMEOUT cap on HD6309-MAME. The inner stress shape
+     * (grow/random/realloc/memalign) is unchanged so per-loop coverage
+     * is preserved. */
+    for (loops = 0; loops < 5; loops++) {
+#else
     for (loops = 0; loops < 10; loops++) {
+#endif
         long   i;
         size_t in_use;
 

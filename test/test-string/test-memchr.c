@@ -40,7 +40,15 @@
 #include <inttypes.h>
 
 #define SEED    42
+#ifdef __MC6809__
+/* MC6809 (USim ~30 Mcyc/s, MAME slower still) walks past the 30 min
+ * PICOLIBC_TIMEOUT cap at stock 2048×32×32. 1 KB haystack with LOOPS=8
+ * (4×8×8=256 randomised passes) keeps full sizeof(long)==4 alignment
+ * coverage and four positive/negative memchr+memrchr calls per pass. */
+#define HAY_MAX 1024
+#else
 #define HAY_MAX 2048
+#endif
 
 static uint8_t hay[HAY_MAX];
 
@@ -113,6 +121,11 @@ rand_pos(size_t max)
 #ifdef __MSP430__
 /* MSP430 emulator is rather slow */
 #define LOOPS 4
+#elif defined(__MC6809__)
+/* See HAY_MAX comment: 8² = 64 inner-loop combos × 4 hay-align = 256
+ * memchr/memrchr triples (positive + damaged). Stock LOOPS=32 ⇒ 4096
+ * triples — 16× too many for the cap. */
+#define LOOPS 8
 #else
 #define LOOPS 32
 #endif

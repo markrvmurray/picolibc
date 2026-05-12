@@ -59,11 +59,27 @@
 #endif
 #else /* not defined LONG_TEST */
 #ifndef BUFF_SIZE
+/* MC6809 (USim ~30 Mcyc/s) walks past the 30 min PICOLIBC_TIMEOUT
+ * cap at stock BUFF_SIZE=1024 because each inner iteration fills both
+ * src[] and dest[] with BUFF_SIZE bytes. The strcmp scratch only uses
+ * the first ~80 bytes (MAX_OFFSET+MAX_BLOCK_SIZE+MAX_DIFF+MAX_LEN+
+ * MAX_ZEROS at the trimmed sizes below) so the rest of the fill is
+ * wasted; 128 covers the worst-case scratch with margin. */
+#ifdef __MC6809__
+#define BUFF_SIZE 128
+#else
 #define BUFF_SIZE 1024
+#endif
 #endif
 
 #ifndef MAX_BLOCK_SIZE
+/* Halve the outer n loop on MC6809 (32 instead of 64 ⇒ 2× fewer
+ * iterations across the entire 6-deep nest). */
+#ifdef __MC6809__
+#define MAX_BLOCK_SIZE 32
+#else
 #define MAX_BLOCK_SIZE 64
+#endif
 #endif
 
 #ifndef MAX_OFFSET

@@ -118,7 +118,17 @@ main(void)
     }
 
     /* Test another few random values */
+#ifdef __MC6809__
+/* MC6809 (USim ~30 Mcyc/s, MAME ~5-10 Mcyc/s) walks past the 30 min
+ * PICOLIBC_TIMEOUT cap at stock N=100000 because each iteration runs
+ * three ffs variants (incl. ffsll on 64-bit) plus three slow_ffs[ll]
+ * reference loops that each do up to 64 iterations of 64-bit shifts.
+ * 10000 still gives substantial randomized coverage on top of the
+ * exhaustive bit-position pass above. */
+#define N 10000
+#else
 #define N 100000
+#endif
     for (int32_t i = 0; i < N; i++) {
         long long int xll = rand_long_long();
         long          xl = (long)xll;

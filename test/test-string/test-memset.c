@@ -126,8 +126,18 @@ randrange(size_t max)
 
 #define MAX_BUF 1024
 
+#ifdef __MC6809__
+/* MC6809 (USim ~30 Mcyc/s, MAME slower still) walks past the 30 min
+ * PICOLIBC_TIMEOUT cap at stock 64×64=4096 (start, end) pairs because
+ * each pair runs a memset + bzero followed by two full 1 KB scans for
+ * the CRC verifier. 20×20=400 pairs (~10× fewer) keeps a wide spread
+ * of randomised buffer regions and full coverage of the verifier. */
+#define NEND    20
+#define NSTART  20
+#else
 #define NEND    64
 #define NSTART  64
+#endif
 
 static char buf[MAX_BUF];
 

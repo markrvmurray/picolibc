@@ -39,17 +39,7 @@ memccpy(void * __restrict dst0, const void * __restrict src0, int endchar0, size
 {
 
 #if defined(__PREFER_SIZE_OVER_SPEED) || defined(__OPTIMIZE_SIZE__) \
-    || defined(_PICOLIBC_NO_OUT_OF_BOUNDS_READS) \
-    || defined(__mc6809__)
-    /* __mc6809__ guard (Bug #239): the word-loop path below holds 4+
-     * simultaneously-live unsigned long values (mask, buffer, *aligned_src,
-     * the XOR result, plus aligned_dst/aligned_src pointers).  HD6309's
-     * ACC32 class only has 5 slots (AQ + SPILL_Q0..3); regalloc runs out.
-     * Force the byte-loop path on MC6809/HD6309 — same approach picolibc
-     * already takes for sized-or-safety-constrained targets via
-     * __OPTIMIZE_SIZE__ / _PICOLIBC_NO_OUT_OF_BOUNDS_READS.  The cycle
-     * cost is small (no cache to amortise loop overhead against on this
-     * target) and the byte path is also safer (no out-of-bounds reads). */
+    || defined(_PICOLIBC_NO_OUT_OF_BOUNDS_READS)
     void *ptr = NULL;
     char *dst = (char *)dst0;
     char *src = (char *)src0;

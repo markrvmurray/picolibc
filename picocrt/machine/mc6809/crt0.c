@@ -149,3 +149,40 @@ _start(void)
     __asm__ volatile("lds #__stack");
     __asm__ volatile("lbra _cstart");
 }
+
+/*
+ * Bug #273: diagnostic SWI3 handler.
+ *
+ * The LLVM-MC6809 backend's Bug #186 v5 COPY_CC_PLACEHOLDER pseudo
+ * lowers to a `SWI3` instruction when AsmPrinter encounters a
+ * register-pair COPY shape it has no rule for. Without a defined
+ * SWI3 vector at $FFF2-$FFF3, the CPU loads PC from whatever the
+ * hex/cart happens to leave there (usually zero), jumps to garbage,
+ * and produces an indistinguishable "infinite loop / impossibly
+ * low cycle count" symptom in the bench tally. Bug #266 took
+ * multiple sessions to diagnose for exactly this reason — the
+ * SWI3 trap was firing in test-ffs but looked like a generic
+ * runtime crash.
+ *
+ * This handler writes a sentinel exit code (99) to the halt port
+ * ($FFD2), making the bench tally show FAIL rc=99 — instantly
+ * recognisable as a Bug #186 v5 placeholder hit, not a generic
+ * crash. The `run-mc6809` (USim) and `run-mc6809-mame` (MAME)
+ * wrappers inject the address of `__swi3_trap` at $FFF2-$FFF3
+ * (mirroring the existing reset-vector injection at $FFFE-$FFFF)
+ * when they find the symbol in the ELF via `llvm-nm`.
+ *
+ * The function is marked `__used` so crt0.o's whole-object link
+ * carry keeps it present in every executable, even when no caller
+ * references it directly.
+ */
+void __used
+__swi3_trap(void)
+{
+    __asm__ volatile (
+        "lda  #99\n"            /* sentinel: SWI3 placeholder hit */
+        "sta  0xFFD2\n"         /* halt port: bench reports FAIL rc=99 */
+        "1: bra 1b"             /* belt-and-braces if halt-port write missed */
+        : : : "a"
+    );
+}

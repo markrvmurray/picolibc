@@ -53,24 +53,36 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-# Append a reset vector at 0xFFFE pointing to _start.
-# picolibc's linker script doesn't emit MC6809 vectors, so the hex file
-# has nothing at 0xFFFE. USim reads [0xFFFE:0xFFFF] as the initial PC.
-start_addr=$($NM "$elf" 2>/dev/null | awk '$3=="_start" {print $1; exit}')
-if [ -n "$start_addr" ]; then
-  # Build a 2-byte record at 0xFFFE containing _start (big-endian on 6809)
-  hi=$(printf '%s' "$start_addr" | sed 's/.*\(....\)$/\1/' | cut -c1-2)
-  lo=$(printf '%s' "$start_addr" | sed 's/.*\(....\)$/\1/' | cut -c3-4)
-  # Intel HEX record: :LL AAAA TT DD CC  (len=02, addr=FFFE, type=00, data, checksum)
-  # checksum = two's complement of sum of all bytes
-  sum=$((0x02 + 0xFF + 0xFE + 0x00 + 0x$hi + 0x$lo))
+# Append vector records into the hex file at the documented vector
+# slots. picolibc's linker script doesn't emit a .vectors section, so
+# the hex file has nothing at $FFF0-$FFFF. We inject the vectors here
+# from symbols in the ELF.
+#
+# Slots handled:
+#   $FFFE-$FFFF  reset                   _start
+#   $FFF2-$FFF3  SWI3 (Bug #273)         __swi3_trap (picolibc crt0)
+#
+# Intel HEX record format: :LL AAAA TT DD CC
+#   LL = byte count (02), AAAA = address, TT = record type (00),
+#   DD = data bytes, CC = two's complement checksum.
+inject_vector() {
+  vec_addr=$1   # decimal address of the vector slot's high byte
+  sym=$2
+  addr=$($NM "$elf" 2>/dev/null | awk -v s="$sym" '$3==s {print $1; exit}')
+  [ -n "$addr" ] || return 0
+  hi=$(printf '%s' "$addr" | sed 's/.*\(....\)$/\1/' | cut -c1-2)
+  lo=$(printf '%s' "$addr" | sed 's/.*\(....\)$/\1/' | cut -c3-4)
+  ahi=$(printf '%02X' $(( (vec_addr >> 8) & 0xFF )))
+  alo=$(printf '%02X' $(( vec_addr & 0xFF )))
+  sum=$((0x02 + 0x$ahi + 0x$alo + 0x00 + 0x$hi + 0x$lo))
   cksum=$(printf '%02X' $(( (256 - (sum & 0xFF)) & 0xFF )))
-  # Insert before the EOF record (the last ":00000001FF" line)
-  awk -v rec=":02FFFE00$hi$lo$cksum" '
+  awk -v rec=":02${ahi}${alo}00$hi$lo$cksum" '
     /^:00000001FF/ { print rec; print; next }
     { print }
   ' "$hex" > "$hex.tmp" && mv "$hex.tmp" "$hex"
-fi
+}
+inject_vector 65534 _start        # $FFFE = reset vector
+inject_vector 65522 __swi3_trap   # $FFF2 = SWI3 vector (Bug #273)
 
 # Run simulator.
 # USIM_CYCLES=1 opts into canonical-cycle reporting; usim09batch then

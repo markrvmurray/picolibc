@@ -33,7 +33,12 @@
 #   --levels LIST        comma-sep subset (default: O0,O1,O2,O3,Og,Os,Oz,Ofast,Os-lto)
 #   --build-jobs N       parallel waves during build phase (default: 6)
 #   --test-jobs N        workers in the shared tally pool (default: 6)
-#   --slow               include SLOW_TESTS (test-memmem, ~25 min wall)
+#   --slow               (deprecated; no-op since Bug #288) — the
+#                        trimmed slow tests (Bug #248) now run by
+#                        default. ~7 min wall premium on a 35-min bench.
+#   --fast               opt OUT of the formerly-slow tests
+#                        (SLOW_TESTS at all levels + MAME_SLOW_TESTS
+#                        at MAME-backed levels). Saves ~7 min wall.
 #   --skip-build         reuse existing binaries (tally-only rerun)
 #   --skip-tally         build phase only
 #   --no-preflight       pass through to run-mc6809-tests --multi
@@ -508,7 +513,10 @@ O2-hd6309-mame-fp,Og-lto-hd6309-mame-fp,Os-hd6309-mame-fp,Os-lto-hd6309-mame-fp"
 levels="$DEFAULT_LEVELS"
 build_jobs=6
 test_jobs=6
-slow=0
+slow=1     # Bug #288: default flipped 2026-05-12. Inputs are post-Bug-#248,
+           # so test-memmem/test-memchr/strcmp-1/etc. run in seconds on USim
+           # and 60-375s under MAME. Parallel pool wall premium: ~7 min on
+           # a 35-min bench. Opt-out with --fast.
 skip_build=0
 skip_tally=0
 no_preflight=0
@@ -522,7 +530,8 @@ while [ $# -gt 0 ]; do
     --build-jobs)       build_jobs="$2"; shift 2 ;;
     --test-jobs)        test_jobs="$2"; shift 2 ;;
     --parallel-tallies) shift ;;  # accepted for backward-compat; tally is always one flat pool now
-    --slow)             slow=1; shift ;;
+    --slow)             slow=1; shift ;;  # Bug #288: now the default; kept for back-compat
+    --fast)             slow=0; shift ;;  # Bug #288: opt out of formerly-slow tests
     --skip-build)       skip_build=1; shift ;;
     --skip-tally)       skip_tally=1; shift ;;
     --no-preflight)     no_preflight=1; shift ;;

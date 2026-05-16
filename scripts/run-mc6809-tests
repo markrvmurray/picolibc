@@ -91,33 +91,40 @@ SLOW_CAPS = {
     "test-memmem": 80_000_000_000,
 }
 
-# Tests that are genuinely too slow for routine tallies (>10 min wall).
-# Skipped by default; included only with --slow. Keeps the default
-# tally fast without losing the ability to run them when needed.
+# Historically-slow tests, gated by --slow at all levels (USim + MAME).
+# Bug #288 (2026-05-12): --slow is now the default. After the Bug #248
+# input trim, test-memmem runs in ~10 s wall on USim and ~3-5 min under
+# MAME — comparable to other long-tail tests, not the ~25 min monster
+# it used to be. Set retained so --fast can still exclude it.
 SLOW_TESTS = {
     "test-memmem",
 }
 
-# Bug #204: under MAME (HD6309), these additional tests are genuinely
-# too slow for routine tallies — MAME's `-nothrottle` runs ~10x the
-# emulated CPU's real speed, which is ~15-18x slower than USim. Tests
-# that finish in seconds-to-minutes wall under USim run for tens of
-# minutes (and in test-memchr's case, ~27 minutes for all 4 inner
-# loop iterations) under MAME. Skipping them under MAME keeps the
-# bench tally tractable (~5 min total) without losing coverage —
-# they continue to run under USim where the budget IS practical.
+# Tests with long MAME wall times under HD6309 — gated by --slow at
+# MAME-backed levels only.
 #
-# Background: PICOLIBC_MAME_TIMEOUT=1800 (the canonical default; see
-# feedback_mame_timeout_1800.md) gives MAME 1800 simulated seconds.
-# At nothrottle that's ~180-225 s wall — enough for memcpy-1/memmove1
-# to pass, but NOT enough for the tests below. Empirically verified
-# 2026-05-02: even at PICOLIBC_MAME_TIMEOUT=4000 (sim-sec), test-memchr
-# was still in iteration 0 of 4. Increasing the cap into the practical-
-# wall-time range would multi-hour every bench, so skip is the right
-# move.
+# Pre-Bug-#248 (history): these tests ran 27+ min under MAME because
+# their inputs assumed a much faster simulator. After the Bug #248
+# input trim, they run in 60-375 s wall under MAME (parallel-poolable
+# in the bench harness's --test-jobs 16 dispatch). Under USim they
+# already ran in 5-10 s and were never on this list.
 #
-# Skipped under --simulator=mame only; --slow opts back in if you
-# really want to wait.
+# Bug #288 (2026-05-12): --slow is now the default. The comments below
+# document the historical reason for the carve-out; the carve-out
+# itself is retained so --fast can still drop them for tight iteration
+# loops where ~7 min wall savings matter.
+#
+# Last measured (run_id 1241-1248, 2026-05-12 PM bench):
+#   test-iconv     253 s @ Os-hd6309-mame
+#   test-memchr    216 s
+#   test-memset    284 s
+#   test-timegm    161 s
+#   strcmp-1       375 s   (longest single (level,test) in the bench)
+#   test-ffs       179 s
+#
+# PICOLIBC_MAME_TIMEOUT=1800 (sim-sec) ≈ 180-225 s wall under
+# -nothrottle on this host. All entries above land comfortably within
+# that budget.
 MAME_SLOW_TESTS = {
     "test-iconv",
     "test-memchr",
@@ -901,10 +908,21 @@ def main():
                          "result row (e.g. O0, O1, O2, O3, Os, Oz). Used to "
                          "distinguish multi-O sweeps within the same DB. "
                          "Defaults to $MC6809_OPT_LEVEL or NULL.")
-    ap.add_argument("--slow", action="store_true",
-                    help="include tests in SLOW_TESTS (e.g. test-memmem, "
-                         "~30 min wall). Off by default to keep routine "
-                         "tallies fast.")
+    # Bug #288: --slow is now the default; the trimmed inputs from
+    # Bug #248 make the formerly-slow tests run in seconds on USim
+    # and 60-375s under MAME (still parallel-poolable, ~7 min wall
+    # premium on a 35-min bench). Kept as a no-op for back-compat;
+    # use --fast to opt out.
+    ap.add_argument("--slow", action="store_true", default=True,
+                    help="include tests in SLOW_TESTS (e.g. test-memmem) "
+                         "and MAME_SLOW_TESTS at MAME-backed levels. "
+                         "ON by default since Bug #288 (2026-05-12). "
+                         "Use --fast to opt out.")
+    ap.add_argument("--fast", dest="slow", action="store_false",
+                    help="opt out of SLOW_TESTS / MAME_SLOW_TESTS; saves "
+                         "~7 min wall on a full 28-level bench. Useful "
+                         "for tight iteration loops; the targeted "
+                         "--tests SUBSTR filter is usually a better fit.")
     ap.add_argument("--include-fake-fs", action="store_true",
                     help="include tests in FAKE_FS_TESTS (the 13 stdio/stat "
                          "tests that need real-FS semihost — fopen, fread, "

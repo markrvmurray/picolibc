@@ -192,6 +192,15 @@ level_opts() {
     Os-hd6309) echo "-Doptimization=s -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
 
     # ---- HD6309 (MAME) ----
+    # Deliberate asymmetry: only the bench-worthy tier is wired up
+    # (Os/Os-lto/O2/Og and their `-fp` variants below).  The
+    # O0/O1/O3/Oz/Ofast-hd6309-mame combinations are intentionally NOT
+    # here — they add MAME wall time (1–2s per test for emulator
+    # startup × ~100 tests × 5 levels = ~15 min) for a tier that has
+    # never surfaced a unique regression vs. its USim sibling.  Add
+    # the case arm if a specific investigation needs it; passing one
+    # of these names today prints `unknown level <name>` and skips
+    # only that level's setup.
     Os-hd6309-mame)         echo "-Doptimization=s -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
     Os-lto-hd6309-mame)     echo "-Doptimization=s -Db_lto=true -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
     O2-hd6309-mame)         echo "-Doptimization=2 -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;

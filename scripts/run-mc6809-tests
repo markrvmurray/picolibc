@@ -174,11 +174,50 @@ FAKE_FS_TESTS = {
     "test-getdate",
 }
 
+# Tests that don't exercise picolibc's FP code paths AND don't even use
+# stdio. Their .text is identical in -fp and non-fp picolibc builds
+# (no math.h, no float/double, no printf/sprintf/scanf — so vfprintf's
+# FP-aware vs FP-stripped state machine doesn't matter either). Running
+# them at -fp tiers is pure duplication of the non-fp result.
+#
+# Skipping these from -fp tiers saves a handful of test-runs per bench
+# without losing any coverage of real bugs.
+#
+# Decision audit (2026-05-21, post-#304-bench):
+#   - 137 tests run in both O2 and O2-fp tiers
+#   - Most use printf/sprintf/scanf — even with integer-only formats
+#     they exercise different vfprintf code paths in -fp vs non-fp
+#     (FP-aware vfprintf has %f/%e/%g state machine branches that
+#     can have integer-arg-affecting bugs; Bug #311 was caught by
+#     test-memchr using integer printf but tripping the FP-aware
+#     vfprintf vararg path).  So we keep those at -fp.
+#   - Only 5 tests have neither FP source content NOR printf calls:
+#     they use puts/fputs at most, or no stdio at all.
+NON_FP_EXCLUSIVE_TESTS = {
+    "constructor-skip",       # tests static-constructor skip; no stdio
+    "size_max",               # asserts SIZE_MAX bit-width; no stdio
+    "test-hosted-exit",       # exits via _exit; only puts for status
+    "test-hosted-exit-fail",  # ditto, expected-fail variant
+    "test-wcsftime",          # wcsftime test; wide-char path bypasses
+                              # vfprintf's FP state machine entirely
+}
+
 # Default usim cap for tests not in SLOW_CAPS. Matches run-mc6809's
 # own fallback so behaviour is identical between single-test and
 # tally invocations. Override via USIM_TIMEOUT env if callers really
 # need a different baseline for all tests.
 DEFAULT_USIM_TIMEOUT = 2_000_000_000
+
+
+def _is_fp_level(lvl):
+    """True if `lvl` is a picolibc opt-level with FP-enabled stdio.
+    Matches `-fp` suffix or `-fp-` substring (e.g. `O2-fp`, `Os-fp`,
+    `Os-lto-hd6309-mame-fp`, `Og-lto-hd6309-mame-fp`).
+
+    Used to gate NON_FP_EXCLUSIVE_TESTS — tests whose behaviour is
+    identical between -fp and non-fp picolibc builds because they
+    don't touch FP code paths (no math.h / float / vfprintf)."""
+    return lvl.endswith("-fp") or "-fp-" in lvl
 
 
 def _compiler_binaries(builddir):
@@ -687,6 +726,13 @@ def run_multi(args):
         if not args.include_fake_fs:
             level_buildfail = [t for t in level_buildfail
                                if t["name"] not in FAKE_FS_TESTS]
+        # Skip NON_FP_EXCLUSIVE_TESTS at -fp tiers in the buildfail
+        # list too — same rationale as the runtime skip below: the
+        # test's behaviour is identical to its non-fp counterpart so
+        # we don't need a BUILDFAIL noise row at -fp.
+        if _is_fp_level(lvl):
+            level_buildfail = [t for t in level_buildfail
+                               if t["name"] not in NON_FP_EXCLUSIVE_TESTS]
         if args.tests:
             subs = [s for s in args.tests.split(",") if s]
             level_buildfail = [t for t in level_buildfail
@@ -716,6 +762,19 @@ def run_multi(args):
                 print(f"[{lvl}] skipping {t['name']} (FAKE_FS_TESTS; "
                       f"USim semihost has no real FS; pass "
                       f"--include-fake-fs to include)", flush=True)
+        # At -fp tiers, skip tests whose source has neither FP usage
+        # nor stdio format strings — their behaviour at -fp is identical
+        # to non-fp (no different code paths in vfprintf either, since
+        # they don't call vfprintf at all).  Saves a handful of test-
+        # runs per bench without losing coverage.
+        if _is_fp_level(lvl):
+            skipped = [t for t in tests if t["name"] in NON_FP_EXCLUSIVE_TESTS]
+            tests = [t for t in tests
+                     if t["name"] not in NON_FP_EXCLUSIVE_TESTS]
+            for t in skipped:
+                print(f"[{lvl}] skipping {t['name']} (NON_FP_EXCLUSIVE_TESTS; "
+                      f"no FP/stdio in source, identical to non-fp tier)",
+                      flush=True)
         if args.tests:
             subs = [s for s in args.tests.split(",") if s]
             before = len(tests)
@@ -978,6 +1037,8 @@ def main():
             items = [t for t in items if t["name"] not in MAME_SLOW_TESTS]
         if not args.include_fake_fs:
             items = [t for t in items if t["name"] not in FAKE_FS_TESTS]
+        if args.opt_level and _is_fp_level(args.opt_level):
+            items = [t for t in items if t["name"] not in NON_FP_EXCLUSIVE_TESTS]
         if args.tests:
             subs = [s for s in args.tests.split(",") if s]
             items = [t for t in items if any(s in t["name"] for s in subs)]
@@ -1002,6 +1063,14 @@ def main():
         for t in skipped:
             print(f"skipping {t['name']} (FAKE_FS_TESTS; USim semihost has "
                   f"no real FS; pass --include-fake-fs to include)",
+                  flush=True)
+    # At -fp tiers, skip NON_FP_EXCLUSIVE_TESTS (mirrors run_multi()).
+    if args.opt_level and _is_fp_level(args.opt_level):
+        skipped = [t for t in tests if t["name"] in NON_FP_EXCLUSIVE_TESTS]
+        tests = [t for t in tests if t["name"] not in NON_FP_EXCLUSIVE_TESTS]
+        for t in skipped:
+            print(f"skipping {t['name']} (NON_FP_EXCLUSIVE_TESTS; "
+                  f"no FP/stdio in source, identical to non-fp tier)",
                   flush=True)
     if args.tests:
         subs = [s for s in args.tests.split(",") if s]

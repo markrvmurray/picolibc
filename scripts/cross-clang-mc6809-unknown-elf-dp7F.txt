@@ -16,22 +16,29 @@ endian = 'big'
 skip_sanity_check = true
 # Memory layout (top-to-bottom; $0000 at the top, $FFFF at the
 # bottom). The emulated machine has no real flash — the whole
-# $0000-$FFCF range is one writable RAM, with USim's IO slab + vector
-# ROM at $FFD0-$FFFF. picolibc's template still requires two MEMORY
-# regions ('flash' and 'ram'), so we keep a 16-byte 'flash' stub at
-# $FFC0 (just above the IO slab) holding only the .init reset entry,
-# and let 'ram' cover everything else. picolibc_ld_data is patched
-# upstream in meson.build to put .text + .rodata + .data + .bss +
-# heap + stack ALL into ram, so the full 64-KB-minus-IO is available
-# to the program no matter the section mix.
-#   ram    $0100-$FFBF  (~63.7 KB) — text + rodata + data + bss + heap + stack
-#   flash  $FFC0-$FFCF  (16 bytes) — .init only (reset entry stub)
-#   IO     $FFD0-$FFEF              — USim ACIA + halt + tracectl
+# $0000-$FFC3 range is one writable RAM, with USim's IO slab at
+# $FFC4-$FFCC, free space $FFCD-$FFEF, and the vector ROM at
+# $FFF0-$FFFF.  picolibc's template still requires two MEMORY regions
+# ('flash' and 'ram'), so we keep a 'flash' stub at $FFCD holding
+# only the .init reset entry, and let 'ram' cover everything else.
+# picolibc_ld_data is patched upstream in meson.build to put .text +
+# .rodata + .data + .bss + heap + stack ALL into ram, so the full
+# 64-KB-minus-IO is available to the program no matter the section mix.
+#
+# Bug #330 (2026-05-23): IO slab moved from $FFD0-$FFD3 to $FFC4-$FFCC
+# (USim commit 78a1fa4 + MAME llvm6309 commit 8e12eec9328, both for
+# pico-thing alignment).  Old .init placement at $FFC0-$FFC7 overlapped
+# the new ACIA; updated layout puts .init AFTER the IO slab in the
+# free $FFCD-$FFEF window.
+#
+#   ram    $0100-$FFC3  (~63.7 KB) — text + rodata + data + bss + heap + stack
+#   IO     $FFC4-$FFCC  (9 bytes)  — USim ACIA + TraceCtl + HaltDevice
+#   flash  $FFCD-$FFEF  (35 bytes) — .init only (reset entry stub)
 #   vrom   $FFF0-$FFFF              — vector ROM
-default_flash_addr = '0xFFC0'
-default_flash_size = '0x0010'
+default_flash_addr = '0xFFCD'
+default_flash_size = '0x0023'
 default_ram_addr   = '0x0100'
-default_ram_size   = '0xFEC0'
+default_ram_size   = '0xFEC4'
 
 # Bug #192: direct-page support. The compiler's imaginary registers
 # (RC0..RC15, RS0..RS7) claim $00-$1F via .set directives in crt0.c,

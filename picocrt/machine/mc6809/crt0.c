@@ -123,8 +123,11 @@ _cstart(void)
      * other emulators may leave the ACIA in an indeterminate state.
      * Do a master reset (cr=0x03) followed by operating mode:
      *   cr = 0x15 = 0b00010101 = /16 clock, 8N1, no IRQ, RTS=low
+     *
+     * Bug #330 (2026-05-23): ACIA moved from $FFD0-$FFD1 to
+     * $FFC4-$FFC5 in USim commit 78a1fa4 (pico-thing alignment).
      */
-    volatile unsigned char *acia_status_ctrl = (volatile unsigned char *)0xFFD0;
+    volatile unsigned char *acia_status_ctrl = (volatile unsigned char *)0xFFC4;
     *acia_status_ctrl = 0x03;   /* master reset */
     *acia_status_ctrl = 0x15;   /* /16 clock, 8N1, no IRQ */
 
@@ -165,7 +168,8 @@ _start(void)
  * runtime crash.
  *
  * This handler writes a sentinel exit code (99) to the halt port
- * ($FFD2), making the bench tally show FAIL rc=99 — instantly
+ * ($FFCC — moved from $FFD2 in USim commit 78a1fa4, Bug #330),
+ * making the bench tally show FAIL rc=99 — instantly
  * recognisable as a Bug #186 v5 placeholder hit, not a generic
  * crash. The `run-mc6809` (USim) and `run-mc6809-mame` (MAME)
  * wrappers inject the address of `__swi3_trap` at $FFF2-$FFF3
@@ -181,7 +185,7 @@ __swi3_trap(void)
 {
     __asm__ volatile (
         "lda  #99\n"            /* sentinel: SWI3 placeholder hit */
-        "sta  0xFFD2\n"         /* halt port: bench reports FAIL rc=99 */
+        "sta  0xFFCC\n"         /* halt port: bench reports FAIL rc=99 */
         "1: bra 1b"             /* belt-and-braces if halt-port write missed */
         : : : "a"
     );

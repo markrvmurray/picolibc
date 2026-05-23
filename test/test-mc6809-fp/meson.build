@@ -26,7 +26,17 @@ tests_mc6809_fp = [
   'umulodi4_probe',  # Bug #239 __umulodi4 i64 multiply with overflow
   'ctzsi2_test',  # Bug #245 hand-written __ctzsi2
   'timegm_rem_probe',  # Bug #247 HD6309-LTO i64 rem decomposition
+  'bug301_min_probe',  # Bug #301 minimal gmtime(t=0) probe
+  'bug326_min_probe',  # Bug #326 TFM-memcpy/memset correctness probe
+  'bug329_init_array_probe',  # Bug #329 .init_array runs C++ global ctors (here via __attribute__((constructor)))
   'muld_neg60_probe',  # Bug #247 narrowed MULD #-60 probe
+  'bug311_va_probe',  # Bug #311 vararg-printf u64 isolation probe
+  'bug311_va_isolate',  # Bug #311 va_list ABI vs vfprintf isolation
+  'bug311_va_min',  # Bug #311 minimal single-vfprintf probe for gdb
+  'bug311_lx_min',  # Bug #311 minimal single-%lx probe for gdb
+  'udivsi3_probe',  # Bug #311 direct __udivsi3 verification
+  'sizes_probe',  # Bug #311 sizeof check
+  'i64_add_carry_probe',  # Bug #311 Phase 2 i64-add-narrowed-to-i32-carry-chain probe
 ]
 
 foreach params : targets

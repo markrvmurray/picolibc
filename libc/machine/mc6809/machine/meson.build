@@ -37,7 +37,17 @@ inc_machine_headers_machine = [
   '_types.h',
 ]
 
+# Bug #289 (2026-05-24): fenv.h provides C99 <fenv.h> for mc6809 via
+# the MC6839 FPCBs.  Function bodies live in compiler-rt/lib/builtins/
+# mc6809/fenv.c — this header just declares them with the FPCB-matching
+# FE_* constants.  Installed as <machine/fenv.h>.
+inc_sys_headers_machine = [
+  'fenv.h',
+]
+
 if really_install
   install_headers(inc_machine_headers_machine,
+                  install_dir: include_dir / 'machine')
+  install_headers(inc_sys_headers_machine,
                   install_dir: include_dir / 'machine')
 endif

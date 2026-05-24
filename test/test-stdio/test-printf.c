@@ -26,7 +26,9 @@
 #define PRINTF_BUF_SIZE 512
 
 static char    buf[PRINTF_BUF_SIZE];
+#ifdef _HAS_IO_WCHAR
 static wchar_t wbuf[PRINTF_BUF_SIZE];
+#endif
 
 static void
 failmsg(int serial, char *fmt, ...)
@@ -49,6 +51,12 @@ failmsg(int serial, char *fmt, ...)
 
 #define FAIL_LEN ((size_t)-1)
 
+/* Skip sentinel: the I() macro in test-printf-testcases.h yields this on
+ * targets where an over-int-width value passed to a narrow conversion is
+ * implementation-defined in an endian-specific way (see the I() macro).
+ * A test whose expected string is this exact object is skipped. */
+static char test_skip[] = "";
+
 static int
 vtestl(int serial, char *expect, size_t expect_len, char *fmt, va_list ap)
 {
@@ -56,6 +64,8 @@ vtestl(int serial, char *expect, size_t expect_len, char *fmt, va_list ap)
     char *as = NULL;
     int   n;
     int   ret = 0;
+    if (expect == test_skip)
+        return 0;
     int   expect_ret = (int)expect_len;
     int   expect_fail = expect_len == FAIL_LEN;
     if (expect_fail) {
@@ -270,6 +280,14 @@ test(int serial, char *expect, char *fmt, ...)
     return ret;
 }
 
+/* Wide-character output (swprintf/vswprintf and the wcs* helpers) only
+ * exists when picolibc is built with wide-char IO (_HAS_IO_WCHAR, i.e.
+ * __MB_CAPABLE or __IO_WCHAR).  Targets like mc6809 build the
+ * integer/minimal printf variant with no multibyte support, so guard
+ * the wide test helpers — otherwise the link fails on undefined
+ * swprintf/vswprintf/wcslen/wcschr/wcscmp.  The matching call sites in
+ * test-printf-testcases.h are gated on NO_WCHAR. */
+#ifdef _HAS_IO_WCHAR
 static void
 failmsgw(int serial, wchar_t *fmt, ...)
 {
@@ -373,6 +391,36 @@ testw(int serial, wchar_t *expect, wchar_t *fmt, ...)
     va_end(ap);
     return ret;
 }
+#endif /* _HAS_IO_WCHAR */
+
+/* Optional partitioning of the (large) shared testcase list.
+ *
+ * The full printf conformance suite in test-printf-testcases.h emits
+ * more code than fits a small address space (e.g. mc6809's 64 KB).
+ * Defining TEST_PARTITION_COUNT (>1) and TEST_PARTITION (0-based) splits
+ * the cases into that many interleaved chunks; this build runs only its
+ * chunk.  Each test*() call carries __LINE__ as its serial, so the
+ * selection is a compile-time constant and the optimiser drops the
+ * calls — and their string-literal operands — that belong to other
+ * chunks.  Build N executables, each with a different TEST_PARTITION, to
+ * cover every case while keeping each binary small.
+ *
+ * When TEST_PARTITION_COUNT is undefined the selection is always true,
+ * so the single-binary behaviour (and every other target) is unchanged.
+ *
+ * The macros wrap each call via the parenthesised function name
+ * (e.g. (test)(...)) so the existing function definitions above and the
+ * bare `(void)testl;` references in the testcase file still resolve to
+ * the functions, not the macros. */
+#if defined(TEST_PARTITION_COUNT) && TEST_PARTITION_COUNT > 1
+#define TEST_SELECT(serial) (((serial) % TEST_PARTITION_COUNT) == TEST_PARTITION)
+#else
+#define TEST_SELECT(serial) 1
+#endif
+#define test(serial, ...)   (TEST_SELECT(serial) ? (test)(serial, __VA_ARGS__)   : 0)
+#define testl(serial, ...)  (TEST_SELECT(serial) ? (testl)(serial, __VA_ARGS__)  : 0)
+#define testw(serial, ...)  (TEST_SELECT(serial) ? (testw)(serial, __VA_ARGS__)  : 0)
+#define testwl(serial, ...) (TEST_SELECT(serial) ? (testwl)(serial, __VA_ARGS__) : 0)
 
 int
 main(void)

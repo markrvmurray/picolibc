@@ -60,6 +60,20 @@ tests_printf = [
   'test-printf-scanf',
   ]
 
+# Some printf tests embed a conformance case list too large to link on a
+# small (e.g. 16-bit) address space. test-printf supports compile-time
+# partitioning (TEST_PARTITION_COUNT / TEST_PARTITION): each partition is
+# a separate executable running an interleaved subset of the cases, so
+# every case still runs while each binary stays small. List such tests
+# here with their partition count; tests not listed build as one binary
+# (the default everywhere except the constrained target below).
+test_partitions = {}
+if host_cpu_family == 'mc6809'
+  # test-printf is ~2% over mc6809's 64K with the full case list; two
+  # interleaved halves each fit with room to spare.
+  test_partitions = {'test-printf': 2}
+endif
+
 test_extra_c_args = {
   'test-sprintf-time' : arg_fnobuiltin
 }
@@ -216,19 +230,30 @@ foreach params : targets
     _ext = printf_type['ext']
     foreach test : tests_printf
       test_src = test + '.c'
-      test_file_name_arg=['-DTEST_FILE_NAME="' + test + _ext + target + '.txt"']
+      nparts = test_partitions.get(test, 1)
+      foreach part : range(nparts)
+        part_suffix = ''
+        part_args = []
+        if nparts > 1
+          part_suffix = '-@0@of@1@'.format(part + 1, nparts)
+          part_args = ['-DTEST_PARTITION_COUNT=@0@'.format(nparts),
+                       '-DTEST_PARTITION=@0@'.format(part)]
+        endif
+        test_id = test + _ext + part_suffix
+        test_file_name_arg=['-DTEST_FILE_NAME="' + test_id + target + '.txt"']
 
-      test(test + target + _ext,
-	   executable(test + _ext + target, [test_src, test_lock_valid],
-		      c_args: test_file_name_arg + _printf_c_args,
-		      link_args: _printf_link_args,
-		      objects: _objs,
-		      link_depends:  _link_depends,
-		      include_directories: inc),
-           depends: bios_bin,
-	   timeout: 60,
-           suite: 'test-stdio',
-	   env: test_env)
+        test(test + target + _ext + part_suffix,
+	     executable(test_id + target, [test_src, test_lock_valid],
+		        c_args: test_file_name_arg + _printf_c_args + part_args,
+		        link_args: _printf_link_args,
+		        objects: _objs,
+		        link_depends:  _link_depends,
+		        include_directories: inc),
+             depends: bios_bin,
+	     timeout: 60,
+             suite: 'test-stdio',
+	     env: test_env)
+      endforeach
     endforeach
   endforeach
 

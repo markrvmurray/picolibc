@@ -60,10 +60,20 @@
 #define FLOAT double
 #endif
 
-#if __SIZEOF_INT__ < 4
+/* I(a, b) selects the expected output by int width: `a` for >=32-bit int,
+ * `b` for 16-bit int (where the value is truncated to 16 bits).  The
+ * 16-bit expectation `b` assumes little-endian truncation (low word).  On
+ * a 16-bit *big-endian* target the promoted argument is wider than the
+ * conversion type and the narrow conversion reads the high word instead —
+ * implementation-defined and not equal to `b`.  Rather than bake an
+ * endian-specific expectation, yield the skip sentinel so these cases are
+ * skipped there (see test_skip in test-printf.c). */
+#if __SIZEOF_INT__ >= 4
+#define I(a, b) (a)
+#elif __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 #define I(a, b) (b)
 #else
-#define I(a, b) (a)
+#define I(a, b) test_skip
 #endif
 
 //{
@@ -323,7 +333,15 @@ result |= test(__LINE__, "%w", "%w", -1);
 result |= test(__LINE__, "%H", "%H", -1);
 #endif
 result |= test(__LINE__, "%0", "%%0");
+/* 74565 exceeds 16-bit int, so on a 16-bit target it is passed as long
+ * and %hx (which reads int) takes the low word little-endian but the
+ * high word big-endian — implementation-defined.  The "2345" expectation
+ * holds for >=32-bit int and 16-bit little-endian; skip on 16-bit
+ * big-endian.  (Inserting these guard lines keeps each following case's
+ * line number parity, so the TEST_PARTITION split is unaffected.) */
+#if !(__SIZEOF_INT__ < 4 && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
 result |= test(__LINE__, "2345", "%hx", 74565);
+#endif
 result |= test(__LINE__, "61", "%hhx", 0x61);
 result |= test(__LINE__, "61", "%hhx", 0x161);
 result |= test(__LINE__, "97", "%hhd", 0x61);
@@ -793,6 +811,7 @@ result |= test(__LINE__, "0.123000", "%.*f", -1, printf_float(0.123));
 #endif
 #endif
 #endif
+#ifndef NO_WCHAR
     /* test %ls for wchar_t string */
     result |= testw(__LINE__, L"foo", L"%.3ls", L"foobar");
     /* test %s for mbchar string */
@@ -812,6 +831,7 @@ result |= test(__LINE__, "0.123000", "%.*f", -1, printf_float(0.123));
     result |= testwl(__LINE__, L"ab", 2, L"%.47lc%.0lc", (wint_t)L'a', (wint_t)L'b');
     result |= testwl(__LINE__, L"a\0b", 3, L"%.47lc%lc%.0lc", (wint_t)L'a', (wint_t)L'\0',
                      (wint_t)L'b');
+#endif /* NO_WCHAR */
 
 #ifndef NO_MBCHAR
     result |= testw(__LINE__, L"$㌰$", L"$%s$", "㌰");
@@ -858,6 +878,8 @@ result |= test(__LINE__, "0.123000", "%.*f", -1, printf_float(0.123));
         |= testl(__LINE__, "a\0b", 3, "%.47lc%lc%.0lc", (wint_t)L'a', (wint_t)L'\0', (wint_t)L'b');
 #endif
     (void)testl;
+#ifndef NO_WCHAR
     (void)testwl;
+#endif
 }
 #endif

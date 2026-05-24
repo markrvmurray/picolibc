@@ -60,6 +60,14 @@
 #ifndef _HAS_IO_MBCHAR
 #define NO_MULTI_BYTE
 #endif
+/* Wide scanf (swscanf and the wtest[] wchar_t table) only exists with
+ * wide-char IO.  The wide block below is already gated on NO_WIDE_IO,
+ * but nothing defined it — so it was always compiled, breaking targets
+ * without wide IO (e.g. mc6809) on undefined swscanf.  Define it here
+ * from the same _HAS_IO_WCHAR feature macro the rest of stdio uses. */
+#ifndef _HAS_IO_WCHAR
+#define NO_WIDE_IO
+#endif
 #ifndef _HAS_IO_LONG_LONG
 #define NO_LONG_LONG
 #endif

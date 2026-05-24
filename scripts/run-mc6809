@@ -4,15 +4,15 @@
 #
 # Usage: run-mc6809 <elf> [--stdin "string"] [--args "args"]
 #
-# Converts ELF to Intel HEX and runs via usim09batch.
-# Exit code from the simulated program's halt device write.
+# Since usim09batch's load_elf landed (commit 1d0610d for the PT_LOAD
+# walk + reset-vector $FFFE ← _start fallback; commit 2734c8d for the
+# Bug #331 SWI3 $FFF2 ← __swi3_trap fallback), USim reads ELF files
+# directly and wires both vectors from the ELF symbol table. No
+# host-side hex conversion or vector inject is needed.
 #
 
 USIM="${USIM09BATCH:-usim09batch}"
-OBJCOPY="${LLVM_OBJCOPY:-llvm-objcopy}"
-NM="${LLVM_NM:-llvm-nm}"
 
-# select the program
 elf="$1"
 shift
 
@@ -40,60 +40,14 @@ if [ -z "$elf" ]; then
   exit 1
 fi
 
-# Convert ELF to Intel HEX (USim only loads HEX)
-# NB: BSD mktemp on macOS only substitutes X's when at the END of the
-# template — a trailing ".hex" suffix is taken literally and produces
-# /tmp/mc6809-XXXXXX (verbatim), which collides on the second call.
-hex=$(mktemp /tmp/mc6809.XXXXXXXX)
-trap "rm -f $hex" EXIT
-
-$OBJCOPY -O ihex "$elf" "$hex" 2>/dev/null
-if [ $? -ne 0 ]; then
-  echo "run-mc6809: failed to convert $elf to hex" >&2
-  exit 1
-fi
-
-# Append vector records into the hex file at the documented vector
-# slots. picolibc's linker script doesn't emit a .vectors section, so
-# the hex file has nothing at $FFF0-$FFFF. We inject the vectors here
-# from symbols in the ELF.
-#
-# Slots handled:
-#   $FFFE-$FFFF  reset                   _start
-#   $FFF2-$FFF3  SWI3 (Bug #273)         __swi3_trap (picolibc crt0)
-#
-# Intel HEX record format: :LL AAAA TT DD CC
-#   LL = byte count (02), AAAA = address, TT = record type (00),
-#   DD = data bytes, CC = two's complement checksum.
-inject_vector() {
-  vec_addr=$1   # decimal address of the vector slot's high byte
-  sym=$2
-  addr=$($NM "$elf" 2>/dev/null | awk -v s="$sym" '$3==s {print $1; exit}')
-  [ -n "$addr" ] || return 0
-  hi=$(printf '%s' "$addr" | sed 's/.*\(....\)$/\1/' | cut -c1-2)
-  lo=$(printf '%s' "$addr" | sed 's/.*\(....\)$/\1/' | cut -c3-4)
-  ahi=$(printf '%02X' $(( (vec_addr >> 8) & 0xFF )))
-  alo=$(printf '%02X' $(( vec_addr & 0xFF )))
-  sum=$((0x02 + 0x$ahi + 0x$alo + 0x00 + 0x$hi + 0x$lo))
-  cksum=$(printf '%02X' $(( (256 - (sum & 0xFF)) & 0xFF )))
-  awk -v rec=":02${ahi}${alo}00$hi$lo$cksum" '
-    /^:00000001FF/ { print rec; print; next }
-    { print }
-  ' "$hex" > "$hex.tmp" && mv "$hex.tmp" "$hex"
-}
-inject_vector 65534 _start        # $FFFE = reset vector
-inject_vector 65522 __swi3_trap   # $FFF2 = SWI3 vector (Bug #273)
-
-# Run simulator.
 # USIM_CYCLES=1 opts into canonical-cycle reporting; usim09batch then
 # emits 'cycles=<N>' on stderr which the tally harness picks up.
 cycles_flag=""
 if [ "${USIM_CYCLES:-0}" = "1" ]; then
   cycles_flag="--cycles"
 fi
-# Default cap raised 500M -> 2B (4x headroom). Three picolibc string
-# tests (memset, memchr, memmem) sit just above 500M instructions and
-# were misclassified as FAIL until the cap moved. usim returns rc 124
-# on cap-hit (GNU timeout convention); we relay it unchanged so the
-# python harness can reclassify FAIL -> TIMEOUT.
-echo "$stdin" | $USIM --timeout="${USIM_TIMEOUT:-2000000000}" $cycles_flag "$hex"
+# Default cap 2B instructions (4x headroom over the slow string tests
+# at ~500M). usim returns rc 124 on cap-hit (GNU timeout convention);
+# we relay it unchanged so the python harness can reclassify
+# FAIL -> TIMEOUT.
+echo "$stdin" | $USIM --timeout="${USIM_TIMEOUT:-2000000000}" $cycles_flag "$elf"

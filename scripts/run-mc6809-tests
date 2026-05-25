@@ -473,6 +473,7 @@ def parse_meson_log(path):
                 err,
                 r.get("duration", 0.0),
                 cycles,
+                text_bytes_of(r.get("command")),
             )
 
 
@@ -542,6 +543,54 @@ def find_llc():
     return None
 
 
+def find_llvm_size():
+    """Locate llvm-size — next to llc (same build dir) or on PATH."""
+    llc = find_llc()
+    if llc:
+        cand = os.path.join(os.path.dirname(llc), "llvm-size")
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        cand = os.path.join(entry, "llvm-size")
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
+    return None
+
+
+_LLVM_SIZE = find_llvm_size()
+
+
+def text_bytes_of(command):
+    """Return the .text size (bytes) of the test ELF this meson `command`
+    runs, via llvm-size; None if not determinable.
+
+    `command` is meson's argv list, e.g. [run-mc6809-mame, <ELF>] or
+    [run-mc6809, <ELF>]. The ELF is the last argument that exists as a
+    file and isn't the exe-wrapper (command[0]). Never raises — a size
+    probe must not perturb the tally."""
+    if not _LLVM_SIZE or not command:
+        return None
+    wrapper = command[0] if command else None
+    elf = None
+    for arg in reversed(command):
+        if isinstance(arg, str) and arg != wrapper and os.path.isfile(arg):
+            elf = arg
+            break
+    if elf is None:
+        return None
+    try:
+        out = subprocess.run([_LLVM_SIZE, elf], capture_output=True,
+                             text=True, timeout=30).stdout
+        # Berkeley format: header line, then "<text> <data> <bss> ..."
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) >= 1 and parts[0].isdigit():
+                return int(parts[0])
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    return None
+
+
 def ensure_db(path):
     """Create the SQLite ledger if absent; return a connection."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -569,6 +618,7 @@ def ensure_db(path):
             cycles       INTEGER,
             rc           INTEGER,
             opt_level    TEXT,
+            text_bytes   INTEGER,
             PRIMARY KEY (run_id, test_name)
         );
         CREATE INDEX IF NOT EXISTS idx_results_test
@@ -584,6 +634,8 @@ def ensure_db(path):
     cols = {row[1] for row in conn.execute("PRAGMA table_info(results)")}
     if "opt_level" not in cols:
         conn.execute("ALTER TABLE results ADD COLUMN opt_level TEXT")
+    if "text_bytes" not in cols:  # .text size of the test ELF (llvm-size)
+        conn.execute("ALTER TABLE results ADD COLUMN text_bytes INTEGER")
     return conn
 
 
@@ -624,14 +676,15 @@ def open_run(db_path, opt_level):
     return conn, insert_run_row(conn, opt_level)
 
 
-def insert_result(conn, run_id, name, result, rc, dur, cycles, opt_level):
+def insert_result(conn, run_id, name, result, rc, dur, cycles, opt_level,
+                  text_bytes=None):
     """Insert one result row and commit immediately — durable per-test."""
     suite = name.split(" - ", 1)[0] if " - " in name else None
     conn.execute(
         "INSERT INTO results (run_id, test_name, suite, status, "
-        "wall_seconds, cycles, rc, opt_level) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (run_id, name, suite, result, dur, cycles, rc, opt_level),
+        "wall_seconds, cycles, rc, opt_level, text_bytes) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (run_id, name, suite, result, dur, cycles, rc, opt_level, text_bytes),
     )
     conn.commit()
 
@@ -838,7 +891,7 @@ def run_multi(args):
     if buildfails:
         for lvl, t in buildfails:
             counts[(lvl, "BUILDFAIL")] += 1
-            results.append((lvl, (t["name"], "BUILDFAIL", -1, "", "", 0.0, None)))
+            results.append((lvl, (t["name"], "BUILDFAIL", -1, "", "", 0.0, None, None)))
             line = (f"[{lvl:5s}] BUILDFAIL      rc=-1     0.00s            "
                     f"{t['name']}")
             print(line, flush=True)
@@ -846,7 +899,7 @@ def run_multi(args):
             if conn is not None:
                 insert_result(conn, run_ids[lvl], t["name"],
                               "BUILDFAIL", -1, 0.0, None,
-                              f"{lvl}{suffix}")
+                              f"{lvl}{suffix}", None)
         print(f"[BUILDFAIL] recorded {len(buildfails)} link-failed "
               f"test(s) up front", flush=True)
 
@@ -864,16 +917,16 @@ def run_multi(args):
         logbase = f"{LOGBASE}-{lvl}-{safe}"
         parsed = run_single_test(name, logbase, builddir=bd)
         if parsed is None:
-            parsed = (name, "ERROR", -1, "", "", 0.0, None)
-        pname, result, rc, out, err, dur, cycles = parsed
+            parsed = (name, "ERROR", -1, "", "", 0.0, None, None)
+        pname, result, rc, out, err, dur, cycles, tb = parsed
         if rc == USIM_CAP_RC and result == "FAIL":
             result = "TIMEOUT"
-            parsed = (pname, result, rc, out, err, dur, cycles)
+            parsed = (pname, result, rc, out, err, dur, cycles, tb)
         return lvl, parsed
 
     def record(level_parsed, completed_idx, total):
         lvl, parsed = level_parsed
-        pname, result, rc, out, err, dur, cycles = parsed
+        pname, result, rc, out, err, dur, cycles, tb = parsed
         results.append((lvl, parsed))
         counts[(lvl, result)] += 1
         cyc_str = f" cyc={cycles:>11d}" if cycles is not None else ""
@@ -899,7 +952,7 @@ def run_multi(args):
                 # runs out symmetrically. (bug #168)
                 rec_lvl = f"{lvl}-quick" if args.tests else lvl
                 insert_result(conn, run_ids[lvl], pname, result, rc, dur,
-                              cycles, rec_lvl)
+                              cycles, rec_lvl, tb)
 
     try:
         if args.jobs == 1:
@@ -1119,13 +1172,13 @@ def main():
             rec_ol = f"{rec_ol}-quick"
         for t in buildfail:
             counts["BUILDFAIL"] += 1
-            results.append((t["name"], "BUILDFAIL", -1, "", "", 0.0, None))
+            results.append((t["name"], "BUILDFAIL", -1, "", "", 0.0, None, None))
             line = f"BUILDFAIL      rc=-1     0.00s            {t['name']}"
             print(line, flush=True)
             ftally.write(line + "\n")
             if conn is not None:
                 insert_result(conn, run_id, t["name"], "BUILDFAIL",
-                              -1, 0.0, None, rec_ol)
+                              -1, 0.0, None, rec_ol, None)
         print(f"[BUILDFAIL] recorded {len(buildfail)} link-failed "
               f"test(s) up front", flush=True)
 
@@ -1138,15 +1191,15 @@ def main():
         logbase = f"{LOGBASE}-{safe}"
         parsed = run_single_test(name, logbase)
         if parsed is None:
-            parsed = (name, "ERROR", -1, "", "", 0.0, None)
-        pname, result, rc, out, err, dur, cycles = parsed
+            parsed = (name, "ERROR", -1, "", "", 0.0, None, None)
+        pname, result, rc, out, err, dur, cycles, tb = parsed
         if rc == USIM_CAP_RC and result == "FAIL":
             result = "TIMEOUT"
-            parsed = (pname, result, rc, out, err, dur, cycles)
+            parsed = (pname, result, rc, out, err, dur, cycles, tb)
         return parsed
 
     def record(parsed, completed_idx, total):
-        pname, result, rc, out, err, dur, cycles = parsed
+        pname, result, rc, out, err, dur, cycles, tb = parsed
         results.append(parsed)
         counts[result] += 1
         cyc_str = f" cyc={cycles:>11d}" if cycles is not None else ""
@@ -1170,7 +1223,7 @@ def main():
                 if rec_ol and args.tests:
                     rec_ol = f"{rec_ol}-quick"
                 insert_result(conn, run_id, pname, result, rc, dur, cycles,
-                              rec_ol)
+                              rec_ol, tb)
 
     try:
         if args.jobs == 1:

@@ -30,6 +30,15 @@ static volatile float vol_f;
 static volatile double vol_d;
 
 int main(void) {
+#if defined(__FAST_MATH__)
+    /* Bug #335: -Ofast implies -ffast-math, under which the compiler
+     * assumes no floating-point exceptions and no fenv access. It folds
+     * away (or reorders around) the operations this probe relies on to
+     * set the sticky exception flags, so fenv behaviour is undefined and
+     * the test cannot meaningfully pass. Skip rather than fail. */
+    printf("skipping: fenv is not meaningful under -ffast-math\n");
+    return 77;
+#endif
     /* Test 1: sqrt(-1) raises FE_INVALID. */
     feclearexcept(FE_ALL_EXCEPT);
     vol_f = -1.0f;

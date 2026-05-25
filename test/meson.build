@@ -49,15 +49,28 @@ tests = [
   'test-regex',
   'test-scmpu',
   'test-setjmp',
-  'test-strftime',
-  'test-time',
-  'test-time2',
   'test-timegm',
   'test-tls',
   'test-uchar',
   'test-wcsftime',
   'test-wctomb',
 ]
+
+# Bug #339: test-strftime/test-time/test-time2 pull in the
+# double-precision printf path (e.g. difftime + the strftime engine's
+# float formatting), which is only built when stdio-float is enabled
+# (libc/stdio/meson.build's `if stdio_float`). On an integer-only
+# (non-fp) build they reference __d_vfprintf / __dtoa_engine that don't
+# exist and fail to link, so only offer them where double IO is built.
+# (They are still oversized at -fp on mc6809 — see Bug #339 for the
+# remaining size work.)
+if stdio_float
+  tests += [
+    'test-strftime',
+    'test-time',
+    'test-time2',
+  ]
+endif
 
 tests_should_fail = [
   'test-except',

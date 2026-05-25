@@ -44,6 +44,7 @@ subdir('machine')
 # up by libc/string/meson.build's filter-out-of-srcs-string logic when
 # a same-base-name file appears in srcs_machine.
 srcs_machine = [
+  'setjmp.S',  # Bug #338: mc6809 setjmp/longjmp (no generic fallback existed)
   'memcpy.S',
   'memmove.S',
 ]

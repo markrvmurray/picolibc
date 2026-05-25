@@ -42,6 +42,7 @@ tests = [
   'test-getopt',
   'test-hello',
   'test-hosted-exit',
+  'test-llong',
   'test-lseek-overflow',
   'test-hosted-exit-fail',
   'test-ilp32',

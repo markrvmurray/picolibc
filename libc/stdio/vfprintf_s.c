@@ -38,4 +38,21 @@
 #include "../stdlib/local_s.h"
 
 #define VFPRINTF_S
+#ifdef _VFPRINTF_S_INTEGER
+/* Bug #342: this libc was configured without a double printf engine
+ * (integer-only stdio — the double __dtoa_engine is not built). Left to
+ * its default, vfprintf.c builds vfprintf_s as the __IO_VARIANT_DOUBLE
+ * engine and references __dtoa_engine, making every *printf_s
+ * (sprintf_s / snprintf_s / vfprintf_s / ...) unlinkable. Build it with
+ * the platform's configured default variant instead — no dtoa, and it
+ * matches plain printf's capability. Defining PRINTF_NAME also skips
+ * vfprintf.c's "#ifndef PRINTF_NAME" block that would otherwise force
+ * PRINTF_VARIANT back to DOUBLE; the name itself is unused because the
+ * VFPRINTF_S path names its own vfprintf_s function and (since
+ * PRINTF_VARIANT == __IO_DEFAULT here) no PRINTF_NAME alias is emitted.
+ * At -fp this macro is unset, so the double engine is kept and %f via
+ * *printf_s still works. */
+#define PRINTF_VARIANT __IO_DEFAULT
+#define PRINTF_NAME    __vfprintf_s_variant
+#endif
 #include "vfprintf.c"

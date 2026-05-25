@@ -475,6 +475,13 @@ endforeach
 fast_strcmp = get_option('fast-strcmp')
 
 stdio_float = get_option('stdio-float')
+# Bug #342: when there is no double printf engine (integer-only stdio),
+# tell vfprintf_s.c not to default to the __IO_VARIANT_DOUBLE engine —
+# otherwise it references __dtoa_engine (not built here) and every
+# *printf_s fails to link. Only vfprintf_s.c reads this macro.
+if not stdio_float
+  c_args += ['-D_VFPRINTF_S_INTEGER']
+endif
 posix_extensions = get_option('posix-extensions')
 search_extensions = get_option('search-extensions')
 mb_capable = get_option('mb-capable')

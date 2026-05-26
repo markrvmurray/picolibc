@@ -36,11 +36,18 @@
 tests = [
   'test-atexit',
   'test-double-free',
-  'test-efcvt',
   'test-malloc',
   'test-malloc-stress',
   'test-on_exit',
   ]
+
+# Bug #340: test-efcvt exercises ecvt/fcvt (double->string); ecvt_r/fcvt_r
+# are built only at -fp (libc/stdio/meson.build's `if stdio_float`).  On an
+# integer-only build those symbols cannot exist, so only offer the test
+# where double IO is built.
+if stdio_float
+  tests += ['test-efcvt']
+endif
 
 # test-rand and test-strtod use FP — gate on libm.
 if get_option('want-libm')

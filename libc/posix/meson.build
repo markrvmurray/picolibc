@@ -80,6 +80,18 @@ srcs_posix = [
   'wait.c',
 ]
 
+# Bug #340: strfmon (monetary double->string formatting) is wanted at -fp
+# even when the full POSIX extensions are off.  It is self-contained and
+# filesystem-free (vstrfmon hardcodes C/POSIX-locale defaults and formats
+# via __d_snprintf, so it needs only the double IO engine, hence -fp-only).
+# When posix-extensions is disabled, narrow the build to just these files.
+if not posix_extensions
+  srcs_posix = [
+    'strfmon.c',
+    'vstrfmon.c',
+  ]
+endif
+
 srcs_posix_use = []
 foreach file : srcs_posix
   s_file = fs.replace_suffix(file, '.S')

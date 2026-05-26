@@ -40,6 +40,11 @@ libdirs = ['argz', 'ctype', 'errno', 'iconv', 'locale',
 
 if posix_extensions
   libdirs += ['posix']
+elif stdio_float
+  # Bug #340: build just strfmon/vstrfmon (monetary double->string
+  # formatting) at -fp, without dragging in the rest of the POSIX
+  # extensions.  posix/meson.build narrows srcs_posix accordingly.
+  libdirs += ['posix']
 endif
 
 if use_stdlib

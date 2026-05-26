@@ -33,9 +33,13 @@
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-tests_monetary = [
-        'test-strfmon'
-                ]
+# Bug #340: strfmon formats a double via __d_snprintf, so it (and this
+# test) exist only at -fp.  Offer test-strfmon only where double IO is
+# built; on an integer-only build strfmon is intentionally absent.
+tests_monetary = []
+if stdio_float
+  tests_monetary += ['test-strfmon']
+endif
 
 foreach params : targets
   target = params['name']

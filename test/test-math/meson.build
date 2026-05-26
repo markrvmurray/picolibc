@@ -177,6 +177,15 @@ endif
 # still over 64 K; 2-way clears the current overflow (~2.7 KB at Oz-fp).
 math_partitions = {
   'test-exp': 2,
+  # Bug #356: test-ceil/test-floor carry 25776 vector entries — each
+  # binary32/binary64 global alone exceeds the 16-bit address space.
+  # 50-way (~516 entries/slice) lands them at the size-optimized and
+  # release -fp tiers (Os/Oz/O2/O1).  The heaviest unoptimized tiers
+  # (Og/O0/O3/Ofast-fp) stay oversized: there the ~16K double-printf
+  # dominates .text, not the vectors — a leaner test output (#353), not
+  # more partitioning, is what would land those.
+  'test-ceil': 50,
+  'test-floor': 50,
 }
 
 # Bug #355: the genuine MC6839 ROM does not honor directed rounding for

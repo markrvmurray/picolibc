@@ -6,9 +6,11 @@
 #   2. delete stale *.c.o               (ninja is blind to compiler mtime)
 #   3. ninja -k 0 -C ...                (parallel across waves)
 #
-# Lit phase, once per invocation (cheap, ~1s):
-#   3.5 llvm-lit -v test/CodeGen/MC6809/ → one runs row with
-#       opt_level='lit' + one results row per lit test.
+# Lit phase, once per invocation (cheap, ~5s):
+#   3.5 llvm-lit -v test/CodeGen/MC6809/ + test/MC/MC6809/Execution/
+#       → one runs row with opt_level='lit' + one results row per lit
+#       test.  The on-usim execution suite (Bug #358) is part of this
+#       gate — it runs each .s end-to-end on usim09batch/MAME.
 #
 # Tally phase, once across all levels:
 #   4. run-mc6809-tests --record --jobs N --multi LEVEL:DIR,LEVEL:DIR,…
@@ -406,6 +408,9 @@ _lit_tally() {
   #
   # Test directories:
   #   llvm/test/CodeGen/MC6809/          -- backend codegen sentinels
+  #   llvm/test/MC/MC6809/Execution/     -- end-to-end on-usim execution
+  #                                         tests (Bug #358; needs
+  #                                         USIM09BATCH + MAMELLVM6309)
   #   clang/test/CodeGen/MC6809/         -- clang CodeGen tests (builtins)
   #   clang/test/Sema/asm-mc6809-*.c     -- inline asm constraint Sema tests
   #   clang/test/Sema/mc6809-*.c         -- target builtin Sema tests
@@ -427,13 +432,26 @@ _lit_tally() {
   if [ -d "$clang_root/test/CodeGen/MC6809" ]; then
     testpaths="$testpaths $clang_root/test/CodeGen/MC6809"
   fi
+  # Bug #358: the on-usim execution suite is now part of the bench lit
+  # gate.  It was excluded while the $FFDx→$FFCx IO-map mismatch made it
+  # hang 50/54; now that the Inputs/ map is fixed it runs each .s
+  # end-to-end on usim09batch (a few HD6309 cases via MAME).  Each test
+  # uses its own Output/<test>.s.tmp.hex, so lit's parallel workers don't
+  # collide on a shared temp file (unlike run-mc6809-tests --record).
+  if [ -d "$llvm_root/test/MC/MC6809/Execution" ]; then
+    testpaths="$testpaths $llvm_root/test/MC/MC6809/Execution"
+  fi
   for f in "$clang_root"/test/Sema/asm-mc6809-*.c \
             "$clang_root"/test/Sema/mc6809-*.c; do
     [ -f "$f" ] && testpaths="$testpaths $f"
   done
 
+  # USIM09BATCH + MAMELLVM6309 must be in the environment or the
+  # Execution suite self-skips every test as UNSUPPORTED.
   # shellcheck disable=SC2086
-  "$lit" -v --no-progress-bar $testpaths > "$outfile" 2>&1
+  USIM09BATCH="$USIM/usim09batch" \
+  MAMELLVM6309="$HOME/GitHub/mame/run-mc6809-mame" \
+    "$lit" -v --no-progress-bar $testpaths > "$outfile" 2>&1
   local lit_rc=$?
 
   local commit picolibc_commit usim_commit timestamp host bin_mtime

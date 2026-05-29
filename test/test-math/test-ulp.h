@@ -43,7 +43,14 @@ static TEST_CONST math_ulps_t math_ulps[] = {
     { .name = "acosh",      .b32 = 2,       .b64 = 1,       .b80 = 2,       .b128 = 1       },
     { .name = "asin",       .b32 = 1,       .b64 = 0,       .b80 = 0,       .b128 = 1       },
     { .name = "asinh",      .b32 = 2,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    /* Bug #372 (same __FAST_MATH__ class as Bug #253): -Ofast contracts
+     * cause +1 ULP drift in fdlibm atan's binary64 path (4 vectors). The
+     * user opts into looser semantics with -Ofast, so allow the extra ULP. */
+#ifdef __FAST_MATH__
+    { .name = "atan",       .b32 = 1,       .b64 = 1,       .b80 = 0,       .b128 = 1       },
+#else
     { .name = "atan",       .b32 = 1,       .b64 = 0,       .b80 = 0,       .b128 = 1       },
+#endif
     { .name = "atan2",      .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
     { .name = "atanh",      .b32 = 2,       .b64 = 1,       .b80 = 7,       .b128 = 1       },
     { .name = "cos",        .b32 = 3,       .b64 = 1,       .b80 = 1,       .b128 = 1       },

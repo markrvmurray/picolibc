@@ -39,7 +39,6 @@ tests_mc6809_fp = [
   'udivsi3_probe',  # Bug #311 direct __udivsi3 verification
   'sizes_probe',  # Bug #311 sizeof check
   'i64_add_carry_probe',  # Bug #311 Phase 2 i64-add-narrowed-to-i32-carry-chain probe
-  'bug346_dbl_probe',  # Bug #346 HD6309 f64 double value-movement isolation
 ]
 
 foreach params : targets

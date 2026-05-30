@@ -4,6 +4,16 @@
  * with max ulp 0, so the MC6839 ROM is not at fault — only HD6309
  * codegen of the double kernels).
  *
+ * NOTE: this is a STANDALONE diagnostic repro, deliberately NOT in
+ * meson.build's test list. It calls log()/exp() (libm), so it only
+ * links where want-libm is set and overflows 64K at the larger -fp
+ * opt levels (the #336 size class), and it needs a -ffast-math guard
+ * like bug289/bug337. Regression coverage for #346 lives in the LLVM
+ * tree (bug346_i32_cmp_zflag.ll, final-lowering-dupstore-leas.mir) and
+ * behaviourally in test-math (test-log/exp/asin/...) at the -fp tiers.
+ * Build by hand: add it back to meson.build temporarily at an -Os-fp
+ * level, or compile + link against an -fp libc.a.
+ *
  * The diagnosis walked these layers and found the FIRST few all CLEAN
  * on HD6309 (cases 1-9), so the bug is NOT general double movement:
  *   1-4. load/store, indexed table load, call ABI, __adddf3 libcall,

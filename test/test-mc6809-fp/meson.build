@@ -30,6 +30,7 @@ tests_mc6809_fp = [
   'bug326_min_probe',  # Bug #326 TFM-memcpy/memset correctness probe
   'bug329_init_array_probe',  # Bug #329 .init_array runs C++ global ctors (here via __attribute__((constructor)))
   'bug289_fenv_probe',  # Bug #289 C99 <fenv.h> via MC6839 FPCBs (exception flags + rounding mode)
+  'bug337_unord_probe',  # Bug #337 __unordsf2/__unorddf2 unordered-compare builtins (isunordered)
   'muld_neg60_probe',  # Bug #247 narrowed MULD #-60 probe
   'bug311_va_probe',  # Bug #311 vararg-printf u64 isolation probe
   'bug311_va_isolate',  # Bug #311 va_list ABI vs vfprintf isolation

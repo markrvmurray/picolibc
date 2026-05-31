@@ -167,6 +167,41 @@ if get_option('tests-math-tiny')
   tiny_test_c_args = ['-DPICOLIBC_TINY_TEST']
 endif
 
+# Bug #336: the libm conformance binaries are dominated by their
+# {input,expected} vector tables (~11 KB of .rodata) and overflow
+# MC6809's 64 KB.  Rather than drop test points, split the listed tests
+# into N binaries, each compiling only a round-robin 1/N slice of the
+# vector entries (split-vectors.awk) so the other slices' .rodata is
+# never emitted.  Every entry is still exercised, just across N runs.
+# Map: test name -> partition count.  Extend as the bench shows a test
+# still over 64 K; 2-way clears the current overflow (~2.7 KB at Oz-fp).
+math_partitions = {
+  'test-exp': 2,
+}
+
+math_slices = {}
+if math_partitions.keys().length() > 0
+  awk_prog = find_program('awk')
+  foreach t1 : tests
+    nparts = math_partitions.get(t1, 1)
+    if nparts > 1
+      slices = []
+      foreach p : range(nparts)
+        slices += custom_target(t1 + '-slice-@0@'.format(p),
+                                input: t1 + '.h',
+                                output: t1 + '-p@0@of@1@.h'.format(p, nparts),
+                                capture: true,
+                                command: [awk_prog,
+                                          '-v', 'part=@0@'.format(p),
+                                          '-v', 'n=@0@'.format(nparts),
+                                          '-f', files('split-vectors.awk'),
+                                          '@INPUT@'])
+      endforeach
+      math_slices += { t1: slices }
+    endif
+  endforeach
+endif
+
 foreach params : targets
   target = params['name']
   target_dir = params['dir']
@@ -196,9 +231,11 @@ foreach params : targets
   _link_depends = get_variable('test_link_depends' + target, test_link_depends) + _libs
   foreach t1 : tests
     t1_src = t1 + '.c'
-    test_file_name_arg=['-DTEST_FILE_NAME="' + t1 + target + '.txt"']
+    nparts = math_partitions.get(t1, 1)
+    if nparts == 1
+      test_file_name_arg=['-DTEST_FILE_NAME="' + t1 + target + '.txt"']
 
-    test(t1 + target,
+      test(t1 + target,
 	 executable(t1 + target, [t1_src] + test_extra_src.get(t1, []) + test_lock_valid,
 		    c_args: printf_compile_args_d + test_file_name_arg + test_extra_c_args.get(t1, []) + _c_args,
 		    link_args: printf_link_args_d + _link_args,
@@ -210,6 +247,29 @@ foreach params : targets
 	 timeout: 60,
          suite: 'test-math',
 	 env: test_env)
+    else
+      # Bug #336: build one binary per round-robin vector slice.
+      foreach p : range(nparts)
+        slice = math_slices[t1][p]
+        sname = t1 + '-p@0@'.format(p)
+        test_file_name_arg=['-DTEST_FILE_NAME="' + sname + target + '.txt"']
+        slice_arg='-DTEST_VECTORS_SLICE="@0@"'.format(slice.full_path())
+
+        test(sname + target,
+	   executable(sname + target,
+		      [t1_src] + test_extra_src.get(t1, []) + test_lock_valid + [slice],
+		      c_args: printf_compile_args_d + test_file_name_arg + test_extra_c_args.get(t1, []) + _c_args + [slice_arg],
+		      link_args: printf_link_args_d + _link_args,
+		      objects: _objs,
+		      link_depends:  _link_depends,
+                      link_with: test_extra_libs.get(t1, []),
+		      include_directories: inc),
+           depends: bios_bin,
+	   timeout: 60,
+           suite: 'test-math',
+	   env: test_env)
+      endforeach
+    endif
   endforeach
 
   if enable_exhaustive_math_tests

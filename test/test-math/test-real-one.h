@@ -36,6 +36,17 @@
 #include "test-math.h"
 #include <assert.h>
 
+/* Bug #336: when this test is built as a partition slice, the build passes
+ * -DTEST_VECTORS_SLICE="<generated header>" naming a round-robin subset of
+ * the vector entries (see split-vectors.awk).  Redirect the array includes
+ * to that subset so each slice binary emits only its share of the .rodata
+ * vector tables, keeping the whole suite under MC6809's 64K while still
+ * exercising every entry across the N slices. */
+#ifdef TEST_VECTORS_SLICE
+#undef TEST_VECTORS
+#define TEST_VECTORS TEST_VECTORS_SLICE
+#endif
+
 #if defined(HAS_BINARY32) && !defined(SKIP_BINARY32)
 
 static TEST_CONST struct {

@@ -19,15 +19,16 @@
 # bring-up.
 #
 # Environment:
-#   MAME_LLVM6309_DIR  override (default: ~/GitHub/mame). The wrapper
-#                      lives at $MAME_LLVM6309_DIR/run-mc6809-mame.
+#   MAME_LLVM6309_DIR  override (default: a `mame` checkout sibling to
+#                      this picolibc repo). The wrapper lives at
+#                      $MAME_LLVM6309_DIR/run-mc6809-mame.
 #   USIM_TIMEOUT       passed through as MAME timeout in seconds when
 #                      set, else default 30 (a generous wall-clock cap;
 #                      MAME's -nothrottle runs >1000% real-time so
 #                      30 s ≈ 5 minutes of simulated wall time, enough
 #                      for the slow string tests).
 
-MAME_DIR="${MAME_LLVM6309_DIR:-$HOME/GitHub/mame}"
+MAME_DIR="${MAME_LLVM6309_DIR:-$(cd "$(dirname "$0")/../.." && pwd)/mame}"
 WRAPPER="$MAME_DIR/run-mc6809-mame"
 
 elf="$1"

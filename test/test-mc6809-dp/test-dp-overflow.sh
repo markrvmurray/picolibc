@@ -23,9 +23,12 @@
 
 set -u
 
-PICO=${PICO:-/Users/markmurray/GitHub/picolibc}
+# Locations default to sibling checkouts of this picolibc repo; override
+# any of them by exporting it first. See scripts/README-mc6809.md.
+PICO=${PICO:-$(cd "$(dirname "$0")/../.." && pwd)}
 BUILDDIR=${BUILDDIR:-$PICO/builddir-mc6809-Os}
-LLVM_BIN=${LLVM_BIN:-/Users/markmurray/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin}
+LLVM_BUILD_SUBDIR=${LLVM_BUILD_SUBDIR:-llvm/cmake-build-debug-system}
+LLVM_BIN=${LLVM_BIN:-$(dirname "$PICO")/llvm-mc6809/$LLVM_BUILD_SUBDIR/bin}
 TMPDIR=${TMPDIR:-/tmp}
 
 SRC=$TMPDIR/dp-overflow-$$.c

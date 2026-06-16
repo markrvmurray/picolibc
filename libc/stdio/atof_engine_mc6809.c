@@ -6,7 +6,7 @@
  * in microcode; we just translate (mantissa, exp) into the 26-byte
  * BCD format DECBIN consumes.
  *
- * BCD layout (see /Users/markmurray/Documents/MC6839_ROM/abi/templates/README.md):
+ * BCD layout (see the MC6839_ROM project, abi/templates/README.md):
  *
  *   byte 0:    se   sign of exponent (00 = E >= 0, 0F = E < 0; 00 also
  *                   used for the value zero with E=0)

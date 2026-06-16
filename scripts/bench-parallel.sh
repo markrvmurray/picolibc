@@ -57,10 +57,17 @@
 
 set -u
 
-PICO=/Users/markmurray/GitHub/picolibc
-LLVM_BIN=/Users/markmurray/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin
-LLVM_REPO=/Users/markmurray/GitHub/llvm-mc6809
-USIM=/Users/markmurray/GitHub/usim
+# Locations. Defaults assume the MC6809 repos are siblings of this
+# picolibc checkout (PICO/../llvm-mc6809, PICO/../usim, PICO/../mame).
+# Override any of these by exporting the matching variable. See
+# scripts/README-mc6809.md.
+PICO=${PICO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
+PARENT=$(dirname "$PICO")
+LLVM_REPO=${LLVM_REPO:-$PARENT/llvm-mc6809}
+LLVM_BUILD_SUBDIR=${LLVM_BUILD_SUBDIR:-llvm/cmake-build-debug-system}
+LLVM_BIN=${LLVM_BIN:-$LLVM_REPO/$LLVM_BUILD_SUBDIR/bin}
+USIM=${USIM:-$PARENT/usim}
+MAME_RUNNER=${MAME_RUNNER:-$PARENT/mame/run-mc6809-mame}
 DB=${MC6809_BENCH_DB:-$HOME/Documents/mc6809-bench/results.sqlite}
 LOG=/tmp/bench-parallel.log
 
@@ -125,6 +132,12 @@ get_llvm_binary_mtime() {
 export PATH="$LLVM_BIN:$USIM:$PATH"
 export LLVM_OBJCOPY="$LLVM_BIN/llvm-objcopy"
 export LLVM_NM="$LLVM_BIN/llvm-nm"
+
+# Generate the meson cross files for this machine's toolchain location.
+# They are gitignored (machine-specific absolute paths) — see
+# scripts/gen-mc6809-cross.sh. Regenerating is idempotent and cheap.
+PICO="$PICO" LLVM_BIN="$LLVM_BIN" "$PICO/scripts/gen-mc6809-cross.sh" >>"$LOG" 2>&1 \
+  || { echo "bench-parallel: failed to generate cross files (see $LOG)" >&2; exit 1; }
 
 # Suppress LLVM crash-handler symbolisation. Without FP support, every
 # build wave generates dozens of expected clang aborts on FP-using
@@ -450,7 +463,7 @@ _lit_tally() {
   # Execution suite self-skips every test as UNSUPPORTED.
   # shellcheck disable=SC2086
   USIM09BATCH="$USIM/usim09batch" \
-  MAMELLVM6309="$HOME/GitHub/mame/run-mc6809-mame" \
+  MAMELLVM6309="$MAME_RUNNER" \
     "$lit" -v --no-progress-bar $testpaths > "$outfile" 2>&1
   local lit_rc=$?
 
@@ -583,8 +596,8 @@ case "$SIMULATOR" in
   mame)
     CROSS=$MAME_CROSS
     BD_SUFFIX="-mame"
-    if [ ! -x "$HOME/GitHub/mame/run-mc6809-mame" ]; then
-      echo "bench-parallel: --simulator=mame but $HOME/GitHub/mame/run-mc6809-mame missing/non-executable" >&2
+    if [ ! -x "$MAME_RUNNER" ]; then
+      echo "bench-parallel: --simulator=mame but $MAME_RUNNER missing/non-executable" >&2
       exit 1
     fi
     ;;
@@ -602,8 +615,8 @@ IFS=',' read -ra LEVEL_LIST <<< "$levels"
 for _lvl in "${LEVEL_LIST[@]}"; do
   case "$_lvl" in
     *-mame)
-      if [ ! -x "$HOME/GitHub/mame/run-mc6809-mame" ]; then
-        echo "bench-parallel: level '$_lvl' requires MAME runner at $HOME/GitHub/mame/run-mc6809-mame (missing/non-executable)" >&2
+      if [ ! -x "$MAME_RUNNER" ]; then
+        echo "bench-parallel: level '$_lvl' requires MAME runner at $MAME_RUNNER (missing/non-executable)" >&2
         exit 1
       fi
       ;;

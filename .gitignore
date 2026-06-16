@@ -49,3 +49,9 @@ build-*/
 # local toolchain configs / snapshots (not tracked)
 cfg/
 snap/
+
+# MC6809 port: generated meson cross files (from gen-mc6809-cross.sh) and build dirs
+scripts/cross-clang-mc6809-unknown-elf.txt
+scripts/cross-clang-mc6809-unknown-elf-mame.txt
+scripts/cross-clang-mc6809-unknown-elf-dp7F.txt
+builddir-mc6809*/

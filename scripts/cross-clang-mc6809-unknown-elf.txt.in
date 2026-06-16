@@ -1,10 +1,24 @@
+# Meson cross-file TEMPLATE for the MC6809 picolibc build.
+#
+# This is not consumed directly by meson. The concrete cross files
+#   cross-clang-mc6809-unknown-elf.txt        (usim, DP=$00)
+#   cross-clang-mc6809-unknown-elf-mame.txt   (MAME llvm6309, DP=$00)
+#   cross-clang-mc6809-unknown-elf-dp7F.txt   (usim, DP=$7F smoke test)
+# are GENERATED from this template by scripts/gen-mc6809-cross.sh, which
+# substitutes the toolchain location from the environment (LLVM_BIN) and
+# the picolibc checkout (PICO). See scripts/README-mc6809.md.
+#
+# Generator placeholders use %%...%% so they cannot clash with meson's
+# own @...@ tokens (@DIRECTPAGE_ORIGIN@/@DIRECTPAGE_BASE@ below MUST
+# survive generation — meson substitutes them into picolibc.ld.in):
+#   %%LLVM_BIN%%  %%EXE_WRAPPER%%  %%DP_BASE%%
 [binaries]
-c = ['/Users/markmurray/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin/clang', '--target=mc6809-unknown-unknown', '-nostdlib']
-cpp = ['/Users/markmurray/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin/clang', '--target=mc6809-unknown-unknown', '-nostdlib']
-ar = '/Users/markmurray/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin/llvm-ar'
-nm = '/Users/markmurray/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin/llvm-nm'
-strip = '/Users/markmurray/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin/llvm-strip'
-exe_wrapper = ['/Users/markmurray/GitHub/picolibc/scripts/run-mc6809']
+c = ['%%LLVM_BIN%%/clang', '--target=mc6809-unknown-unknown', '-nostdlib']
+cpp = ['%%LLVM_BIN%%/clang', '--target=mc6809-unknown-unknown', '-nostdlib']
+ar = '%%LLVM_BIN%%/llvm-ar'
+nm = '%%LLVM_BIN%%/llvm-nm'
+strip = '%%LLVM_BIN%%/llvm-strip'
+exe_wrapper = ['%%EXE_WRAPPER%%']
 
 [host_machine]
 system = 'none'
@@ -16,8 +30,8 @@ endian = 'big'
 skip_sanity_check = true
 # Memory layout (top-to-bottom; $0000 at the top, $FFFF at the
 # bottom). The emulated machine has no real flash — the whole
-# $0000-$FFC3 range is one writable RAM, with USim's IO slab at
-# $FFC4-$FFCC, free space $FFCD-$FFEF, and the vector ROM at
+# $0000-$FFC3 range is one writable RAM, with the simulator's IO slab
+# at $FFC4-$FFCC, free space $FFCD-$FFEF, and the vector ROM at
 # $FFF0-$FFFF.  picolibc's template still requires two MEMORY regions
 # ('flash' and 'ram'), so we keep a 'flash' stub at $FFCD holding
 # only the .init reset entry, and let 'ram' cover everything else.
@@ -25,16 +39,17 @@ skip_sanity_check = true
 # .rodata + .data + .bss + heap + stack ALL into ram, so the full
 # 64-KB-minus-IO is available to the program no matter the section mix.
 #
-# Bug #330 (2026-05-23): USim's IO slab moved from $FFD0-$FFD3 to
-# $FFC4-$FFCC (commit 78a1fa4) — ACIA $FFD0-$FFD1 → $FFC4-$FFC5,
+# Bug #330 (2026-05-23): the IO slab moved from $FFD0-$FFD3 to
+# $FFC4-$FFCC (USim commit 78a1fa4 + MAME llvm6309 commit 8e12eec9328,
+# both for pico-thing alignment) — ACIA $FFD0-$FFD1 → $FFC4-$FFC5,
 # HaltDevice $FFD2 → $FFCC, TraceCtl $FFD3 → $FFCB.  The old .init
-# placement at $FFC0-$FFC7 overlapped the new ACIA and every USim
-# test crashed (PC=$FFC5, IR=$0002 — ACIA status byte read as
-# instruction opcode).  Updated layout puts .init AFTER the IO slab,
-# in the otherwise-empty $FFCD-$FFEF window.
+# placement at $FFC0-$FFC7 overlapped the new ACIA and every test
+# crashed (PC=$FFC5, IR=$0002 — ACIA status byte read as instruction
+# opcode).  Updated layout puts .init AFTER the IO slab, in the
+# otherwise-empty $FFCD-$FFEF window.
 #
 #   ram    $0100-$FFC3  (~63.7 KB) — text + rodata + data + bss + heap + stack
-#   IO     $FFC4-$FFCC  (9 bytes)  — USim ACIA + TraceCtl + HaltDevice
+#   IO     $FFC4-$FFCC  (9 bytes)  — ACIA + TraceCtl + HaltDevice
 #   flash  $FFCD-$FFEF  (35 bytes) — .init only (reset entry stub)
 #   vrom   $FFF0-$FFFF              — vector ROM
 default_flash_addr = '0xFFCD'
@@ -60,7 +75,7 @@ default_ram_size   = '0xFEC4'
 # `directpage_base = '31'` (= $1F) — meson.build precomputes the
 # dependent ORIGIN value because configure_file's template substitution
 # is single-pass and can't resolve nested @VARS@.
-directpage_base = '0'
+directpage_base = '%%DP_BASE%%'
 
 directpage_memory = '''
 	directpage (rw!x) :

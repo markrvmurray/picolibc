@@ -1,7 +1,7 @@
 /* Bug #230 smoke probe: dump BINDEC output for known values; verify
  * BCD layout against the agent's spec before building the engines.
  *
- * Layout per /Users/markmurray/Documents/MC6839_ROM/abi/templates/README.md
+ * Layout per the MC6839_ROM project (abi/templates/README.md)
  * and the manual:
  *   byte 0:    se (sign-of-exponent: $00=+, $0F=-, $0A=+inf, $0B=-inf, $0C=NaN)
  *   bytes 1-4: 4-digit BCD exponent (MSB at 1)

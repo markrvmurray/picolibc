@@ -27,9 +27,13 @@ With --record, also writes each run to
 so cycle counts can be tracked over time. Requires USIM_CYCLES=1
 (set automatically) so usim09batch emits cycles=<N> on stderr.
 
-Environment overrides:
+Environment overrides (defaults assume sibling checkouts of this repo —
+see scripts/README-mc6809.md):
   PICOLIBC_BUILDDIR   build directory (default: <repo>/builddir-mc6809)
-  USIM09BATCH         USim binary
+  USIM09BATCH         USim binary    (default: $USIM/usim09batch)
+  USIM                usim checkout  (default: <repo>/../usim)
+  LLVM_REPO           llvm-mc6809 checkout, for provenance recording
+                      (default: derived from llc, else <repo>/../llvm-mc6809)
   LLVM_OBJCOPY        llvm-objcopy
   LLVM_NM             llvm-nm
   MC6809_BENCH_DB     override SQLite path (default: ~/Documents/
@@ -639,18 +643,38 @@ def ensure_db(path):
     return conn
 
 
+def _llvm_repo(llc_path):
+    """Locate the llvm-mc6809 checkout for provenance recording.
+
+    Honours $LLVM_REPO; otherwise walks up from the llc binary to the
+    enclosing git work-tree; falls back to a sibling of this repo. No
+    home-directory assumptions — see scripts/README-mc6809.md."""
+    env = os.environ.get("LLVM_REPO")
+    if env:
+        return env
+    if llc_path:
+        for parent in Path(llc_path).resolve().parents:
+            if (parent / ".git").exists():
+                return str(parent)
+    return str(Path(REPO).parent / "llvm-mc6809")
+
+
 def insert_run_row(conn, opt_level):
     """Insert one fresh `runs` row tagged with `opt_level`; return run_id.
 
     Multi-builddir mode opens one connection and calls this once per
     level so each level gets its own ledger row, but all writes share a
     single SQLite handle (simpler and safe under WAL)."""
-    usim_path = os.environ.get("USIM09BATCH") or "/Users/markmurray/GitHub/usim"
+    # USim location: prefer the explicit binary ($USIM09BATCH), then the
+    # checkout ($USIM), else a sibling of this repo.
+    usim_path = (os.environ.get("USIM09BATCH")
+                 or os.environ.get("USIM")
+                 or str(Path(REPO).parent / "usim"))
     usim_repo = Path(usim_path).parent if Path(usim_path).is_file() else Path(usim_path)
     llc_path = find_llc()  # bug #191
     run_row = (
         datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        llvm_commit_for_binary("/Users/markmurray/GitHub/llvm-mc6809", llc_path),
+        llvm_commit_for_binary(_llvm_repo(llc_path), llc_path),
         git_head(REPO),
         git_head(str(usim_repo)),
         os.uname().nodename,

@@ -7,16 +7,21 @@
 #   LLVM_OBJCOPY  — llvm-objcopy built for MC6809
 #   LLVM_NM       — llvm-nm built for MC6809
 #
-# The defaults below match a typical layout:
-#   ${HOME}/GitHub/usim         — github.com/sim6809/usim checkout
-#   ${HOME}/GitHub/llvm-mc6809  — llvm-mc6809 checkout with a
-#                                  cmake-build-debug-system build dir
+# The defaults below assume the other MC6809 repos are siblings of this
+# picolibc checkout (see scripts/README-mc6809.md):
+#   <repo>/../usim         — github.com/sim6809/usim checkout
+#   <repo>/../llvm-mc6809  — llvm-mc6809 checkout with a
+#                            cmake-build-debug-system build dir
 #
 # Already-set environment values are preserved, so override any
 # individual path by exporting it before invoking this wrapper.
-: "${USIM09BATCH:=${HOME}/GitHub/usim/usim09batch}"
-: "${LLVM_OBJCOPY:=${HOME}/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin/llvm-objcopy}"
-: "${LLVM_NM:=${HOME}/GitHub/llvm-mc6809/llvm/cmake-build-debug-system/bin/llvm-nm}"
+PARENT=$(cd "$(dirname "$0")/.." && pwd)
+PARENT=$(dirname "$PARENT")
+LLVM_BUILD_SUBDIR=${LLVM_BUILD_SUBDIR:-llvm/cmake-build-debug-system}
+LLVM_BIN=${LLVM_BIN:-${PARENT}/llvm-mc6809/${LLVM_BUILD_SUBDIR}/bin}
+: "${USIM09BATCH:=${PARENT}/usim/usim09batch}"
+: "${LLVM_OBJCOPY:=${LLVM_BIN}/llvm-objcopy}"
+: "${LLVM_NM:=${LLVM_BIN}/llvm-nm}"
 export USIM09BATCH LLVM_OBJCOPY LLVM_NM
 
 # Suppress llvm-symbolizer on pre-existing crashes (FP/address-space

@@ -71,6 +71,15 @@ MAME_RUNNER=${MAME_RUNNER:-$PARENT/mame/run-mc6809-mame}
 DB=${MC6809_BENCH_DB:-$HOME/Documents/mc6809-bench/results.sqlite}
 LOG=/tmp/bench-parallel.log
 
+# Ensure the ledger exists with the current schema BEFORE anything writes to
+# it. The lit gate (and other shell-side recording below) use the sqlite3 CLI,
+# which does not create tables — so on a fresh machine, or a ledger predating a
+# column, those writes would fail ("no such table" / "no column named
+# opt_level"). create-bench-db.sh is idempotent and non-destructive
+# (CREATE ... IF NOT EXISTS + additive ALTERs only), so this is safe to run
+# against an existing populated ledger every time.
+"$PICO/scripts/create-bench-db.sh" "$DB" >/dev/null
+
 # Bug #194 Phase B: simulator backend selector. Default is usim
 # (canonical for 6809). MAME's `llvm6309` SBC is the HD6309-capable
 # alternative; identical memory map, different exe_wrapper. Selected

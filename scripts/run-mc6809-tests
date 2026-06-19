@@ -595,51 +595,43 @@ def text_bytes_of(command):
     return None
 
 
+# Canonical schema, shared with scripts/create-bench-db.sh. Single source of
+# truth for the table/index definitions.
+SCHEMA_SQL = Path(__file__).resolve().parent / "bench-db-schema.sql"
+
+# Additive migrations for ledgers created before these columns existed. Kept in
+# lockstep with the columns in bench-db-schema.sql. Applied BEFORE the schema so
+# opt_level exists before idx_results_opt references it on a legacy ledger.
+_DB_MIGRATIONS = (
+    ("runs",    "opt_level",         "TEXT"),
+    ("runs",    "llvm_binary_mtime", "INTEGER"),  # bug #191
+    ("results", "opt_level",         "TEXT"),
+    ("results", "text_bytes",        "INTEGER"),   # .text size of the test ELF
+)
+
+
 def ensure_db(path):
-    """Create the SQLite ledger if absent; return a connection."""
+    """Create the SQLite ledger if absent; return a connection.
+
+    Idempotent and non-destructive: WAL mode, guarded additive migrations,
+    then the shared CREATE ... IF NOT EXISTS schema from bench-db-schema.sql.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path))
     # WAL mode: needed when bench-parallel.sh runs multiple tallies
     # concurrently against the same ledger. Persists on the file, so
     # re-applying here is a no-op after the first call.
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS runs (
-            run_id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp       TEXT NOT NULL,
-            llvm_commit     TEXT,
-            picolibc_commit TEXT,
-            usim_commit     TEXT,
-            host            TEXT,
-            opt_level       TEXT
-        );
-        CREATE TABLE IF NOT EXISTS results (
-            run_id       INTEGER NOT NULL REFERENCES runs(run_id),
-            test_name    TEXT NOT NULL,
-            suite        TEXT,
-            status       TEXT NOT NULL,
-            wall_seconds REAL,
-            cycles       INTEGER,
-            rc           INTEGER,
-            opt_level    TEXT,
-            text_bytes   INTEGER,
-            PRIMARY KEY (run_id, test_name)
-        );
-        CREATE INDEX IF NOT EXISTS idx_results_test
-            ON results(test_name, run_id);
-        CREATE INDEX IF NOT EXISTS idx_results_opt
-            ON results(opt_level, test_name);
-    """)
-    cols = {row[1] for row in conn.execute("PRAGMA table_info(runs)")}
-    if "opt_level" not in cols:
-        conn.execute("ALTER TABLE runs ADD COLUMN opt_level TEXT")
-    if "llvm_binary_mtime" not in cols:  # bug #191
-        conn.execute("ALTER TABLE runs ADD COLUMN llvm_binary_mtime INTEGER")
-    cols = {row[1] for row in conn.execute("PRAGMA table_info(results)")}
-    if "opt_level" not in cols:
-        conn.execute("ALTER TABLE results ADD COLUMN opt_level TEXT")
-    if "text_bytes" not in cols:  # .text size of the test ELF (llvm-size)
-        conn.execute("ALTER TABLE results ADD COLUMN text_bytes INTEGER")
+    # Migrations first. "duplicate column name" (already present) and "no such
+    # table" (fresh DB — table is made by the schema step below) are both
+    # expected; swallow them.
+    for table, col, typ in _DB_MIGRATIONS:
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
+        except sqlite3.OperationalError:
+            pass
+    conn.executescript(SCHEMA_SQL.read_text())
+    conn.commit()
     return conn
 
 

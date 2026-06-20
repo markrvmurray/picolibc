@@ -68,6 +68,9 @@ FAILLOG = "/tmp/picolibc-failures.log"
 LOGBASE = "mc6809-tally"
 
 DEFAULT_DB = Path.home() / "Documents" / "mc6809-bench" / "results.sqlite"
+SQLITE_BUSY_TIMEOUT_SECONDS = (
+    int(os.environ.get("MC6809_BENCH_DB_BUSY_TIMEOUT_MS", "60000")) / 1000.0
+)
 
 CYCLES_RE = re.compile(r"^cycles=(\d+)\s*$", re.MULTILINE)
 
@@ -617,11 +620,14 @@ def ensure_db(path):
     then the shared CREATE ... IF NOT EXISTS schema from bench-db-schema.sql.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path))
+    conn = sqlite3.connect(str(path), timeout=SQLITE_BUSY_TIMEOUT_SECONDS)
     # WAL mode: needed when bench-parallel.sh runs multiple tallies
     # concurrently against the same ledger. Persists on the file, so
     # re-applying here is a no-op after the first call.
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute(
+        f"PRAGMA busy_timeout={int(SQLITE_BUSY_TIMEOUT_SECONDS * 1000)}"
+    )
     # Migrations first. "duplicate column name" (already present) and "no such
     # table" (fresh DB — table is made by the schema step below) are both
     # expected; swallow them.
@@ -713,7 +719,10 @@ def prior_cycles(db_path, opt_level):
     them last (cheap default)."""
     if not Path(db_path).exists():
         return {}
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=SQLITE_BUSY_TIMEOUT_SECONDS)
+    conn.execute(
+        f"PRAGMA busy_timeout={int(SQLITE_BUSY_TIMEOUT_SECONDS * 1000)}"
+    )
     try:
         if opt_level is None:
             cur = conn.execute(

@@ -21,13 +21,18 @@ set -eu
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 SCHEMA="$SCRIPT_DIR/bench-db-schema.sql"
 DB=${1:-${MC6809_BENCH_DB:-$HOME/Documents/mc6809-bench/results.sqlite}}
+SQLITE_BUSY_TIMEOUT_MS=${MC6809_BENCH_DB_BUSY_TIMEOUT_MS:-60000}
+
+sqlite_db() {
+  sqlite3 -cmd ".timeout $SQLITE_BUSY_TIMEOUT_MS" "$DB" "$@"
+}
 
 [ -f "$SCHEMA" ] || { echo "create-bench-db: missing schema file $SCHEMA" >&2; exit 1; }
 
 mkdir -p "$(dirname "$DB")"
 
 # WAL: needed for concurrent tallies; persistent, and a no-op if already set.
-sqlite3 "$DB" "PRAGMA journal_mode=WAL;" >/dev/null
+sqlite_db "PRAGMA journal_mode=WAL;" >/dev/null
 
 # Additive migrations FIRST, so a legacy ledger gains any columns the schema's
 # indexes reference (idx_results_opt -> opt_level) before the schema is applied.
@@ -40,10 +45,10 @@ for spec in "runs    opt_level         TEXT" \
             "results text_bytes        INTEGER"; do
   # shellcheck disable=SC2086
   set -- $spec
-  sqlite3 "$DB" "ALTER TABLE $1 ADD COLUMN $2 $3;" 2>/dev/null || true
+  sqlite_db "ALTER TABLE $1 ADD COLUMN $2 $3;" 2>/dev/null || true
 done
 
 # Canonical schema (tables + indexes, all IF NOT EXISTS).
-sqlite3 "$DB" < "$SCHEMA"
+sqlite_db < "$SCHEMA"
 
 echo "bench DB ready: $DB"

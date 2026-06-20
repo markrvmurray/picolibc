@@ -69,7 +69,12 @@ LLVM_BIN=${LLVM_BIN:-$LLVM_REPO/$LLVM_BUILD_SUBDIR/bin}
 USIM=${USIM:-$PARENT/usim}
 MAME_RUNNER=${MAME_RUNNER:-$PARENT/mame/run-mc6809-mame}
 DB=${MC6809_BENCH_DB:-$HOME/Documents/mc6809-bench/results.sqlite}
+SQLITE_BUSY_TIMEOUT_MS=${MC6809_BENCH_DB_BUSY_TIMEOUT_MS:-60000}
 LOG=/tmp/bench-parallel.log
+
+sqlite_bench() {
+  sqlite3 -cmd ".timeout $SQLITE_BUSY_TIMEOUT_MS" "$DB" "$@"
+}
 
 # Ensure the ledger exists with the current schema BEFORE anything writes to
 # it. The lit gate (and other shell-side recording below) use the sqlite3 CLI,
@@ -485,10 +490,10 @@ _lit_tally() {
   host=$(hostname -s)
 
   # Idempotent schema migration for bug #191's new column.
-  sqlite3 "$DB" "ALTER TABLE runs ADD COLUMN llvm_binary_mtime INTEGER;" 2>/dev/null
+  sqlite_bench "ALTER TABLE runs ADD COLUMN llvm_binary_mtime INTEGER;" 2>/dev/null
 
   local run_id
-  run_id=$(sqlite3 "$DB" "
+  run_id=$(sqlite_bench "
     INSERT INTO runs (timestamp, llvm_commit, picolibc_commit, usim_commit, host, opt_level, llvm_binary_mtime)
     VALUES ('$timestamp', '$commit', '$picolibc_commit', '$usim_commit', '$host', 'lit', ${bin_mtime:-NULL});
     SELECT last_insert_rowid();
@@ -503,7 +508,7 @@ _lit_tally() {
       tn=parts[n]
       printf "INSERT INTO results (run_id, test_name, suite, status, opt_level) VALUES (%s, '\''%s'\'', '\''lit-codegen'\'', '\''%s'\'', '\''lit'\'');\n", rid, tn, status
     }
-  ' "$outfile" | sqlite3 "$DB"
+  ' "$outfile" | sqlite_bench
 
   local pass fail xfail unsupp unres
   pass=$(grep -c   '^PASS: '        "$outfile" 2>/dev/null)
@@ -648,7 +653,7 @@ fi
 # to re-apply. Needed when --parallel-tallies is on because multiple
 # processes open the DB concurrently.
 if [ -f "$DB" ]; then
-  sqlite3 "$DB" 'PRAGMA journal_mode=WAL;' >/dev/null
+  sqlite_bench 'PRAGMA journal_mode=WAL;' >/dev/null
 fi
 
 # --- Drive phases -------------------------------------------------------
@@ -820,7 +825,7 @@ echo "==[ $(ts) bench-parallel END ]==" | tee -a "$LOG"
 # of the ledger and emit a visible WARN before the table prints. (bug #157)
 zero_levels=""
 for lvl in "${LEVEL_LIST[@]}"; do
-  count=$(sqlite3 "$DB" "
+  count=$(sqlite_bench "
     SELECT COUNT(*) FROM results
      WHERE run_id = (SELECT MAX(run_id) FROM runs WHERE opt_level='$lvl');
   " 2>/dev/null)
@@ -847,7 +852,7 @@ this_run_levels=""
 for lvl in "${LEVEL_LIST[@]}"; do
   this_run_levels="${this_run_levels:+$this_run_levels,}'$lvl'"
 done
-sqlite3 -separator $'\t' "$DB" <<SQL > /tmp/bench-parallel-delta.tsv 2>/dev/null
+sqlite3 -cmd ".timeout $SQLITE_BUSY_TIMEOUT_MS" -separator $'\t' "$DB" <<SQL > /tmp/bench-parallel-delta.tsv 2>/dev/null
 WITH ranked AS (
   SELECT opt_level, run_id,
          ROW_NUMBER() OVER (PARTITION BY opt_level ORDER BY run_id DESC) AS rn
@@ -930,7 +935,7 @@ rm -f /tmp/bench-parallel-delta.tsv
 
 # Cross-O wide table at the end for at-a-glance comparison
 # (covers ALL 28 levels, not just the 9 plain ones).
-sqlite3 "$DB" <<SQL | tee -a "$LOG"
+sqlite_bench <<SQL | tee -a "$LOG"
 .headers on
 .mode column
 SELECT opt_level,

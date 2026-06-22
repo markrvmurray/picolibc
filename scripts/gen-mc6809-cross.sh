@@ -42,6 +42,17 @@ emit() {
 }
 
 echo "gen-mc6809-cross: LLVM_BIN=$LLVM_BIN"
+
+# The -mame cross's exe_wrapper selects the HD6309 execution backend.
+# Default is MAME (run-mc6809-mame). BENCH_HD6309_BACKEND=usim instead
+# routes the -hd6309-mame levels through run-mc6809-usim6309 (usim09batch
+# --hd6309) — same -mcpu=hd6309 codegen, USim instead of MAME.
+mame_wrapper="$PICO/scripts/run-mc6809-mame"
+if [ "${BENCH_HD6309_BACKEND:-mame}" = "usim" ]; then
+	mame_wrapper="$PICO/scripts/run-mc6809-usim6309"
+fi
+echo "gen-mc6809-cross: HD6309 backend = ${BENCH_HD6309_BACKEND:-mame} ($mame_wrapper)"
+
 emit "$SCRIPT_DIR/cross-clang-mc6809-unknown-elf.txt"      "$PICO/scripts/run-mc6809"       0
-emit "$SCRIPT_DIR/cross-clang-mc6809-unknown-elf-mame.txt" "$PICO/scripts/run-mc6809-mame"  0
+emit "$SCRIPT_DIR/cross-clang-mc6809-unknown-elf-mame.txt" "$mame_wrapper"                  0
 emit "$SCRIPT_DIR/cross-clang-mc6809-unknown-elf-dp7F.txt" "$PICO/scripts/run-mc6809"     127

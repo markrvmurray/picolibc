@@ -46,8 +46,16 @@ cycles_flag=""
 if [ "${USIM_CYCLES:-0}" = "1" ]; then
   cycles_flag="--cycles"
 fi
+# USIM_HD6309=1 selects usim09batch's HD6309 emulation (for -mcpu=hd6309
+# binaries). Opt-in so this same wrapper still serves the 6809 levels
+# unchanged; the run-mc6809-usim6309 sibling sets it for the bench's
+# HD6309 levels when BENCH_HD6309_BACKEND=usim.
+hd6309_flag=""
+if [ "${USIM_HD6309:-0}" = "1" ]; then
+  hd6309_flag="--hd6309"
+fi
 # Default cap 2B instructions (4x headroom over the slow string tests
 # at ~500M). usim returns rc 124 on cap-hit (GNU timeout convention);
 # we relay it unchanged so the python harness can reclassify
 # FAIL -> TIMEOUT.
-echo "$stdin" | $USIM --timeout="${USIM_TIMEOUT:-2000000000}" $cycles_flag "$elf"
+echo "$stdin" | $USIM --timeout="${USIM_TIMEOUT:-2000000000}" $cycles_flag $hd6309_flag "$elf"

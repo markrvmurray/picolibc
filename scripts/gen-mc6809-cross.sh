@@ -43,16 +43,18 @@ emit() {
 
 echo "gen-mc6809-cross: LLVM_BIN=$LLVM_BIN"
 
-# The -mame cross's exe_wrapper selects the HD6309 execution backend.
-# Default is MAME (run-mc6809-mame). BENCH_HD6309_BACKEND=usim instead
-# routes the -hd6309-mame levels through run-mc6809-usim6309 (usim09batch
-# --hd6309) — same -mcpu=hd6309 codegen, USim instead of MAME.
-mame_wrapper="$PICO/scripts/run-mc6809-mame"
-if [ "${BENCH_HD6309_BACKEND:-mame}" = "usim" ]; then
-	mame_wrapper="$PICO/scripts/run-mc6809-usim6309"
+# The HD6309 cross's exe_wrapper selects the execution backend. Default is now
+# USim (run-mc6809-usim6309, usim09batch --hd6309) — ~11x faster than MAME and
+# result-identical across the suite. BENCH_HD6309_BACKEND=mame restores the MAME
+# backend (run-mc6809-mame), the ground-truth cross-check. Same -mcpu=hd6309
+# codegen either way; only the executor (and its cycle model) differs, so the
+# bench records the two under distinct -hd6309-usim / -hd6309-mame opt_levels.
+hd6309_wrapper="$PICO/scripts/run-mc6809-usim6309"
+if [ "${BENCH_HD6309_BACKEND:-usim}" = "mame" ]; then
+	hd6309_wrapper="$PICO/scripts/run-mc6809-mame"
 fi
-echo "gen-mc6809-cross: HD6309 backend = ${BENCH_HD6309_BACKEND:-mame} ($mame_wrapper)"
+echo "gen-mc6809-cross: HD6309 backend = ${BENCH_HD6309_BACKEND:-usim} ($hd6309_wrapper)"
 
 emit "$SCRIPT_DIR/cross-clang-mc6809-unknown-elf.txt"      "$PICO/scripts/run-mc6809"       0
-emit "$SCRIPT_DIR/cross-clang-mc6809-unknown-elf-mame.txt" "$mame_wrapper"                  0
+emit "$SCRIPT_DIR/cross-clang-mc6809-unknown-elf-mame.txt" "$hd6309_wrapper"                0
 emit "$SCRIPT_DIR/cross-clang-mc6809-unknown-elf-dp7F.txt" "$PICO/scripts/run-mc6809"     127

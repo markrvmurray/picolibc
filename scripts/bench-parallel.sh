@@ -54,6 +54,14 @@
 #                        file, append `-mame` to builddirs and ledger
 #                        opt_level rows. Bug #194 Phase B.
 #   -h, --help           show this header
+#
+# Env:
+#   BENCH_HD6309_BACKEND  usim (default) or mame — executor for the -hd6309-mame
+#                         levels. USim is ~11x faster and result-identical to
+#                         MAME; their cycle models differ (non-comparable), so
+#                         results record under -hd6309-usim vs -hd6309-mame
+#                         opt_levels respectively. Set =mame for a ground-truth
+#                         cross-check.
 
 set -u
 
@@ -313,6 +321,22 @@ level_bd_suffix() {
 wave_log() { local s; s="$(level_bd_suffix "$1")"; echo "/tmp/bench-parallel-$1${s}.log"; }
 wave_bd()  { local s; s="$(level_bd_suffix "$1")"; echo "$PICO/builddir-mc6809-$1${s}"; }
 ts()       { date '+%H:%M:%S'; }
+
+# HD6309 execution backend — USim is now the default (gen-mc6809-cross.sh points
+# the HD6309 cross's exe_wrapper at run-mc6809-usim6309 unless BENCH_HD6309_BACKEND
+# =mame). The build is backend-identical, so the builddir + cross routing keep the
+# historical -hd6309-mame names; only the RECORDED opt_level is made backend-aware
+# (level_record_label) so the non-comparable USim vs MAME cycle series stay
+# separate in the ledger (-hd6309-usim vs -hd6309-mame).
+HD6309_BACKEND="${BENCH_HD6309_BACKEND:-usim}"
+level_record_label() {
+  case "$1" in
+    *-hd6309-mame|*-hd6309-mame-fp)
+      if [ "$HD6309_BACKEND" = "mame" ]; then echo "$1"
+      else echo "${1/-hd6309-mame/-hd6309-usim}"; fi ;;
+    *) echo "$1" ;;
+  esac
+}
 
 _setup_wave() {
   local label="$1"
@@ -797,8 +821,12 @@ if [ $skip_tally -eq 0 ]; then
     fi
     # Bug #220: per-level suffix so *-mame levels record under their
     # own opt_level label without double-stamping the -mame.
+    # Record label is backend-aware (level_record_label): -hd6309-mame levels
+    # executed on USim (the default) record as -hd6309-usim, keeping the two
+    # backends' incomparable cycle series apart. The builddir ($bd) is unchanged.
     lvl_suffix="$(level_bd_suffix "$lvl")"
-    multi="${multi:+$multi,}${lvl}${lvl_suffix}:${bd}"
+    rec_label="$(level_record_label "$lvl")"
+    multi="${multi:+$multi,}${rec_label}${lvl_suffix}:${bd}"
   done
   if [ -z "$multi" ]; then
     echo "==[ $(ts) no tally levels available ]==" | tee -a "$LOG"

@@ -2034,6 +2034,18 @@ foreach params : targets
   endif
 endforeach
 
+# mc6809: at base-6809 -Og the compiler's extend-lifetimes default inflates code
+# by ~60% over -Os (it keeps values live for debuggability, which spills heavily
+# on a 2-accumulator / 3-index target), tipping a few borderline tests past the
+# 64K image at link time. They link fine at every shipping level (O0/O1/O2/Os/Oz)
+# and on the denser hd6309, so skip exactly those tests at base-6809 -Og instead
+# of recording a known size buildfail. -Og is informational on mc6809, not a
+# release target. (llvm-mc6809 Bug #380 follow-up.)
+mc6809_og_oversize_tests = []
+if host_cpu_family == 'mc6809' and get_option('optimization') == 'g' and not ('-mcpu=hd6309' in get_option('c_args'))
+  mc6809_og_oversize_tests = ['test-timegm', 'test-fmemopen', 'timegm_rem_probe']
+endif
+
 if enable_tests
   subdir('test')
 endif

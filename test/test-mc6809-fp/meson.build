@@ -72,6 +72,10 @@ foreach params : targets
   _link_depends = get_variable('test_link_depends' + target, test_link_depends) + _libs
 
   foreach t1 : tests_mc6809_fp
+    if t1 in mc6809_og_oversize_tests
+      # Overflows the 64K image only at base-6809 -Og (see top-level meson.build).
+      continue
+    endif
     t1_src = t1 + '.c'
     test_file_name_arg=['-DTEST_FILE_NAME="' + t1 + target + '.txt"']
 

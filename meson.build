@@ -2041,9 +2041,17 @@ endforeach
 # and on the denser hd6309, so skip exactly those tests at base-6809 -Og instead
 # of recording a known size buildfail. -Og is informational on mc6809, not a
 # release target. (llvm-mc6809 Bug #380 follow-up.)
-mc6809_og_oversize_tests = []
-if host_cpu_family == 'mc6809' and get_option('optimization') == 'g' and not ('-mcpu=hd6309' in get_option('c_args'))
-  mc6809_og_oversize_tests = ['test-timegm', 'test-fmemopen', 'timegm_rem_probe']
+# test-fmemopen also links at base-6809 -O2, but the image is large enough that
+# fmemopen()'s malloc has no heap left and it returns NULL at runtime. Skip it
+# there too rather than record a runtime FAIL (it passes at the smaller -O1/-Os).
+# The list now spans more than -Og, hence the config-neutral name.
+mc6809_oversize_skip = []
+if host_cpu_family == 'mc6809' and not ('-mcpu=hd6309' in get_option('c_args'))
+  if get_option('optimization') == 'g'
+    mc6809_oversize_skip = ['test-timegm', 'test-fmemopen', 'timegm_rem_probe']
+  elif get_option('optimization') == '2'
+    mc6809_oversize_skip = ['test-fmemopen']
+  endif
 endif
 
 if enable_tests

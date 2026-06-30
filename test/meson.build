@@ -330,8 +330,9 @@ foreach params : targets
   endif
 
   foreach t1 : tests
-    if t1 in mc6809_og_oversize_tests
-      # Overflows the 64K image only at base-6809 -Og (see top-level meson.build).
+    if t1 in mc6809_oversize_skip
+      # Too large to link, or to run with a usable heap, at this base-6809
+      # optimisation level (see top-level meson.build).
       continue
     endif
     t1_src = t1 + '.c'

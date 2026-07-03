@@ -111,6 +111,13 @@ directpage_block = '''
 	PROVIDE(__rs1  = __dp_base_addr + 0x0A);
 	PROVIDE(__rs2  = __dp_base_addr + 0x0C);
 	PROVIDE(__rs3  = __dp_base_addr + 0x0E);
+	/* Byte sub-register aliases for the RS pool (big-endian: HI at the
+	 * base address, LO at base+1). The backend accesses allocated RS
+	 * values bytewise through these. */
+	PROVIDE(__rs0hi = __rs0); PROVIDE(__rs0lo = __rs0 + 1);
+	PROVIDE(__rs1hi = __rs1); PROVIDE(__rs1lo = __rs1 + 1);
+	PROVIDE(__rs2hi = __rs2); PROVIDE(__rs2lo = __rs2 + 1);
+	PROVIDE(__rs3hi = __rs3); PROVIDE(__rs3lo = __rs3 + 1);
 	PROVIDE(__rc8  = __dp_base_addr + 0x10);
 	PROVIDE(__rc9  = __dp_base_addr + 0x11);
 	PROVIDE(__rc10 = __dp_base_addr + 0x12);

@@ -31,6 +31,10 @@ tests_mc6809_dp = [
   'test-mc6809-mul-corners',
   # Bug #161 Phase 3 sentinel — HD6309 DIVD __udivhi3 / __umodhi3.
   'test-mc6809-divd',
+  # Signed i16 add-overflow branch under byte spill pressure: the overflow
+  # flag (CC.V) must be captured to a byte at the producer, since a spilled
+  # sum's store-back clears V before a live-V branch reads it (INT16_MIN edge).
+  'test-saddo-overflow',
 ]
 
 foreach params : targets

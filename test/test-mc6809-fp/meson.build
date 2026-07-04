@@ -43,6 +43,14 @@ tests_mc6809_fp = [
   'bug343_cmplxd_probe',  # Bug #343 _Complex double */÷ via __muldc3/__divdc3 (split: __divdc3 ~16KB)
 ]
 
+# strtod() value probe. strtod is the double string->double converter, only
+# built when stdio_float is set (the -fp levels); it is undefined at the
+# integer levels. Guards strtod correctness directly, without the float printf
+# that makes the libc-testsuite strtod round-trip test overflow the 64K image.
+if stdio_float
+  tests_mc6809_fp += ['test-strtod-value']
+endif
+
 foreach params : targets
   target = params['name']
   target_dir = params['dir']

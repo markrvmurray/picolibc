@@ -53,7 +53,16 @@ endif
 libc_tests_picolibc = libc_tests_common
 
 if io_float_exact
-  libc_tests_picolibc += ['strtod']
+  # strtod's round-trip test formats each value with snprintf("%.300f") and
+  # re-parses it, so it needs the double vfprintf variant (as sscanf needs the
+  # double vfscanf below). On MC6809 the size-driven integer-default printf
+  # makes %f emit the "*float*" placeholder — the round-trip then fails on
+  # every non-zero value — and redirecting to the double variant overflows the
+  # 64K image by ~3.4 KB. The test can neither build nor pass here; strtod()
+  # itself is correct (see the test-mc6809-dp value probe), so skip the test.
+  if host_machine.cpu_family() != 'mc6809'
+    libc_tests_picolibc += ['strtod']
+  endif
 endif
 
 # Bug #224: tests that need the double-precision scanf variant. The

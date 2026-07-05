@@ -37,8 +37,8 @@
 #define _LINUX_RLIMIT_STRUCT_H_
 
 struct __kernel_rlimit {
-    __uint32_t rlim_cur;
-    __uint32_t rlim_max;
+    __uint64_t rlim_cur;
+    __uint64_t rlim_max;
 };
 
 #define SIMPLE_MAP_RLIMIT(_t, _f)        \

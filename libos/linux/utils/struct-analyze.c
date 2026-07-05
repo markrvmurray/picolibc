@@ -1,5 +1,6 @@
 #include <stddef.h>
 #include "struct-data.h"
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <ctype.h>
@@ -204,6 +205,9 @@ main(int argc, char **argv)
     if (offset < sizeof(val))
         printf("    __uint8_t  __adjust_%zd[%zd];\n", offset, sizeof(val) - offset);
     printf("};\n");
+#ifdef MAKE_TYPEDEF
+    printf("typedef %s __kernel_%s __kernel_%s;\n", STRUCT_OR_UNION, name, MAKE_TYPEDEF);
+#endif
 
     printf("\n");
 
@@ -213,8 +217,15 @@ main(int argc, char **argv)
     printf("(_t, _f) do {\\\n");
     for (i = 0; i < NELT; i++) {
         e = &elts[i];
-        if (!e->typename)
-            printf("        (_t)->%s = (_f)->%s;\\\n", e->name, e->name);
+        if (!e->typename) {
+            if (e->nelt > 0) {
+                printf("        { unsigned __i; for(__i = 0; i < %d; i++) (_t)->%s[__i] = "
+                       "(_f)->%s[__i]; } \\\n",
+                       e->nelt, e->name, e->name);
+            } else {
+                printf("        (_t)->%s = (_f)->%s;\\\n", e->name, e->name);
+            }
+        }
     }
     printf("    } while(0)\n");
 

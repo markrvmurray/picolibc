@@ -146,7 +146,6 @@ else
   enable_exhaustive_math_tests = exhaustive_math_tests_value == 'true'
 endif
 tests_enable_stack_protector = get_option('tests-enable-stack-protector')
-tests_enable_full_malloc_stress = get_option('tests-enable-full-malloc-stress')
 tests_enable_posix_io = get_option('tests-enable-posix-io')
 
 use_hlt_semihosting = false
@@ -373,6 +372,7 @@ common_options = [
   '-fstrict-flex-arrays=3',
   '-fno-builtin-copysignl',
   '-fno-stack-protector',
+  '-Wthread-safety',
 ]
 
 if compiler_id == 'clang'
@@ -1083,6 +1083,12 @@ foreach params : [default_target] + targets
     if cc.get_linker_id() == 'ld.eld'
       picolibc_ld_data.set('TLS_PHDRS', 'tls PT_TLS;')
       picolibc_ld_data.set('TLS_INIT_PHDR', 'tls')
+    endif
+
+    if host_cpu_family == 'riscv'
+      picolibc_ld_data.set('RISCV', '')
+    else
+      picolibc_ld_data.set('RISCV', ld_comment)
     endif
 
     default_init_section_template = init_section_template.format('@0@', '''
@@ -2152,6 +2158,27 @@ else
   specs_libpath = '-L' + specs_option_format.format(lib_prefix, lib_buildtype, lib_gen)
 
   #
+  # Build the non-multilib libgcc -L value
+  #
+
+  libgcc_dir_option = get_option('libgccdir')
+  if libgcc_dir_option == ''
+    libgcc_dir = get_option('includedir') / '..' / 'lib' / 'gcc' / gcc_dumpmachine / '%(version)'
+  else
+    libgcc_dir = libgcc_dir_option / '%(version)'
+  endif
+  prefix_libgcc_dir = '%*/@0@'.format(libgcc_dir)
+  libgcc_prefix = picolibc_prefix_format.format(prefix_libgcc_dir)
+
+  buildtype_libgcc_dir = specs_prefix_format.format(libgcc_dir / '%*')
+  libgcc_buildtype = picolibc_buildtype_format.format(buildtype_libgcc_dir)
+
+  gen_libgcc_dir = specs_prefix_format.format(libgcc_dir)
+  libgcc_gen = gen_format.format(gen_libgcc_dir)
+
+  specs_libgccpath = '-L' + specs_option_format.format(libgcc_prefix, libgcc_buildtype, libgcc_gen)
+
+  #
   # Build the non-multilib *startfile options
   #
 
@@ -2184,9 +2211,24 @@ else
     specs_multilibpath = '-L' + specs_option_format.format(multilib_prefix, multilib_buildtype, multilib_gen)
 
     #
+    # Build the multilib libgcc -L value
+    #
+    prefix_multilibgcc_dir = '%*/@0@'.format(libgcc_dir / '%M')
+    multilibgcc_prefix = picolibc_prefix_format.format(prefix_multilibgcc_dir)
+
+    buildtype_multilibgcc_dir = specs_prefix_format.format(libgcc_dir / '%*/%M')
+    multilibgcc_buildtype = picolibc_buildtype_format.format(buildtype_multilibgcc_dir)
+
+    gen_multilibgcc_dir = specs_prefix_format.format(libgcc_dir / '%M')
+    multilibgcc_gen = gen_format.format(gen_multilibgcc_dir)
+
+    specs_multilibgccpath = '-L' + specs_option_format.format(multilibgcc_prefix, multilibgcc_buildtype, multilibgcc_gen)
+
+    #
     # Prepend the multilib -L option to the non-multilib option
     #
     specs_libpath = specs_multilibpath + ' ' + specs_libpath
+    specs_libgccpath = specs_multilibgccpath + ' ' + specs_libgccpath
 
     #
     # Build the multilib *startfile options
@@ -2222,6 +2264,7 @@ endif
 
 specs_data = configuration_data()
 specs_data.set('SPECS_ISYSTEM', specs_isystem)
+specs_data.set('SPECS_LIBGCC_PATH', specs_libgccpath)
 specs_data.set('SPECS_LIBPATH', specs_libpath)
 specs_data.set('SPECS_STARTFILE', specs_startfile)
 specs_data.set('TLSMODEL', tls_model_spec)

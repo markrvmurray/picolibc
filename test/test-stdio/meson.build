@@ -36,7 +36,9 @@
 tests = [
   'test-fdevopen',
   'test-fmemopen',
+  'test-open_memstream',
   'test-freopen',
+  'test-fopencookie',
   'test-funopen',
   'test-put',
   'test-sprintf-percent-n',
@@ -89,9 +91,11 @@ test_extra_libs = {}
 
 if enable_native_tests and oslib_test_variant == ''
   tests += [
+    'test-bufio-lock-init',
     'test-flockfile',
   ]
   test_extra_libs = {
+    'test-bufio-lock-init' : native_lib,
     'test-flockfile' : native_lib
   }
 endif
@@ -102,6 +106,7 @@ if tests_enable_posix_io
     'test-dprintf',
     'test-fgetc',
     'test-fgets-eof',
+    'test-fflush',
     'test-fopen',
     'test-fread-fwrite',
     'test-mktemp',

@@ -47,8 +47,18 @@ src_semihost += files([
                        'm68k_unlink.c',
                        'm68k_write.c',
                      ]) + [
+  src_semihost_fake_access,
+  src_semihost_fake_closedir,
+  src_semihost_fake_fstatvfs,
+  src_semihost_fake_ftruncate,
+  src_semihost_fake_getcwd,
   src_semihost_fake_getentropy,
   src_semihost_fake_getpid,
+  src_semihost_fake_getrlimit,
   src_semihost_fake_isatty,
   src_semihost_fake_kill,
+  src_semihost_fake_opendir,
+  src_semihost_fake_readdir,
+  src_semihost_fake_setrlimit,
+  src_semihost_fake_statvfs,
   ]

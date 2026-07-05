@@ -77,6 +77,7 @@ picolibc_sources(
   filewstrget.c
   flockfile.c
   fmemopen.c
+  open_memstream.c
   fopen.c
   fprintf.c
   fputc.c
@@ -93,6 +94,7 @@ picolibc_sources(
   ftox_engine.c
   ftrylockfile.c
   funlockfile.c
+  fopencookie.c
   funopen.c
   fwide.c
   fwprintf.c

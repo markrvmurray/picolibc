@@ -81,6 +81,9 @@ option('system-libc', type: 'boolean', value: false,
 option('force-install', type: 'boolean', value: false,
        description: 'If picolibc is a subproject its targets will not be installed by default, setting this to true forces installation')
 
+option('libgccdir', type: 'string',
+       description: 'path to picolibc libgcc dirictory')
+
 #
 # Testing options
 #
@@ -91,8 +94,6 @@ option('tests-cdefs', type: 'combo', choices: ['true', 'false', 'auto'], value: 
        description: 'Enable test of sys/cdefs.h. If set to auto, enable when tests are enabled')
 option('tests-enable-stack-protector', type: 'boolean', value: true,
        description: 'tests enable stack protector')
-option('tests-enable-full-malloc-stress', type: 'boolean', value: false,
-       description: 'tests enable stress test for full malloc')
 option('tests-enable-posix-io', type: 'boolean', value: true,
        description: 'tests enable posix-io when available')
 option('test-long-double', type: 'boolean', value: true,
@@ -225,14 +226,14 @@ option('crt-runtime-size', type: 'boolean', value: false,
 
 option('enable-malloc', type: 'boolean', value: true,
        description: 'provide malloc family of functions based on sbrk')
-option('malloc-clear-freed', type: 'boolean', value: false,
-       description: 'Erase memory on free/realloc')
 option('internal-heap', type: 'integer', value: 0,
        description: 'provide internal static heap')
-option('malloc-small-bucket', type: 'integer', value: 0,
-       description: 'use fixed bucket sizes for allocations no larger than this')
+option('malloc-clear-freed', type: 'boolean', value: false,
+       description: 'Erase memory on free/realloc')
 option('malloc-error-abort', type: 'boolean', value: false,
        description: 'Abort when malloc usage errors are detected')
+option('malloc-small-bucket', type: 'integer', value: 0,
+       description: 'use fixed bucket sizes for allocations no larger than this')
 
 #
 # Locking options

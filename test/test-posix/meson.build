@@ -34,22 +34,43 @@
 #
 
 tests = [
+  'test-access',
   'test-fnmatch',
+  'test-ftrunc',
+  'test-getcwd',
   'test-getdelim',
+  'test-getrlimit',
   'test-grp',
+  'test-dirent',
+  'test-posix-time',
   'test-pwd',
+  'test-rename',
+  'test-setrlimit',
   'test-signal',
   'test-stat',
+  'test-statvfs',
   ]
 
 tests_failure = []
+test_skip = []
+
+if enable_native_tests
+  test_skip += [
+    'test-dirent',
+  ]
+endif
 
 if has_os_posix
   tests += [
     'test-alarm',
+    'test-mmap',
     'test-popen',
     'test-system',
   ]
+endif
+
+if oslib_test_variant == 'linux'
+  test_skip += ['test-ftrunc']
 endif
 
 test_extra_libs = {}
@@ -90,6 +111,10 @@ foreach params : targets
   _link_args = target_c_args + _lib_files + get_variable('test_link_args' + target, test_link_args)
   _link_depends = get_variable('test_link_depends' + target, test_link_depends) + _libs
   foreach t1 : tests
+    if test_skip.contains(t1)
+      continue
+    endif
+
     t1_src = t1 + '.c'
     test_file_name_arg=['-DTEST_FILE_NAME="' + t1 + target + '.txt"']
 
@@ -177,4 +202,3 @@ if enable_native_tests
   endforeach
 
 endif
-

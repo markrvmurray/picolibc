@@ -34,9 +34,13 @@
 #
 
 set(tests
+  test-access
   test-fnmatch
+  test-getcwd
   test-getdelim
   test-grp
+  test-dirent
+  test-posix-time
   test-pwd
   test-signal
   test-stat

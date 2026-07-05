@@ -119,7 +119,7 @@ struct __file_bufio {
 void __bufio_lock_init(FILE *f);
 #endif
 
-static inline void
+static inline void __no_thread_safety_analysis
 __bufio_lock_close(FILE *f)
 {
 #ifdef __STDIO_BUFIO_LOCKING
@@ -132,19 +132,19 @@ __bufio_lock_close(FILE *f)
     (void)f;
 }
 
-static inline void
+static inline void __no_thread_safety_analysis
 __bufio_lock(FILE *f)
 {
 #ifdef __STDIO_BUFIO_LOCKING
     struct __file_bufio *bf = (struct __file_bufio *)f;
     if (!bf->lock)
-        __lock_init(bf->lock);
+        __bufio_lock_init(f);
     __lock_acquire(bf->lock);
 #endif
     (void)f;
 }
 
-static inline void
+static inline void __no_thread_safety_analysis
 __bufio_unlock(FILE *f)
 {
     (void)f;

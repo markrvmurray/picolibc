@@ -187,6 +187,16 @@ bufio_lseek(struct __file_bufio *bf, __off_t offset, int whence)
     return _FDEV_ERR;
 }
 
+static inline bool
+bufio_seekable(struct __file_bufio *bf)
+{
+#ifndef BUFIO_ABI_MATCHES
+    if (!(bf->bflags & __BFPTR))
+        return bf->lseek_int != NULL;
+#endif
+    return bf->lseek_ptr != NULL;
+}
+
 static inline int
 bufio_close(struct __file_bufio *bf)
 {
@@ -252,14 +262,20 @@ bufio_remove_file(FILE *f)
 #define bufio_remove_file(f)
 #endif
 
-int __stdio_flags(const char *mode, int *optr);
+int  __stdio_flags(const char *mode, int *optr);
+
+void _bufio_exit_flush(void) __weak;
 
 #ifdef __STDIO_LOCKING
 void __flockfile_init(FILE *f);
-#define __LOCK_NONE      ((_LOCK_RECURSIVE_T)(uintptr_t)1)
-#define __LOCK_INIT_NONE .lock = __LOCK_NONE
+#define __LOCK_NONE             ((_LOCK_RECURSIVE_T)(uintptr_t)1)
+#define __LOCK_INIT_NONE        .lock = __LOCK_NONE
+#define __stdio_acquire_file(f) __acquire_capability((f)->lock)
+#define __stdio_release_file(f) __release_capability((f)->lock)
 #else
 #define __LOCK_INIT_NONE
+#define __stdio_acquire_file(f)
+#define __stdio_release_file(f)
 #endif
 
 #define __funlock_return(f, v) \
@@ -269,7 +285,7 @@ void __flockfile_init(FILE *f);
     } while (0)
 
 static inline void
-__flockfile(FILE *f)
+__flockfile(FILE *f) __stdio_acquire_file(f) __no_thread_safety_analysis
 {
     (void)f;
 #ifdef __STDIO_LOCKING
@@ -281,7 +297,7 @@ __flockfile(FILE *f)
 }
 
 static inline void
-__funlockfile(FILE *f)
+__funlockfile(FILE *f) __stdio_release_file(f) __no_thread_safety_analysis
 {
     (void)f;
 #ifdef __STDIO_LOCKING
@@ -291,7 +307,7 @@ __funlockfile(FILE *f)
 }
 
 static inline void
-__flockfile_close(FILE *f)
+__flockfile_close(FILE *f) __stdio_release_file(f) __no_thread_safety_analysis
 {
     (void)f;
 #ifdef __STDIO_LOCKING

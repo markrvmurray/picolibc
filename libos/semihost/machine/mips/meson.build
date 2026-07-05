@@ -33,6 +33,7 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 #
+semihost_c_args += ['-mno-mips16']
 
 src_semihost += files([
                        'mips_close.c',
@@ -44,10 +45,21 @@ src_semihost += files([
                        'mips_unlink.c',
                        'mips_write.c',
                      ]) + [
+  src_semihost_fake_access,
+  src_semihost_fake_closedir,
+  src_semihost_fake_fstatvfs,
+  src_semihost_fake_ftruncate,
+  src_semihost_fake_getcwd,
   src_semihost_fake_getentropy,
   src_semihost_fake_getpid,
+  src_semihost_fake_getrlimit,
   src_semihost_fake_gettimeofday,
   src_semihost_fake_isatty,
   src_semihost_fake_kill,
+  src_semihost_fake_opendir,
+  src_semihost_fake_readdir,
+  src_semihost_fake_rename,
+  src_semihost_fake_setrlimit,
   src_semihost_fake_stat,
+  src_semihost_fake_statvfs,
   ]

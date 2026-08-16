@@ -170,6 +170,13 @@ FAKE_FS_TESTS = {
     "test-dprintf",
     "test-posix-io",
     "tzset",
+    # test-fflush opens a real file, writes through it and removes it
+    # again to check that fflush pushes buffered data out to the
+    # underlying descriptor. With no real filesystem the initial
+    # fopen-for-write fails and the test errors out before it reaches
+    # anything fflush-related. Arrived with the upstream stdio-exit-flush
+    # work; it is the same environmental class as its siblings above.
+    "test-fflush",
     # test-getdate calls `fopen("test-getdate.txt", "w")` to write the
     # DATEMSK file the test reads back via getdate(). Our semihost has
     # no real filesystem, so fopen-for-write fails immediately and the

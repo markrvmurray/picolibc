@@ -3,7 +3,7 @@
 #
 # Build phase, per -O level (parallel via xargs -P):
 #   1. meson setup builddir-mc6809-<O>  (once, reuses on re-run)
-#   2. delete stale *.c.o               (ninja is blind to compiler mtime)
+#   2. ninja -t clean                    (ninja is blind to compiler mtime)
 #   3. ninja -k 0 -C ...                (parallel across waves)
 #
 # Lit phase, once per invocation (cheap, ~5s):
@@ -64,6 +64,7 @@
 #                         cross-check.
 
 set -u
+bench_failed=0
 
 # Locations. Defaults assume the MC6809 repos are siblings of this
 # picolibc checkout (PICO/../llvm-mc6809, PICO/../usim, PICO/../mame).
@@ -394,15 +395,23 @@ _setup_wave() {
   fi
 }
 
-_clean_stale_c_o() {
+_scrub_wave() {
   local label="$1"
-  local bd
+  local bd wl
   bd="$(wave_bd "$label")"
-  find "$bd" \( -name '*.c.o' -o -name '*.cpp.o' \) -delete 2>/dev/null
-  # ninja is blind to compiler-binary mtime. Without this, a rebuilt
-  # clang/llc with unchanged picolibc sources leaves stale .c.o / .cpp.o
-  # on disk — the tally then records the OLD codegen against the NEW SHA.
-  # (feedback_ninja_compiler_dep.md, bug #169)
+  wl="$(wave_log "$label")"
+  # ninja is blind to compiler-binary mtime: a rebuilt clang/llc with
+  # unchanged picolibc sources leaves every object, libc.a and test
+  # binary "up to date", and the tally records the OLD codegen against
+  # the NEW SHA. Deleting only *.c.o was not enough in practice (a
+  # libc.a or test ELF that survived kept stale members / stale links),
+  # so scrub every output ninja knows about -- objects, archives, ELFs,
+  # generated headers -- and then re-run the file scan for anything
+  # outside ninja's graph. `ninja -t clean` is fast (seconds) and, unlike
+  # `meson setup --wipe`, keeps the configured build dir intact.
+  [ -f "$bd/build.ninja" ] && ninja -C "$bd" -t clean >>"$wl" 2>&1
+  find "$bd" \( -name '*.c.o' -o -name '*.cpp.o' -o -name '*.S.o' \
+                -o -name 'libc.a' -o -name 'libm.a' \) -delete 2>/dev/null
 }
 
 _build_wave() {
@@ -446,6 +455,30 @@ _build_wave() {
   verifier_n=$(awk '/^==\[ .* build start \]==/ {seen=1; next} seen' "$wl" 2>/dev/null \
                | grep -c '\*\*\* Bad machine code:' || echo 0)
   printf '%s\t%s\t%s\t%s\n' "$rc" "$failed_n" "$bin_n" "$verifier_n" > "/tmp/bench-parallel-$label.rc"
+}
+
+_refresh_builtins() {
+  local llvm_build="$LLVM_REPO/$LLVM_BUILD_SUBDIR"
+  local clang="$LLVM_BIN/clang"
+  [ -x "$clang" ] || return 0
+  local bins target
+  for bins in "$llvm_build"/runtimes/builtins-mc6809-*-bins; do
+    [ -d "$bins" ] || continue
+    target=$(basename "$bins" -bins)
+    # Up to date iff at least one builtins object post-dates the compiler
+    # (they are all compiled in one go, so one is as good as all).
+    if [ -n "$(find "$bins" \( -name '*.obj' -o -name '*.o' \) -newer "$clang" -print -quit 2>/dev/null)" ]; then
+      echo "==[ $(ts) builtins $target up to date ]==" | tee -a "$LOG"
+      continue
+    fi
+    echo "==[ $(ts) builtins $target older than clang -- rebuilding ]==" | tee -a "$LOG"
+    find "$bins" \( -name '*.obj' -o -name '*.o' -o -name '*.a' \) -delete 2>/dev/null
+    if ! cmake --build "$llvm_build" --target "$target" >>"$LOG" 2>&1; then
+      echo "==[ $(ts) builtins $target REBUILD FAILED -- refusing to bench with stale builtins (see $LOG) ]==" | tee -a "$LOG"
+      return 1
+    fi
+  done
+  return 0
 }
 
 # Tally phase is now a single flat invocation of
@@ -557,7 +590,7 @@ _lit_tally() {
 # would default to BD_SUFFIX="" and build the wrong directory
 # (builddir-mc6809-Os-hd6309 instead of builddir-mc6809-Os-hd6309-mame).
 case "${1:-}" in
-  _setup_wave|_clean_stale_c_o|_build_wave)
+  _setup_wave|_scrub_wave|_build_wave)
     BD_SUFFIX="${BENCH_BD_SUFFIX-}"
     CROSS="${BENCH_CROSS-$USIM_CROSS}"
     fn="$1"; shift
@@ -707,7 +740,7 @@ dispatch() {
 if [ $skip_build -eq 0 ]; then
   # Bug #277: scrub stale per-level state before launching the waves.
   # The per-level build logs are `>>`-appended by _setup_wave /
-  # _clean_stale_c_o / _build_wave; without truncation, the FAILED=
+  # _scrub_wave / _build_wave; without truncation, the FAILED=
   # and VERIFY= counters in the build-summary block accumulate hits
   # from every past invocation of that level. False WARN tags result,
   # masking real regressions. Also remove any .rc sidecar from a
@@ -722,11 +755,19 @@ if [ $skip_build -eq 0 ]; then
   done
   : > /tmp/bench-parallel-lit.log 2>/dev/null || true
 
+  # The compiler-rt builtins (libclang_rt.builtins.a: soft-float,
+  # complex, long-long helpers) live in the LLVM build tree and are
+  # just as blind to a compiler change as picolibc's objects: a backend
+  # fix leaves them compiled by the OLD compiler and tests that link
+  # them then FALSE-FAIL against the new one. Rebuild them whenever the
+  # compiler is newer than the newest builtins object.
+  _refresh_builtins || exit 1
+
   echo "==[ $(ts) setup waves ($build_jobs-way) ]==" | tee -a "$LOG"
   dispatch "$build_jobs" _setup_wave "${LEVEL_LIST[@]}"
 
-  echo "==[ $(ts) delete stale *.c.o ]==" | tee -a "$LOG"
-  dispatch 8 _clean_stale_c_o "${LEVEL_LIST[@]}"
+  echo "==[ $(ts) scrub every built output (ninja -t clean) ]==" | tee -a "$LOG"
+  dispatch 8 _scrub_wave "${LEVEL_LIST[@]}"
 
   echo "==[ $(ts) build waves ($build_jobs-way) ]==" | tee -a "$LOG"
   dispatch "$build_jobs" _build_wave "${LEVEL_LIST[@]}"
@@ -961,6 +1002,35 @@ END {
 ' /tmp/bench-parallel-delta.tsv | tee -a "$LOG"
 rm -f /tmp/bench-parallel-delta.tsv
 
+# A level whose latest run has results but not a single OK is a level
+# whose libc.a (or every test link) failed -- BUILDFAIL rows are not
+# FAILs, so the delta table's "new FAILs" test never fires, and the next
+# sweep's delta normalises to the broken state. Two whole levels sat at
+# 0 OK for six weeks that way. Gate on it, and on an OK count that has
+# collapsed to less than half of the previous run of the same level.
+# Skipped when --tests filters the pool: a handful of tests against a
+# full previous run is not comparable.
+if [ $skip_tally -eq 0 ] && [ -z "$tests_filter" ]; then
+  for lvl in "${LEVEL_LIST[@]}"; do
+    rec="$(level_record_label "$lvl")$(level_bd_suffix "$lvl")"
+    read -r ok_now ok_prev tot_now <<<"$(sqlite_bench "
+      WITH r AS (SELECT run_id, ROW_NUMBER() OVER (ORDER BY run_id DESC) rn
+                   FROM runs WHERE opt_level='$rec')
+      SELECT (SELECT COUNT(*) FROM results WHERE run_id=(SELECT run_id FROM r WHERE rn=1) AND status='OK'),
+             (SELECT COUNT(*) FROM results WHERE run_id=(SELECT run_id FROM r WHERE rn=2) AND status='OK'),
+             (SELECT COUNT(*) FROM results WHERE run_id=(SELECT run_id FROM r WHERE rn=1));
+    " 2>/dev/null | tr '|' ' ')"
+    ok_now=${ok_now:-0}; ok_prev=${ok_prev:-0}; tot_now=${tot_now:-0}
+    if [ "$tot_now" -gt 0 ] && [ "$ok_now" -eq 0 ]; then
+      echo "==[ $(ts) FAIL: $rec produced ZERO OK results out of $tot_now -- libc.a or every test link is broken at this level ]==" | tee -a "$LOG"
+      bench_failed=1
+    elif [ "$ok_prev" -gt 0 ] && [ $(( ok_now * 2 )) -lt "$ok_prev" ]; then
+      echo "==[ $(ts) FAIL: $rec OK count collapsed $ok_prev -> $ok_now vs the previous run of this level ]==" | tee -a "$LOG"
+      bench_failed=1
+    fi
+  done
+fi
+
 # Cross-O wide table at the end for at-a-glance comparison
 # (covers ALL 28 levels, not just the 9 plain ones).
 sqlite_bench <<SQL | tee -a "$LOG"
@@ -985,7 +1055,7 @@ SELECT opt_level,
  ORDER BY opt_level;
 SQL
 
-# Bug #269 WARN→FAIL: surface the build-gate failure in the exit
+# Surface the build-gate, zero-OK and OK-collapse failures in the exit
 # status so CI / wrappers see the bench as failed. The tally results
 # are still recorded in the ledger (Bug #279's delta block surfaces
 # any test-level regression separately), but a non-zero verifier hit

@@ -218,7 +218,12 @@ level_opts() {
     # a separate `meson configure` step CAN take a quoted string).
     Og)    echo "-Doptimization=g" ;;
     Oz)    echo "-Doptimization=plain -Dc_args=-Oz -Dcpp_args=-Oz" ;;
-    Ofast) echo "-Doptimization=plain -Dc_args=-Ofast -Dcpp_args=-Ofast" ;;
+    # -O3 -ffast-math is what -Ofast means; clang now warns that -Ofast is
+    # deprecated, and picolibc probes every one of its common_options with
+    # -Werror, so a bare -Ofast in c_args made every probe fail and silently
+    # dropped the whole list (-Werror=vla, -fno-builtin-copysignl,
+    # -fno-stack-protector, ...) from the Ofast builddirs.
+    Ofast) echo "-Doptimization=plain -Dc_args=['-O3','-ffast-math'] -Dcpp_args=['-O3','-ffast-math']" ;;
 
     # ---- plain MC6809, LTO ----
     O2-lto) echo "-Doptimization=2 -Db_lto=true" ;;
@@ -278,7 +283,7 @@ level_opts() {
     # change.
     Os-fp)     echo "-Doptimization=s -Dstdio-float=true -Dwant-libm=true" ;;
     Oz-fp)     echo "-Doptimization=plain -Dc_args=-Oz -Dcpp_args=-Oz -Dstdio-float=true -Dwant-libm=true" ;;
-    Ofast-fp)  echo "-Doptimization=plain -Dc_args=-Ofast -Dcpp_args=-Ofast -Dstdio-float=true -Dwant-libm=true" ;;
+    Ofast-fp)  echo "-Doptimization=plain -Dc_args=['-O3','-ffast-math'] -Dcpp_args=['-O3','-ffast-math'] -Dstdio-float=true -Dwant-libm=true" ;;
     Os-lto-fp) echo "-Doptimization=s -Db_lto=true -Dstdio-float=true -Dwant-libm=true" ;;
 
     *)     echo "unknown level $1" >&2; return 2 ;;

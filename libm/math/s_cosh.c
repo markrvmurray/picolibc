@@ -78,7 +78,11 @@ cosh64(__float64 x)
     GET_LOW_WORD(lx, x);
     if (ix < 0x408633CE || (ix == 0x408633ce && lx <= (__uint32_t)0x8fb9f87d)) {
         w = exp64(half * x);
-        t = half * w;
+        /* Split the product so it stays (half*w)*w: under fast-math the
+         * compiler may otherwise reassociate to half*(w*w), or fold the two
+         * exp factors back into exp(x), and either overflows where the
+         * result itself is finite. */
+        t = opt_barrier_float64(half * w);
         return t * w;
     }
 

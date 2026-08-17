@@ -50,7 +50,11 @@ sinhf(float x)
     /* |x| in [log(maxdouble), overflowthresold] */
     if (ix <= FLT_UWORD_LOG_2MAX) {
         w = expf((float)0.5 * fabsf(x));
-        t = h * w;
+        /* Split the product so it stays (h*w)*w: under fast-math the
+         * compiler may otherwise reassociate to h*(w*w), or fold the two
+         * exp factors back into exp(|x|), and either overflows where the
+         * result itself is finite. */
+        t = opt_barrier_float(h * w);
         return t * w;
     }
 

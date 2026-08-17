@@ -71,7 +71,11 @@ sinh64(__float64 x)
     GET_LOW_WORD(lx, x);
     if (ix < 0x408633CE || (ix == 0x408633ce && lx <= (__uint32_t)0x8fb9f87d)) {
         w = exp64(_F_64(0.5) * fabs64(x));
-        t = h * w;
+        /* Split the product so it stays (h*w)*w: under fast-math the
+         * compiler may otherwise reassociate to h*(w*w), or fold the two
+         * exp factors back into exp(|x|), and either overflows where the
+         * result itself is finite. */
+        t = opt_barrier_float64(h * w);
         return t * w;
     }
 

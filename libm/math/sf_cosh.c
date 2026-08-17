@@ -59,7 +59,11 @@ coshf(float x)
     /* |x| in [log(maxdouble), overflowthresold] */
     if (ix <= FLT_UWORD_LOG_2MAX) {
         w = expf(half * x);
-        t = half * w;
+        /* Split the product so it stays (half*w)*w: under fast-math the
+         * compiler may otherwise reassociate to half*(w*w), or fold the two
+         * exp factors back into exp(x), and either overflows where the
+         * result itself is finite. */
+        t = opt_barrier_float(half * w);
         return t * w;
     }
 

@@ -38,38 +38,49 @@
 #include <fenv.h>
 #include "test-rounding-mode.h"
 
+/*
+ * These live in their own translation unit so that the operands reach the
+ * arithmetic at run time, under the rounding mode the test has just set,
+ * rather than being folded at compile time. Link-time optimisation sees
+ * across the translation unit boundary, and a target without
+ * -frounding-math support then folds (1/3)*3-1 to a constant, making every
+ * rounding mode "agree". Pass the operands through volatile so the
+ * arithmetic stays where it is however the program is optimised.
+ */
+#define OPAQUE(type, x) (*(volatile type *)&(x))
+
 double
 div_d(double a, double b)
 {
-    return a / b;
+    return OPAQUE(double, a) / OPAQUE(double, b);
 }
 
 double
 mul_d(double a, double b)
 {
-    return a * b;
+    return OPAQUE(double, a) * OPAQUE(double, b);
 }
 
 double
 sub_d(double a, double b)
 {
-    return a - b;
+    return OPAQUE(double, a) - OPAQUE(double, b);
 }
 
 float
 div_f(float a, float b)
 {
-    return a / b;
+    return OPAQUE(float, a) / OPAQUE(float, b);
 }
 
 float
 mul_f(float a, float b)
 {
-    return a * b;
+    return OPAQUE(float, a) * OPAQUE(float, b);
 }
 
 float
 sub_f(float a, float b)
 {
-    return a - b;
+    return OPAQUE(float, a) - OPAQUE(float, b);
 }

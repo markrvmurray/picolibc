@@ -188,14 +188,7 @@ math_partitions = {
   'test-floor': 50,
 }
 
-# Bug #355: the genuine MC6839 ROM does not honor directed rounding for
-# DIVISION (add/sub/mul do).  test-rounding-mode's do_fancy/div_mul_sub
-# cases therefore cannot pass on mc6809 — a hardware limitation we run on
-# a byte-identical Motorola Float09.bin, not a fixable software bug.  Mark
-# it expected-fail so the bench records EXPECTEDFAIL, not a regression.
-# (fesetround input validation, the other half, is fixed in Bug #354.)
 math_should_fail = [
-  'test-rounding-mode',
 ]
 
 math_slices = {}

@@ -2,7 +2,7 @@
 #
 # run-mc6809 — picolibc test runner for MC6809 (usim09batch)
 #
-# Usage: run-mc6809 <elf> [--stdin "string"] [--args "args"]
+# Usage: run-mc6809 [--toolchain-ref FILE] <elf> [--stdin "string"] [--args "args"]
 #
 # Since usim09batch's load_elf landed (commit 1d0610d for the PT_LOAD
 # walk + reset-vector $FFFE ← _start fallback; commit 2734c8d for the
@@ -13,14 +13,36 @@
 
 USIM="${USIM09BATCH:-usim09batch}"
 
-elf="$1"
-shift
+# A run against a stale binary is worse than no run: it passes or fails for
+# reasons that stopped being true when the compiler was rebuilt, and ninja
+# has no edge from a test to the compiler that built it, so nothing else
+# notices.  Refuse, and name the one command that fixes it.
+check_freshness() {
+  _ref="$1"; _bin="$2"
+  [ "${MC6809_ALLOW_STALE:-0}" = 1 ] && return 0
+  [ -n "$_ref" ] && [ -e "$_ref" ] && [ -e "$_bin" ] || return 0
+  if [ "$_ref" -nt "$_bin" ]; then
+    echo "$(basename "$0"): $(basename "$_bin") is older than the toolchain" >&2
+    echo "  ($_ref has changed since it was built)" >&2
+    echo "  run: scripts/mc6809-refresh <builddir>" >&2
+    echo "  (MC6809_ALLOW_STALE=1 runs it anyway)" >&2
+    exit 99
+  fi
+  return 0
+}
+
+elf=""
+toolchain_ref="${MC6809_TOOLCHAIN_REF:-}"
 
 stdin=""
 args=""
 done=0
 while [ $# -gt 0 -a $done -eq 0 ]; do
   case "$1" in
+    --toolchain-ref)
+      toolchain_ref="$2"
+      shift 2
+      ;;
     --stdin)
       stdin="$2"
       shift 2
@@ -30,15 +52,22 @@ while [ $# -gt 0 -a $done -eq 0 ]; do
       shift 2
       ;;
     *)
-      done=1
+      if [ -z "$elf" ]; then
+        elf="$1"
+        shift
+      else
+        done=1
+      fi
       ;;
   esac
 done
 
 if [ -z "$elf" ]; then
-  echo "usage: run-mc6809 <elf> [--stdin string] [--args string]" >&2
+  echo "usage: run-mc6809 [--toolchain-ref file] <elf> [--stdin string] [--args string]" >&2
   exit 1
 fi
+
+check_freshness "$toolchain_ref" "$elf"
 
 # USIM_CYCLES=1 opts into canonical-cycle reporting; usim09batch then
 # emits 'cycles=<N>' on stderr which the tally harness picks up.

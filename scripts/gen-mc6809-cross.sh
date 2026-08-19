@@ -36,6 +36,7 @@ emit() {
 	# delimiter so slashes in paths need no escaping.
 	sed -e "s|%%LLVM_BIN%%|$LLVM_BIN|g" \
 	    -e "s|%%EXE_WRAPPER%%|$wrapper|g" \
+	    -e "s|%%TOOLCHAIN_REF%%|$LLVM_BIN/clang|g" \
 	    -e "s|%%DP_BASE%%|$dp|g" \
 	    "$TEMPLATE" > "$out"
 	echo "  wrote $out"
@@ -72,6 +73,7 @@ if [ -f "$OS9_TEMPLATE" ]; then
 	sed -e "s|%%LLVM_BIN%%|$LLVM_BIN|g" \
 	    -e "s|%%EXE_WRAPPER%%|$PICO/scripts/run-mc6809-os9|g" \
 	    -e "s|%%OS9_FP%%|$OS9_FP|g" \
+	    -e "s|%%TOOLCHAIN_REF%%|$LLVM_BIN/clang|g" \
 	    -e "s|%%OS9_LDS%%|$OS9_LDS|g" \
 	    "$OS9_TEMPLATE" > "$SCRIPT_DIR/cross-clang-mc6809-unknown-os9.txt"
 	echo "  wrote $SCRIPT_DIR/cross-clang-mc6809-unknown-os9.txt"

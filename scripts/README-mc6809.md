@@ -227,21 +227,22 @@ from the compiler's OS-9 runtime (`libclang_rt.os9`, built by the LLVM tree's
 `runtimes/builtins-mc6809-unknown-os9` target); the cross file's `os9_lds`
 property points at the script and must exist before configuring.
 
-Ninja does not know that the test programs depend on the compiler's OS-9
-runtime, so after rebuilding it (`crt0`, `crt1`, `libclang_rt.os9.a`, or
-`mc6809-os9.lds`) delete the test binaries to force a relink -- otherwise the
-tests run against the previous runtime:
+Ninja has no edge from a test binary, or from `libc.a`'s objects, to the
+compiler that built them -- not to `clang`, not to `libclang_rt.os9.a`, not to
+`mc6809-os9.lds`.  So after rebuilding LLVM, `ninja -C builddir-…` relinks
+nothing and rebuilds nothing, and the tests exercise the *previous* backend
+while looking perfectly green.  One command puts a level right:
 
 ```sh
-python3 - <<'EOF'
-import json, os
-for e in json.load(open('builddir-mc6809-os9-Os/meson-info/intro-tests.json')):
-    p = e['cmd'][-1] if e['cmd'] else None
-    if p and os.path.isfile(p) and os.access(p, os.X_OK) and '.p/' not in p:
-        os.remove(p)
-EOF
-ninja -C builddir-mc6809-os9-Os -k0
+scripts/mc6809-refresh builddir-mc6809-os9-Os        # or any level
 ```
+
+`run-mc6809-tests` and `bench-parallel.sh` do this themselves before every
+measured run (it is `--refresh-only` of the same preflight), so the numbers
+they report are always against the compiler on disk.  For anything run by
+hand, the two runners compare the program against the toolchain and refuse
+to run one that predates it -- exit 99, naming the command above.
+`MC6809_ALLOW_STALE=1` runs it anyway.
 
 Each test runs on a real NitrOS-9 boot (~2 s), driven by
 `scripts/run-mc6809-os9` as meson's `exe_wrapper`:

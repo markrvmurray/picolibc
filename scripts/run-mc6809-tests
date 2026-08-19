@@ -1077,6 +1077,15 @@ def main():
                          "this flag when actually measuring the semihost "
                          "layer or when USim has been extended with real "
                          "file I/O.")
+    ap.add_argument("--refresh-only", action="store_true",
+                    help="Bring the level up to date against the current "
+                         "compiler and stop: wipe objects the backend has "
+                         "outrun, relink the test binaries, report what "
+                         "moved.  This is the one command to run after "
+                         "rebuilding LLVM, before working a level by hand "
+                         "-- ninja cannot see the compiler's mtime, so "
+                         "without it the tests exercise the previous "
+                         "backend and say nothing.")
     ap.add_argument("--no-preflight", action="store_true",
                     help="skip the pre-run ninja refresh of every test "
                          "binary. Use when you know the binaries are "
@@ -1111,6 +1120,12 @@ def main():
 
     if args.multi:
         return run_multi(args)
+
+    if args.refresh_only:
+        tests, buildfail = preflight_fresh_binaries(skip_ninja=False)
+        print(f"refresh: {len(tests)} test binaries current, "
+              f"{len(buildfail)} not building", flush=True)
+        return 0
 
     tests, buildfail = preflight_fresh_binaries(skip_ninja=args.no_preflight)
     # Bug #237: apply the same SLOW/FAKE/--tests filters to the

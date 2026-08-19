@@ -1,0 +1,23 @@
+#!/bin/sh
+#
+# mc6809-refresh — bring a picolibc build level up to date against the
+# compiler that is on disk now.
+#
+# Usage: mc6809-refresh [builddir …]        (default: $PICOLIBC_BUILDDIR)
+#
+# ninja has no edge from a test binary, or from libc.a's objects, to
+# clang / llc / libclang_rt / the linker script, so `ninja -C builddir`
+# after a backend rebuild relinks nothing and rebuilds nothing: the tests
+# then exercise the previous compiler and pass or fail for reasons that
+# are no longer true.  `run-mc6809-tests` and `bench-parallel.sh` scrub
+# for this before every measured run; this is the same scrub, on its own,
+# for when a level is being worked by hand.
+#
+set -e
+here=$(cd "$(dirname "$0")" && pwd)
+dirs="$*"
+[ -n "$dirs" ] || dirs="${PICOLIBC_BUILDDIR:?give a builddir or set PICOLIBC_BUILDDIR}"
+for d in $dirs; do
+  echo "== $d"
+  PICOLIBC_BUILDDIR="$d" python3 "$here/run-mc6809-tests" --refresh-only
+done

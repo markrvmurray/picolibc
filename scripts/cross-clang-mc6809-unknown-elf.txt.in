@@ -18,7 +18,11 @@ cpp = ['%%LLVM_BIN%%/clang', '--target=mc6809-unknown-unknown', '-nostdlib']
 ar = '%%LLVM_BIN%%/llvm-ar'
 nm = '%%LLVM_BIN%%/llvm-nm'
 strip = '%%LLVM_BIN%%/llvm-strip'
-exe_wrapper = ['%%EXE_WRAPPER%%']
+# The runner is handed the compiler to compare a test binary against:
+# ninja has no edge from a test to the compiler that built it, so a
+# level worked by hand after a backend rebuild would otherwise run the
+# previous one's output and report it as this one's.
+exe_wrapper = ['%%EXE_WRAPPER%%', '--toolchain-ref', '%%TOOLCHAIN_REF%%']
 
 [host_machine]
 system = 'none'

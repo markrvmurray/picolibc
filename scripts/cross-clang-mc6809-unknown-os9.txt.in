@@ -25,7 +25,7 @@ cpp = ['%%LLVM_BIN%%/clang', '--target=mc6809-unknown-os9', '-nostdlib']
 ar = '%%LLVM_BIN%%/llvm-ar'
 nm = '%%LLVM_BIN%%/llvm-nm'
 strip = '%%LLVM_BIN%%/llvm-strip'
-exe_wrapper = ['%%EXE_WRAPPER%%', '--fp-module', '%%OS9_FP%%']
+exe_wrapper = ['%%EXE_WRAPPER%%', '--fp-module', '%%OS9_FP%%', '--toolchain-ref', '%%TOOLCHAIN_REF%%']
 
 [host_machine]
 system = 'os9'

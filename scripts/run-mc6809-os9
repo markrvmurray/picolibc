@@ -2,7 +2,8 @@
 #
 # run-mc6809-os9 — picolibc test runner for OS-9 / NitrOS-9 on usim09pt.
 #
-# Usage: run-mc6809-os9 [--fp-module FILE] <module> [--stdin "string"] [--args "args"]
+# Usage: run-mc6809-os9 [--fp-module FILE] [--toolchain-ref FILE] <module>
+#            [--stdin "string"] [--args "args"]
 #
 # The program is an OS-9 program module (clang --target=mc6809-unknown-os9).
 # Each run boots NitrOS-9 from the IDE image NITROS9_BOOT_DSK (i0) with the
@@ -39,14 +40,34 @@
 USIM="${NITROS9_USIM09PT:-usim09pt}"
 OS9="${OS9_TOOL:-os9}"
 
+# A run against a stale binary is worse than no run: it passes or fails for
+# reasons that stopped being true when the compiler was rebuilt, and ninja
+# has no edge from a test to the compiler that built it, so nothing else
+# notices.  Refuse, and name the one command that fixes it.
+check_freshness() {
+  _ref="$1"; _bin="$2"
+  [ "${MC6809_ALLOW_STALE:-0}" = 1 ] && return 0
+  [ -n "$_ref" ] && [ -e "$_ref" ] && [ -e "$_bin" ] || return 0
+  if [ "$_ref" -nt "$_bin" ]; then
+    echo "$(basename "$0"): $(basename "$_bin") is older than the toolchain" >&2
+    echo "  ($_ref has changed since it was built)" >&2
+    echo "  run: scripts/mc6809-refresh <builddir>" >&2
+    echo "  (MC6809_ALLOW_STALE=1 runs it anyway)" >&2
+    exit 99
+  fi
+  return 0
+}
+
 stdin=""
 args=""
 module=""
 fp_module="${MC6809_FP_MODULE:-}"
+toolchain_ref="${MC6809_TOOLCHAIN_REF:-}"
 done=0
 while [ $# -gt 0 -a $done -eq 0 ]; do
   case "$1" in
     --fp-module) fp_module="$2"; shift 2 ;;
+    --toolchain-ref) toolchain_ref="$2"; shift 2 ;;
     --stdin)     stdin="$2";     shift 2 ;;
     --args)      args="$2";      shift 2 ;;
     *)
@@ -63,6 +84,13 @@ if [ -z "$module" ]; then
   echo "usage: run-mc6809-os9 <module> [--stdin string] [--args string]" >&2
   exit 99
 fi
+
+# The OS-9 runtime sits beside the floating-point module the cross file
+# passes, so either one dates the toolchain the program was built against.
+[ -n "$toolchain_ref" ] || [ -z "$fp_module" ] ||
+  toolchain_ref="$(dirname "$fp_module")/libclang_rt.os9.a"
+check_freshness "$toolchain_ref" "$module"
+
 : "${NITROS9_BOOT_DSK:?need NITROS9_BOOT_DSK (a NitrOS-9 IDE boot image)}"
 : "${NITROS9_FIRMWARE:?need NITROS9_FIRMWARE (the Pico-Thing .srec)}"
 : "${NITROS9_INPUT_FIRST:=78000000}"

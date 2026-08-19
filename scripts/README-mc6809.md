@@ -266,6 +266,26 @@ PICOLIBC_BUILDDIR=$PWD/builddir-mc6809-os9-Os \
     python3 scripts/run-mc6809-tests --jobs 8 --include-fake-fs
 ```
 
+Both levels run the same binaries -- a level is a boot image, not a build,
+since `U` is the data base wherever the kernel puts it:
+
+```sh
+NITROS9_LEVEL=1 PICOLIBC_BUILDDIR=$PWD/builddir-mc6809-os9-Os-fp \
+    python3 scripts/run-mc6809-tests --jobs 8 --include-fake-fs \
+            --opt-level os9-l1-Os-fp
+```
+
+`NITROS9_LEVEL` (default 2) picks the boot image and firmware out of
+`NITROS9_RECIPES`; an explicit `NITROS9_BOOT_DSK`/`NITROS9_FIRMWARE` still
+wins.  Give the run its own `--opt-level` label so the two levels get
+separate ledger rows.
+
+Expect a very different shape at Level 1: it has no DAT, so a program
+shares the one 64K space with the system and the size limit is far lower
+(measured on this boot image: 31804 bytes runs, 35568 is refused).  Level 1
+refuses cleanly at every size, which is why the module-size gate is applied
+only at Level 2, where the loader wedges instead.
+
 The runner sets the guest's clock from the host at every boot (the kernel
 starts at its 1986 epoch); `NITROS9_SETIME=off` leaves it alone, and
 `NITROS9_SETIME='2026/08/19 12:00:00'` pins it.

@@ -18,8 +18,16 @@
 #
 # Environment:
 #   NITROS9_USIM09PT     the emulator (default: usim09pt on the path)
-#   NITROS9_BOOT_DSK     a bootable NitrOS-9 IDE (flat) image   [required]
-#   NITROS9_FIRMWARE     the Pico-Thing boot firmware (.srec)   [required]
+#   NITROS9_LEVEL        1 or 2 (default 2).  The modules themselves are the
+#                        same at either level -- U is the data base wherever
+#                        the kernel puts it -- so a level is a boot image,
+#                        not a build.
+#   NITROS9_RECIPES      where the NitrOS-9 recipes live; with it set, the
+#                        boot image and firmware follow from NITROS9_LEVEL
+#                        (default ~/Documents/NitrOS-9/nitros9/recipes/picothing)
+#   NITROS9_BOOT_DSK     a bootable NitrOS-9 IDE (flat) image; overrides the
+#                        one NITROS9_LEVEL would pick
+#   NITROS9_FIRMWARE     the Pico-Thing boot firmware (.srec); likewise
 #   OS9_TOOL             ToolShed's os9 (default: os9 on the path)
 #   NITROS9_INPUT_FIRST  cycles before the first console byte (login prompt
 #                        up; default 78000000)
@@ -31,9 +39,10 @@
 #   NITROS9_SETIME       date to set the guest clock to (default: the host's;
 #                        `off` leaves the kernel's 1986 epoch)
 #   NITROS9_USIM_EXTRA   extra usim09pt options (tracing, --brk-gated ...)
-#   OS9_MAX_MODULE       largest module a task can map (default 57344 = the
-#                        seven 8K blocks a Level 2 task has); anything bigger
-#                        is reported E$MemFul (207) without being run
+#   OS9_MAX_MODULE       largest module the system can give a data area to;
+#                        the default follows NITROS9_LEVEL (see below).
+#                        Anything bigger is reported E$MemFul (207) without
+#                        being run
 #   MC6809_FP_MODULE     the FPO9 floating-point module to put on the disk
 #                        (the cross file passes --fp-module; a program doing
 #                        floating point links it at start-up)
@@ -102,16 +111,36 @@ check_freshness "$toolchain_ref" "$module"
 # reports E$MemFul properly, so answer the same way at once rather than
 # spend five minutes finding out.  Measured: 55568 bytes -> E$MemFul,
 # 57568 -> wedge.
-: "${OS9_MAX_MODULE:=57344}"
+# Level 2 maps seven 8K blocks and, past that, wedges rather than
+# reporting -- hence the gate.  Level 1 has no DAT: the program shares the
+# one 64K space with the system, so the limit moves with what else is
+# loaded, and the kernel says E$MemFul properly at every size (measured:
+# 31804 runs, 35568 refused cleanly, 59565 refused cleanly).  So there is
+# nothing to gate there, and a fixed number would be wrong anyway.
+if [ "$NITROS9_LEVEL" = 2 ]; then
+  : "${OS9_MAX_MODULE:=57344}"
+else
+  : "${OS9_MAX_MODULE:=0}"
+fi
 module_size=$(wc -c < "$module" | tr -d ' ')
-if [ "$module_size" -gt "$OS9_MAX_MODULE" ]; then
+if [ "$OS9_MAX_MODULE" -gt 0 ] && [ "$module_size" -gt "$OS9_MAX_MODULE" ]; then
   echo "$(basename "$0"): $(basename "$module") is $module_size bytes -- more" >&2
   echo "  than the $OS9_MAX_MODULE a task can map, so it cannot be given a data area" >&2
   exit 207
 fi
 
-: "${NITROS9_BOOT_DSK:?need NITROS9_BOOT_DSK (a NitrOS-9 IDE boot image)}"
-: "${NITROS9_FIRMWARE:?need NITROS9_FIRMWARE (the Pico-Thing .srec)}"
+# A level is a boot image, not a build: the same module runs at either.
+: "${NITROS9_LEVEL:=2}"
+: "${NITROS9_RECIPES:=$HOME/Documents/NitrOS-9/nitros9/recipes/picothing}"
+_lvldir="$NITROS9_RECIPES/l$NITROS9_LEVEL"
+if [ -z "${NITROS9_BOOT_DSK:-}" ] && [ -d "$_lvldir" ]; then
+  NITROS9_BOOT_DSK="$_lvldir/NOS9_6809_L${NITROS9_LEVEL}_DEV_picothing_x0.dsk"
+fi
+if [ -z "${NITROS9_FIRMWARE:-}" ] && [ -d "$_lvldir" ]; then
+  NITROS9_FIRMWARE="$_lvldir/rel_picothing.srec"
+fi
+: "${NITROS9_BOOT_DSK:?need NITROS9_BOOT_DSK, or NITROS9_RECIPES + NITROS9_LEVEL}"
+: "${NITROS9_FIRMWARE:?need NITROS9_FIRMWARE, or NITROS9_RECIPES + NITROS9_LEVEL}"
 : "${NITROS9_INPUT_FIRST:=78000000}"
 : "${NITROS9_TIMEOUT:=2000000000}"
 : "${NITROS9_WALL_SECONDS:=600}"

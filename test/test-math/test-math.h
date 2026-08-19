@@ -56,6 +56,40 @@
 #pragma GCC diagnostic ignored "-Wdouble-promotion"
 #endif
 
+/* A printf without floating-point conversions renders every %a and %e as
+ * the literal "*float*", which leaves a failing vector saying only that it
+ * failed.  Where that is the printf in force, print the bit patterns
+ * instead: for a ULP test they are the better diagnostic anyway -- "got
+ * 3ff0000000000001 want 3ff0000000000000" says exactly what one ULP is --
+ * and they need nothing but %lx.  The 64-bit values go out as two halves
+ * because these configurations have no long-long conversions either. */
+#if defined(__PICOLIBC__) && defined(_PICOLIBC_PRINTF) && \
+    _PICOLIBC_PRINTF != __IO_VARIANT_DOUBLE &&                          \
+    _PICOLIBC_PRINTF != __IO_VARIANT_FLOAT
+#define MATH_TEST_PRINT_BITS 1
+
+static inline unsigned long math_bits32(float v)
+{
+    uint32_t b;
+    memcpy(&b, &v, sizeof(b));
+    return (unsigned long)b;
+}
+
+static inline unsigned long math_bits64_hi(double v)
+{
+    uint64_t b;
+    memcpy(&b, &v, sizeof(b));
+    return (unsigned long)(b >> 32);
+}
+
+static inline unsigned long math_bits64_lo(double v)
+{
+    uint64_t b;
+    memcpy(&b, &v, sizeof(b));
+    return (unsigned long)(b & 0xFFFFFFFFUL);
+}
+#endif
+
 #ifdef __RX__
 #define SKIP_DENORM
 #endif
@@ -166,8 +200,13 @@ typedef complex float cbinary32;
 #define FN32(a)           a##f
 #define TEST_FUNC_32      MATH_CONCAT(TEST_FUNC, f)
 // #define FMT32        "% -14.8e"
+#ifdef MATH_TEST_PRINT_BITS
+#define FMT32  "%08lx"
+#define P32(a) math_bits32((float)(a))
+#else
 #define FMT32  "% -15.6a"
 #define P32(a) ((double)(a))
+#endif
 #ifdef __FLOAT_NOEXCEPT
 #define BINARY32_NOEXCEPT
 #endif
@@ -235,8 +274,13 @@ typedef complex double cbinary64;
 #define TEST_FUNC_64      TEST_FUNC
 #define MIN_BINARY64      DBL_MIN
 #define FN64(a)           a
+#ifdef MATH_TEST_PRINT_BITS
+#define FMT64             "%08lx%08lx"
+#define P64(a)            math_bits64_hi((double)(a)), math_bits64_lo((double)(a))
+#else
 #define FMT64             "% -23.13a"
 #define P64(a)            (a)
+#endif
 #ifdef __DOUBLE_NOEXCEPT
 #define BINARY64_NOEXCEPT
 #endif
@@ -254,8 +298,13 @@ typedef complex long double cbinary64;
 #define TEST_FUNC_64      MATH_CONCAT(TEST_FUNC, l)
 #define MIN_BINARY64      LDBL_MIN
 #define FN64(a)           a##l
+#ifdef MATH_TEST_PRINT_BITS
+#define FMT64             "%08lx%08lx"
+#define P64(a)            math_bits64_hi((double)(a)), math_bits64_lo((double)(a))
+#else
 #define FMT64             "%La"
 #define P64(a)            (a)
+#endif
 #ifdef __LONG_DOUBLE_NOEXCEPT
 #define BINARY64_NOEXCEPT
 #endif

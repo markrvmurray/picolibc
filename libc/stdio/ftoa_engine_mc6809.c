@@ -107,11 +107,23 @@ __ftoa_engine(uint32_t val, struct dtoa *ftoa, int maxDigits, bool fmode, int ma
     }
 
     /* Final pass: BINDEC with adjusted digit count yields the rounded
-     * result. BINDEC f32 with k=1 has a quirk: for small-magnitude
-     * inputs (e.g. 1.23e-4 with k=1) it returns all-zero digits
-     * instead of the expected "1" × 10^-4. We work around this by
-     * always calling with k>=2 and trimming + re-rounding ourselves
-     * when the caller wanted fewer digits. */
+     * result.  BINDEC is unusable at k=1 for 0 < x < 1, so always call
+     * with k>=2 and trim + re-round here when the caller wanted fewer.
+     *
+     * The cause is in the ROM (romsrc/outs.s, BDCNVT): it starts from
+     * V := IFIX(log10(x)) + 1 - k, and IFIX truncates toward zero, so
+     * for a value below 1 whose log10 is not a whole number V comes out
+     * one too large.  CHEKW exists to catch that -- its case 3 retries
+     * when W <= 10^(k-1) - 1 -- but at k=1 that threshold is 0, so the
+     * only value that can trip it is zero itself, which the same test
+     * then rejects as not normalized.  At k=1 the correction is
+     * structurally unable to fire.
+     *
+     * Two shapes come out of it, and the second is the reason this
+     * clamp must stay: 1.23e-4 returns all-zero digits (visibly wrong),
+     * but 5.0e-4 returns 1 x 10^-3 -- a plausible-looking answer that is
+     * a decade out, because rounding 0.5 up to 1 hid the exponent error.
+     * k=1 is correct only for x >= 1 and for exact powers of ten. */
     int call_k = (maxDigits < 2) ? 2 : maxDigits;
     __mc6839_bindec_f32(bcd, call_k, fv);
     int E = decode_E(bcd);

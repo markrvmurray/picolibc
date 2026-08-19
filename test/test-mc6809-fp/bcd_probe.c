@@ -131,14 +131,21 @@ int main(void) {
     dump("bindec_f32(0.5, 9)", bcd);
     check_frac("bindec_f32(0.5, 9)", bcd, "0000000000500000000", 0x00);
 
-    /* Edge behaviour at k=1 is what this probe was written to look at and
-     * has never been settled -- 1.23456e-4 to one digit comes back 0, and
-     * 5.0e-4 comes back 1.  Printed, deliberately not pinned. */
+    /* k=1 is broken in the ROM for 0 < x < 1, and these cases pin what it
+     * does so a change would be noticed -- they are the ROM's answers,
+     * not the right ones.  BDCNVT starts from V := IFIX(log10(x)) + 1 - k
+     * with IFIX truncating toward zero, so V is one too large for a value
+     * below 1 whose log10 is not whole; CHEKW's case 3 would correct that,
+     * but at k=1 its threshold 10^(k-1)-1 is zero, which only zero can
+     * meet and which it then rejects as not normalized.  1.23456e-4 comes
+     * back as 0, and 5.0e-4 as 1 x 10^-3, a decade out.  picolibc's
+     * engines never call with k=1 for exactly this reason. */
     /* edge: very small value with k=1 */
     memset(bcd, 0xCC, 26);
     f = 1.23456e-4f;
     __mc6839_bindec_f32(bcd, 1, f);
     dump("bindec_f32(1.23e-4,1)", bcd);
+    check_frac("bindec_f32(1.23e-4,1)", bcd, "0000000000000000000", 0x00);
     memset(bcd, 0xCC, 26);
     __mc6839_bindec_f32(bcd, 2, f);
     dump("bindec_f32(1.23e-4,2)", bcd);
@@ -151,26 +158,32 @@ int main(void) {
     f = 1.5f;
     __mc6839_bindec_f32(bcd, 1, f);
     dump("bindec_f32(1.5,1)", bcd);
+    check_frac("bindec_f32(1.5,1)", bcd, "0000000000000000002", 0x00);
     memset(bcd, 0xCC, 26);
     f = 9.5f;
     __mc6839_bindec_f32(bcd, 1, f);
     dump("bindec_f32(9.5,1)", bcd);
+    check_frac("bindec_f32(9.5,1)", bcd, "0000000000000000001", 0x00);
     memset(bcd, 0xCC, 26);
     f = 12345.0f;
     __mc6839_bindec_f32(bcd, 1, f);
     dump("bindec_f32(12345,1)", bcd);
+    check_frac("bindec_f32(12345,1)", bcd, "0000000000000000001", 0x00);
     memset(bcd, 0xCC, 26);
     f = 1.0e-4f;
     __mc6839_bindec_f32(bcd, 1, f);
     dump("bindec_f32(1.0e-4,1)", bcd);
+    check_frac("bindec_f32(1.0e-4,1)", bcd, "0000000000000000001", 0x00);
     memset(bcd, 0xCC, 26);
     f = 5.0e-4f;
     __mc6839_bindec_f32(bcd, 1, f);
     dump("bindec_f32(5.0e-4,1)", bcd);
+    check_frac("bindec_f32(5.0e-4,1)", bcd, "0000000000000000001", 0x00);
     memset(bcd, 0xCC, 26);
     f = 0.5e-4f;
     __mc6839_bindec_f32(bcd, 1, f);
     dump("bindec_f32(0.5e-4,1)", bcd);
+    check_frac("bindec_f32(0.5e-4,1)", bcd, "0000000000000000000", 0x00);
 
     /* round-trip: BINDEC then DECBIN, expect bit-equivalence */
     volatile double in = 1.5;

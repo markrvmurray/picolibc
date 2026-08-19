@@ -74,7 +74,9 @@ __dtoa_engine(uint64_t val, struct dtoa *dtoa, int maxDigits, bool fmode, int ma
         return 0;
     }
 
-    /* See ftoa_engine_mc6809.c for narrative on the k>=2 workaround. */
+    /* k>=2 always: BINDEC is unusable at k=1 for 0 < x < 1, and gets
+     * 5.0e-4 wrong by a whole decade rather than obviously wrong.
+     * ftoa_engine_mc6809.c carries the analysis. */
     int call_k = (maxDigits < 2) ? 2 : maxDigits;
     __mc6839_bindec_f64(bcd, call_k, fv);
     int E = decode_E(bcd);

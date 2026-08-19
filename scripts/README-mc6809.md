@@ -200,6 +200,28 @@ meson setup builddir-mc6809-os9-Os \
     -Dmb-capable=false -Dio-long-long=false -Dtests-enable-stack-protector=false
 ```
 
+For floating point, add `-Dstdio-float=true -Dwant-libm=true` and call the
+directory `builddir-mc6809-os9-Os-fp`, exactly as the bare-metal `-fp` levels
+do:
+
+```sh
+meson setup builddir-mc6809-os9-Os-fp \
+    --cross-file scripts/cross-clang-mc6809-unknown-os9.txt \
+    -Dpicocrt=false -Dsemihost=false -Dos-os9=true -Dposix-console=true \
+    -Dtests=true -Doptimization=s \
+    -Dformat-default=integer -Dprintf-aliases=false -Dstdio-float=true \
+    -Dposix-extensions=false -Dsearch-extensions=true -Dwant-libm=true \
+    -Dmb-capable=false -Dio-long-long=false -Dtests-enable-stack-protector=false
+```
+
+A program that does floating point does not carry the MC6839 ROM: it links
+the FPO9 module, which the compiler stages beside `mc6809-os9.lds` and which
+the cross file passes to the test runner (`--fp-module`) to put on each test
+disk.  Remember that the module shares the process's 64K address space with
+the program and its data area, so a large floating-point program can run out
+of room where the same program fits on bare metal -- the kernel says so
+(`Error #207`, memory full) at start-up rather than half way through.
+
 The start-up code, the `<os9.h>` system-call shims and `mc6809-os9.lds` come
 from the compiler's OS-9 runtime (`libclang_rt.os9`, built by the LLVM tree's
 `runtimes/builtins-mc6809-unknown-os9` target); the cross file's `os9_lds`

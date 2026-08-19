@@ -62,13 +62,16 @@ emit "$SCRIPT_DIR/cross-clang-mc6809-unknown-elf-dp7F.txt" "$PICO/scripts/run-mc
 # OS-9 / NitrOS-9: its own template (no flash/RAM/direct-page model); the
 # linker script lives in the compiler's resource directory.
 OS9_TEMPLATE=$SCRIPT_DIR/cross-clang-mc6809-unknown-os9.txt.in
-OS9_LDS=$("$LLVM_BIN/clang" --target=mc6809-unknown-os9 -print-resource-dir 2>/dev/null)/lib/mc6809-unknown-os9/mc6809-os9.lds
+OS9_RESDIR=$("$LLVM_BIN/clang" --target=mc6809-unknown-os9 -print-resource-dir 2>/dev/null)/lib/mc6809-unknown-os9
+OS9_LDS=$OS9_RESDIR/mc6809-os9.lds
+OS9_FP=$OS9_RESDIR/FPO9
 if [ -f "$OS9_TEMPLATE" ]; then
 	if [ ! -f "$OS9_LDS" ]; then
 		echo "gen-mc6809-cross: warning: $OS9_LDS not found (build the OS-9 runtime: runtimes/builtins-mc6809-unknown-os9-build)" >&2
 	fi
 	sed -e "s|%%LLVM_BIN%%|$LLVM_BIN|g" \
 	    -e "s|%%EXE_WRAPPER%%|$PICO/scripts/run-mc6809-os9|g" \
+	    -e "s|%%OS9_FP%%|$OS9_FP|g" \
 	    -e "s|%%OS9_LDS%%|$OS9_LDS|g" \
 	    "$OS9_TEMPLATE" > "$SCRIPT_DIR/cross-clang-mc6809-unknown-os9.txt"
 	echo "  wrote $SCRIPT_DIR/cross-clang-mc6809-unknown-os9.txt"

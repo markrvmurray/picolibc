@@ -12,7 +12,15 @@
 #include <stdint.h>
 
 extern void __mc6839_set_rom_base(void *base);
+#ifdef __OS9__
+/* The ROM is the FPO9 module the start-up code linked, not part of the
+ * program image. */
+extern void *__os9_fp_module;
+#define MC6839_ROM_BASE __os9_fp_module
+#else
 extern char __mc6839_rom_start[];
+#define MC6839_ROM_BASE __mc6839_rom_start
+#endif
 
 static int failures = 0;
 
@@ -97,10 +105,10 @@ int main(void) {
 
     /* Test 8: calling __mc6839_set_rom_base with the default address
      * doesn't break subsequent FP math (sanity-check the trampoline
-     * indirection works for the no-op case).  The OS-9 case with a
-     * relocated ROM is tested separately when an OS-9 crt0 lands. */
+     * indirection works for the no-op case).  On OS-9 that address is
+     * the module start-up linked, which is where it already points. */
     feclearexcept(FE_ALL_EXCEPT);
-    __mc6839_set_rom_base(__mc6839_rom_start);
+    __mc6839_set_rom_base(MC6839_ROM_BASE);
     vol_f = 2.0f;
     vol_f = vol_f + 3.0f;
     EXPECT(vol_f == 5.0f, "__mc6839_set_rom_base(default) preserves FP math");

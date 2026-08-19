@@ -80,6 +80,15 @@ CYCLES_RE = re.compile(r"^cycles=(\d+)\s*$", re.MULTILINE)
 # the FAIL bucket. Bumping USIM_TIMEOUT is the other half of bug #131.
 USIM_CAP_RC = 124
 
+# OS-9 start-up exits with the kernel's own error code, and E$MemFul is the
+# one that is not a defect: a Level 2 task's address space is seven 8K
+# blocks shared between the program, its data area and anything it links,
+# so a large floating-point program plus the 8K FPO9 module does not fit.
+# Bare metal calls the same programs too big at link time and reports them
+# BUILDFAIL; here they cannot be known until the kernel tries, so give them
+# their own bucket rather than let them stand as failures nobody reads.
+OS9_MEMFUL_RC = 207
+
 # Per-test usim instruction caps. Keys are the bare test name as stored
 # in meson's intro-tests.json (what the harness passes to `meson test`);
 # meson itself renders a fuller "suite - project:name" form in its logs,
@@ -954,6 +963,9 @@ def run_multi(args):
         if rc == USIM_CAP_RC and result == "FAIL":
             result = "TIMEOUT"
             parsed = (pname, result, rc, out, err, dur, cycles, tb)
+        elif rc == OS9_MEMFUL_RC and result == "FAIL" and "os9" in str(bd):
+            result = "TOOBIG"
+            parsed = (pname, result, rc, out, err, dur, cycles, tb)
         return lvl, parsed
 
     def record(level_parsed, completed_idx, total):
@@ -967,7 +979,7 @@ def run_multi(args):
         with print_lock:
             print(f"[{completed_idx:>3}/{total}] {line}", flush=True)
             ftally.write(line + "\n")
-            if result not in ("OK", "EXPECTEDFAIL", "SKIP"):
+            if result not in ("OK", "EXPECTEDFAIL", "SKIP", "TOOBIG"):
                 flog.write("=" * 70 + "\n")
                 flog.write(f"[{lvl}] {result}: {pname}  "
                            f"(rc={rc}, {dur:.2f}s)\n")
@@ -1004,7 +1016,7 @@ def run_multi(args):
             ftally.write(f"[{lvl}]\n")
             for k in ("OK", "EXPECTEDFAIL", "SKIP", "FAIL",
                       "UNEXPECTEDPASS", "ERROR", "TIMEOUT",
-                      "BUILDFAIL"):
+                      "TOOBIG", "BUILDFAIL"):
                 if per_level[lvl].get(k):
                     ftally.write(f"  {k:14s} {per_level[lvl][k]}\n")
             ftally.write(f"  TOTAL          {sum(per_level[lvl].values())}\n")
@@ -1243,6 +1255,9 @@ def main():
         if rc == USIM_CAP_RC and result == "FAIL":
             result = "TIMEOUT"
             parsed = (pname, result, rc, out, err, dur, cycles, tb)
+        elif rc == OS9_MEMFUL_RC and result == "FAIL" and "os9" in str(BUILDDIR):
+            result = "TOOBIG"
+            parsed = (pname, result, rc, out, err, dur, cycles, tb)
         return parsed
 
     def record(parsed, completed_idx, total):
@@ -1254,7 +1269,7 @@ def main():
         with print_lock:
             print(f"[{completed_idx:>2}/{total}] {line}", flush=True)
             ftally.write(line + "\n")
-            if result not in ("OK", "EXPECTEDFAIL", "SKIP"):
+            if result not in ("OK", "EXPECTEDFAIL", "SKIP", "TOOBIG"):
                 flog.write("=" * 70 + "\n")
                 flog.write(f"{result}: {pname}  (rc={rc}, {dur:.2f}s)\n")
                 flog.write("-" * 70 + "\n")
@@ -1296,7 +1311,7 @@ def main():
     parts = [f"{k}={counts[k]}"
              for k in ("OK", "EXPECTEDFAIL", "SKIP", "FAIL",
                        "UNEXPECTEDPASS", "ERROR", "TIMEOUT",
-                       "BUILDFAIL")
+                       "TOOBIG", "BUILDFAIL")
              if counts.get(k)]
     print("  ".join(parts) + f"  TOTAL={sum(counts.values())}")
     print(f"per-test: {OUT}")

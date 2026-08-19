@@ -1,0 +1,46 @@
+# Meson cross-file TEMPLATE for picolibc on OS-9 / NitrOS-9 (mc6809-unknown-os9).
+#
+# Not consumed directly by meson: scripts/gen-mc6809-cross.sh writes the
+# concrete cross-clang-mc6809-unknown-os9.txt from it, substituting the
+# toolchain location (LLVM_BIN) and the picolibc checkout (PICO).
+#
+# Programs are OS-9 program modules: the clang driver for this triple links
+# them with the OS-9 runtime (libclang_rt.os9: start-up code that claims a
+# heap with F$Mem and builds argc/argv) and its linker script, both in the
+# LLVM resource directory; `os9_lds` below tells picolibc's test build where
+# the script is.  There is no flash/RAM split and no direct-page MEMORY
+# region: a module is position independent and its writable data lives in
+# the per-process data area the kernel allocates (see
+# llvm/docs/MC6809-OS9.md in the LLVM tree).  The default_*_addr values
+# only satisfy picolibc.ld.in's template, which the OS-9 tests do not use.
+#
+# Tests run on a real NitrOS-9 boot under usim09pt, one boot per test
+# (scripts/run-mc6809-os9, the exe_wrapper); it needs NITROS9_BOOT_DSK,
+# NITROS9_FIRMWARE and usim09pt in the environment or on the path.
+#
+#   %%LLVM_BIN%%  %%EXE_WRAPPER%%
+[binaries]
+c = ['%%LLVM_BIN%%/clang', '--target=mc6809-unknown-os9', '-nostdlib']
+cpp = ['%%LLVM_BIN%%/clang', '--target=mc6809-unknown-os9', '-nostdlib']
+ar = '%%LLVM_BIN%%/llvm-ar'
+nm = '%%LLVM_BIN%%/llvm-nm'
+strip = '%%LLVM_BIN%%/llvm-strip'
+exe_wrapper = ['%%EXE_WRAPPER%%']
+
+[host_machine]
+system = 'os9'
+cpu_family = 'mc6809'
+cpu = 'mc6809'
+endian = 'big'
+
+[properties]
+skip_sanity_check = true
+os9_lds = '%%OS9_LDS%%'
+# The test links are -nostdlib, so name the OS-9 runtime (start-up code,
+# F$Exit, the X:U call stubs) and the compiler builtins explicitly; the
+# driver's resource directory is already on the library path.
+librt = ['-lclang_rt.os9', '-lclang_rt.builtins']
+default_flash_addr = '0x0000'
+default_flash_size = '0x8000'
+default_ram_addr   = '0x8000'
+default_ram_size   = '0x7000'

@@ -1722,6 +1722,9 @@ has_os_library = false
 # libos/linux support
 has_os_linux = false
 
+# libos/os9 support (OS-9 / NitrOS-9 on mc6809)
+has_os_os9 = false
+
 # any POSIX support
 has_os_posix = false
 
@@ -1824,6 +1827,18 @@ elif has_os_linux
   endif
   if linkerscript_test_variant == ''
     linkerscript_test_variant = 'linux'
+  endif
+elif has_os_os9
+  # The OS-9 start-up code comes from the compiler's runtime, not picocrt,
+  # and the tests link as OS-9 program modules with its linker script.
+  if crt0_test_variant == ''
+    crt0_test_variant = 'hosted'
+  endif
+  if oslib_test_variant == ''
+    oslib_test_variant = 'os9'
+  endif
+  if linkerscript_test_variant == ''
+    linkerscript_test_variant = 'os9'
   endif
 else
   if crt0_test_variant == ''

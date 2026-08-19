@@ -1,0 +1,147 @@
+#!/bin/sh
+#
+# run-mc6809-os9 — picolibc test runner for OS-9 / NitrOS-9 on usim09pt.
+#
+# Usage: run-mc6809-os9 <module> [--stdin "string"] [--args "args"]
+#
+# The program is an OS-9 program module (clang --target=mc6809-unknown-os9).
+# Each run boots NitrOS-9 from the IDE image NITROS9_BOOT_DSK (i0) with the
+# module on a fresh IDE image (j0), drives the shell over the console
+# (scripted --input: log in, `chx /j0/cmds`, run the program, echo a
+# sentinel), and relays the program's console output on stdout.  The exit
+# status is the one the shell reports: NitrOS-9 prints `Error #nnn` for a
+# non-zero F$Exit status, so that number is this script's exit code, 0
+# otherwise -- which is what meson's test harness needs (77 = skip, 99 =
+# error).  --stdin text follows the command line on the console, one line
+# at a time; --args are the command's parameter words.
+#
+# Environment:
+#   NITROS9_USIM09PT     the emulator (default: usim09pt on the path)
+#   NITROS9_BOOT_DSK     a bootable NitrOS-9 IDE (flat) image   [required]
+#   NITROS9_FIRMWARE     the Pico-Thing boot firmware (.srec)   [required]
+#   OS9_TOOL             ToolShed's os9 (default: os9 on the path)
+#   NITROS9_INPUT_FIRST  cycles before the first console byte (login prompt
+#                        up; default 78000000)
+#   NITROS9_TIMEOUT      instruction cap for the whole run (default 2e9)
+#   NITROS9_WALL_SECONDS wall-clock cap (default 600)
+#   USIM_CYCLES=1        report `cycles=<N>` on stderr (the program's own
+#                        instructions cannot be separated from the boot's;
+#                        this is the whole run)
+#   NITROS9_USIM_EXTRA   extra usim09pt options (tracing, --brk-gated ...)
+#   KEEP_OS9_WORKDIR=1   keep the per-run working directory
+#
+
+USIM="${NITROS9_USIM09PT:-usim09pt}"
+OS9="${OS9_TOOL:-os9}"
+
+module="$1"
+shift
+
+stdin=""
+args=""
+done=0
+while [ $# -gt 0 -a $done -eq 0 ]; do
+  case "$1" in
+    --stdin) stdin="$2"; shift 2 ;;
+    --args)  args="$2";  shift 2 ;;
+    *) done=1 ;;
+  esac
+done
+
+if [ -z "$module" ]; then
+  echo "usage: run-mc6809-os9 <module> [--stdin string] [--args string]" >&2
+  exit 99
+fi
+: "${NITROS9_BOOT_DSK:?need NITROS9_BOOT_DSK (a NitrOS-9 IDE boot image)}"
+: "${NITROS9_FIRMWARE:?need NITROS9_FIRMWARE (the Pico-Thing .srec)}"
+: "${NITROS9_INPUT_FIRST:=78000000}"
+: "${NITROS9_TIMEOUT:=2000000000}"
+: "${NITROS9_WALL_SECONDS:=600}"
+
+# OS-9 command names: letters, digits, underscore; at most 29 characters.
+name=$(basename "$module")
+name=$(printf '%s' "$name" | tr -cd 'A-Za-z0-9_' | cut -c1-29)
+[ -n "$name" ] || name=prog
+
+workdir=$(mktemp -d "${TMPDIR:-/tmp}/os9run.XXXXXX")
+cleanup() { [ "${KEEP_OS9_WORKDIR:-0}" = 1 ] || rm -rf "$workdir"; }
+trap cleanup EXIT
+
+boot="$workdir/boot.dsk"
+disk="$workdir/test.dsk"
+log="$workdir/usim.log"
+
+cp "$NITROS9_BOOT_DSK" "$boot"
+"$OS9" format "$disk" -e -l4096 -q -nTEST >/dev/null
+"$OS9" makdir "$disk,CMDS" >/dev/null
+"$OS9" copy -r "$module" "$disk,CMDS/$name" >/dev/null
+"$OS9" attr -q -e -pe -pr "$disk,CMDS/$name" >/dev/null
+
+# The console script: three CRs log in (the blank-name superuser), then
+# the command, its stdin lines, and the sentinel.  Backslash-r sequences
+# are usim09pt's notation; the command's own output is scraped between the
+# command echo and the sentinel.
+cmd="$name"
+[ -n "$args" ] && cmd="$name $args"
+input="\\r\\r\\rchx /j0/cmds\\rchd /j0\\r$cmd\\r"
+if [ -n "$stdin" ]; then
+  # Each stdin line becomes a console line; a trailing newline is implied.
+  input="$input$(printf '%s' "$stdin" | sed 's/$/\\r/' | tr -d '\n')"
+fi
+input="${input}echo CIDONE\\r"
+
+cycles_flag=""
+[ "${USIM_CYCLES:-0}" = 1 ] && cycles_flag="--cycles"
+
+(cd "$workdir" && "$USIM" --timeout="$NITROS9_TIMEOUT" $cycles_flag ${NITROS9_USIM_EXTRA:-} \
+    --input-first="$NITROS9_INPUT_FIRST" --input-step=500000 \
+    --input="$input" -f "$workdir/picothing.fram" \
+    -d "$boot" -D "$disk" "$NITROS9_FIRMWARE" >"$log" 2>"$workdir/usim.err") &
+pid=$!
+waited=0
+while kill -0 "$pid" 2>/dev/null; do
+  if grep -aq 'CIDONE' "$log" 2>/dev/null; then
+    break
+  fi
+  if [ "$waited" -ge "$NITROS9_WALL_SECONDS" ]; then
+    break
+  fi
+  sleep 1
+  waited=$((waited + 1))
+done
+kill "$pid" 2>/dev/null || true
+wait "$pid" 2>/dev/null
+usim_rc=$?
+
+grep -a 'cycles=' "$workdir/usim.err" >&2 || true
+
+if ! grep -aq 'CIDONE' "$log"; then
+  # No sentinel: the run hung or the cap hit.  124 is the timeout
+  # convention the tally harness understands.
+  echo "run-mc6809-os9: NitrOS-9 run did not reach the sentinel ($name)" >&2
+  tr -d '\000' <"$log" | tail -c 2000 >&2
+  exit 124
+fi
+
+# The program's output: the console between the command echo and the
+# sentinel command, without the NULs the console emits and with OS-9's CR
+# line ends as newlines.  The shell's `Error #nnn` (after a failing
+# command) gives the exit status; it is not part of the output.
+out="$workdir/out.txt"
+tr -d '\000' <"$log" | tr '\r' '\n' |
+  awk -v cmd="$cmd" '
+    # The shell prompt precedes the echoed command on the same line, so
+    # match the line that ends with the command text, after the chd.
+    state == 0 && index($0, "chd /j0") { state = 1; next }
+    state == 1 { if (substr($0, length($0) - length(cmd) + 1) == cmd) state = 2; next }
+    state == 2 { if (index($0, "echo CIDONE")) { exit } print }
+  ' >"$out"
+# The kernel's F$PErr says `ERROR #nnn`; Shell+ says `Error #nnn - text`.
+status=0
+if grep -q '^[Ee][Rr][Rr][Oo][Rr] #[0-9][0-9]*' "$out"; then
+  status=$(grep '^[Ee][Rr][Rr][Oo][Rr] #[0-9][0-9]*' "$out" | tail -1 |
+           sed 's/^[Ee][Rr][Rr][Oo][Rr] #0*\([0-9]*\).*/\1/')
+  [ -n "$status" ] || status=1
+fi
+grep -v '^[Ee][Rr][Rr][Oo][Rr] #[0-9][0-9]*' "$out"
+exit "$status"

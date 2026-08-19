@@ -43,6 +43,9 @@ endif
 if get_option('os-linux')
   subdir('linux')
 endif
+if get_option('os-os9')
+  subdir('os9')
+endif
 
 if os_fallback_option == 'auto'
   has_os_fallback = has_os_linux or use_stdlib

@@ -18,6 +18,37 @@
 #include <stdarg.h>
 #include <stdint.h>
 
+/* Every step below is handed the same three values.  Reading them back
+ * through va_arg is the whole point of the probe, so compare them: the
+ * printed hex is for working out *where* a mismatch happened, but the
+ * comparison is what makes a mismatch fail. */
+#define WANT_S 0x1234u
+#define WANT_I 0xCAFEF00DUL
+#define WANT_A 0x1122334455667788ULL
+
+static int failures;
+
+static void want_u16(const char *step, unsigned got) {
+    if ((got & 0xFFFFu) != WANT_S) {
+        printf("FAIL %s: u16 arg\n", step);
+        failures++;
+    }
+}
+
+static void want_u32(const char *step, uint32_t got) {
+    if (got != WANT_I) {
+        printf("FAIL %s: u32 arg\n", step);
+        failures++;
+    }
+}
+
+static void want_u64(const char *step, uint64_t got) {
+    if (got != WANT_A) {
+        printf("FAIL %s: u64 arg\n", step);
+        failures++;
+    }
+}
+
 static void put_hex_byte(uint8_t b) {
     static const char tab[] = "0123456789abcdef";
     putchar(tab[(b >> 4) & 0xf]);
@@ -52,6 +83,7 @@ static void va_u32(int dummy, ...) {
     va_list ap;
     va_start(ap, dummy);
     uint32_t v = va_arg(ap, uint32_t);
+    want_u32("B", v);
     fputs("B: ", stdout);
     put_hex_u32(v);
     putchar('\n');
@@ -66,6 +98,8 @@ static void va_u16_u32(int dummy, ...) {
     /* uint16_t is promoted to int via default promotions. */
     unsigned s = va_arg(ap, unsigned);
     uint32_t i = va_arg(ap, uint32_t);
+    want_u16("C", s);
+    want_u32("C", i);
     fputs("C: ", stdout);
     put_hex_u16((uint16_t)s);
     putchar(' ');
@@ -81,6 +115,8 @@ static void va_u32_u64(int dummy, ...) {
     va_start(ap, dummy);
     uint32_t i = va_arg(ap, uint32_t);
     uint64_t a = va_arg(ap, uint64_t);
+    want_u32("D", i);
+    want_u64("D", a);
     fputs("D: ", stdout);
     put_hex_u32(i);
     putchar(' ');
@@ -99,6 +135,9 @@ static void e_inner(va_list ap) {
     unsigned s = va_arg(ap, unsigned);
     uint32_t i = va_arg(ap, uint32_t);
     uint64_t a = va_arg(ap, uint64_t);
+    want_u16("E", s);
+    want_u32("E", i);
+    want_u64("E", a);
     fputs("E: ", stdout);
     put_hex_u16((uint16_t)s);
     putchar(' ');
@@ -126,6 +165,9 @@ static void f_inner(void *ignored, const char *fmt, va_list ap) {
     unsigned s = va_arg(ap, unsigned);
     uint32_t i = va_arg(ap, uint32_t);
     uint64_t a = va_arg(ap, uint64_t);
+    want_u16("F", s);
+    want_u32("F", i);
+    want_u64("F", a);
     fputs("F: ", stdout);
     put_hex_u16((uint16_t)s);
     putchar(' ');
@@ -292,5 +334,6 @@ int main(void) {
     printf("PRINTF: %x %lx %llx\n", (unsigned)s, i, a);
 
     fputs("DONE\n", stdout);
-    return 0;
+    printf("%d failures\n", failures);
+    return failures != 0;
 }

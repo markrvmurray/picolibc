@@ -16,5 +16,7 @@ int main(void) {
     u.v = r;
     printf("r=%02x%02x%02x%02x%02x%02x%02x%02x (want 0000000000000000)\n",
         u.b[0],u.b[1],u.b[2],u.b[3],u.b[4],u.b[5],u.b[6],u.b[7]);
+    if (q != 1) { printf("FAIL: quotient is not 1\n"); return 1; }
+    if (r != 0) { printf("FAIL: remainder is not 0\n"); return 1; }
     return 0;
 }

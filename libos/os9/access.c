@@ -37,29 +37,19 @@
 #include <unistd.h>
 
 /* OS-9 answers "may I?" by being asked to open the path that way. */
-/* R_OK/W_OK/X_OK to OS-9's read/write/execute, which are the same three
- * bits the other way round.  Spelled as a table rather than as three bit
- * tests: written as tests, the optimiser recognises the permutation and
- * asks for a bit reversal, which is a good deal more code than this.
- * F_OK (no bits) asks only whether the path is there, for which a read is
- * the cheapest question. */
-static const unsigned char os9_access_mode[8] = {
-    OS9_READ,                             /* F_OK           */
-    OS9_EXEC,                             /* X_OK           */
-    OS9_WRITE,                            /* W_OK           */
-    OS9_WRITE | OS9_EXEC,                 /* W_OK|X_OK      */
-    OS9_READ,                             /* R_OK           */
-    OS9_READ | OS9_EXEC,                  /* R_OK|X_OK      */
-    OS9_READ | OS9_WRITE,                 /* R_OK|W_OK      */
-    OS9_READ | OS9_WRITE | OS9_EXEC,      /* R_OK|W_OK|X_OK */
-};
-
 int
 access(const char *path, int amode)
 {
-    int mode, path_num, err;
+    int mode = 0, path_num, err;
 
-    mode = os9_access_mode[amode & (R_OK | W_OK | X_OK)];
+    if (amode & R_OK)
+        mode |= OS9_READ;
+    if (amode & W_OK)
+        mode |= OS9_WRITE;
+    if (amode & X_OK)
+        mode |= OS9_EXEC;
+    if (mode == 0)
+        mode = OS9_READ;                /* F_OK: is the path there at all */
 
     err = _os_open(path, mode, &path_num);
     if (err == OS9_E_FNA && !(amode & (R_OK | W_OK | X_OK)))

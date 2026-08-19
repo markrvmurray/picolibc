@@ -40,9 +40,21 @@ static TEST_CONST math_ulps_t math_ulps[] = {
 
     /* Trig functions */
     { .name = "acos",       .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    /* Same class as atan and the log family below: -Ofast contracts drift
+     * the binary64 paths of acosh (1 vector) and asinh (4) by one ULP.
+     * -Ofast is where the looser semantics were asked for, so allow it --
+     * and keep measuring, rather than marking the tests expected to fail. */
+#ifdef __FAST_MATH__
+    { .name = "acosh",      .b32 = 2,       .b64 = 2,       .b80 = 2,       .b128 = 1       },
+#else
     { .name = "acosh",      .b32 = 2,       .b64 = 1,       .b80 = 2,       .b128 = 1       },
+#endif
     { .name = "asin",       .b32 = 1,       .b64 = 0,       .b80 = 0,       .b128 = 1       },
+#ifdef __FAST_MATH__
+    { .name = "asinh",      .b32 = 2,       .b64 = 2,       .b80 = 1,       .b128 = 1       },
+#else
     { .name = "asinh",      .b32 = 2,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+#endif
     /* Bug #372 (same __FAST_MATH__ class as Bug #253): -Ofast contracts
      * cause +1 ULP drift in fdlibm atan's binary64 path (4 vectors). The
      * user opts into looser semantics with -Ofast, so allow the extra ULP. */

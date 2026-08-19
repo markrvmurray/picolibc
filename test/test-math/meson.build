@@ -245,7 +245,7 @@ foreach params : targets
     t1_src = t1 + '.c'
     nparts = math_partitions.get(t1, 1)
     if nparts == 1
-      test_file_name_arg=['-DTEST_FILE_NAME="' + t1 + target + '.txt"']
+      test_file_name_arg=['-DTEST_FILE_NAME="' + t1.replace('-', '_') + target.replace('-', '_') + '.txt"']
 
       test(t1 + target,
 	 executable(t1 + target, [t1_src] + test_extra_src.get(t1, []) + test_lock_valid,
@@ -265,7 +265,7 @@ foreach params : targets
       foreach p : range(nparts)
         slice = math_slices[t1][p]
         sname = t1 + '-p@0@'.format(p)
-        test_file_name_arg=['-DTEST_FILE_NAME="' + sname + target + '.txt"']
+        test_file_name_arg=['-DTEST_FILE_NAME="' + sname.replace('-', '_') + target.replace('-', '_') + '.txt"']
         slice_arg='-DTEST_VECTORS_SLICE="@0@"'.format(slice.full_path())
 
         test(sname + target,
@@ -315,7 +315,7 @@ if enable_native_math_tests
 
     t1_src = t1 + '.c'
     t1_name = t1 + '-native'
-    test_file_name_arg=['-DTEST_FILE_NAME="' + t1_name + '.txt"']
+    test_file_name_arg=['-DTEST_FILE_NAME="' + t1_name.replace('-', '_') + '.txt"']
 
     test(t1_name,
 	 executable(t1_name, [t1_src] + test_extra_src.get(t1, []),

@@ -101,7 +101,7 @@ foreach params : targets
 
     _cmd_arg = ['-DCOMMAND_LINE="' + 'program-name' + ' ' + ' '.join(cli_args) + '"']
 
-    test_file_name_arg=['-DTEST_FILE_NAME="' + semihost_test + target + '.txt"']
+    test_file_name_arg=['-DTEST_FILE_NAME="' + semihost_test + target.replace('-', '_') + '.txt"']
 
     _cmd_arg += test_file_name_arg
 

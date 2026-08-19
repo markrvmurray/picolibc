@@ -333,8 +333,8 @@ foreach params : targets
       continue
     endif
     t1_src = t1 + '.c'
-    test_file_name_arg=['-DTEST_FILE_NAME="' + t1 + target + '.txt"']
-    test_file_name_arg_no_flash=['-DTEST_FILE_NAME="' + t1 + '_no_flash_' + target + '.txt"']
+    test_file_name_arg=['-DTEST_FILE_NAME="' + t1.replace('-', '_') + target.replace('-', '_') + '.txt"']
+    test_file_name_arg_no_flash=['-DTEST_FILE_NAME="' + t1.replace('-', '_') + '_no_flash_' + target.replace('-', '_') + '.txt"']
 
     lock_valid_src = []
     if t1 not in test_skip_lockvalid
@@ -405,7 +405,7 @@ if enable_native_tests
 
     t1_src = t1 + '.c'
     t1_name = t1 + '-native'
-    test_file_name_arg=['-DTEST_FILE_NAME="' + t1_name + '.txt"']
+    test_file_name_arg=['-DTEST_FILE_NAME="' + t1_name.replace('-', '_') + '.txt"']
 
     test(t1_name,
 	 executable(t1_name, [t1_src] + test_extra_src.get(t1, []),

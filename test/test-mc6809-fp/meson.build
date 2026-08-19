@@ -86,7 +86,7 @@ foreach params : targets
       continue
     endif
     t1_src = t1 + '.c'
-    test_file_name_arg=['-DTEST_FILE_NAME="' + t1 + target + '.txt"']
+    test_file_name_arg=['-DTEST_FILE_NAME="' + t1.replace('-', '_') + target.replace('-', '_') + '.txt"']
 
     test(t1 + target,
          executable(t1 + target, [t1_src] + test_lock_valid,

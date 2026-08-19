@@ -93,7 +93,7 @@ foreach params : targets
   _link_depends = get_variable('test_link_depends' + target, test_link_depends) + _libs
   foreach t1 : tests
     t1_src = t1 + '.c'
-    test_file_name_arg=['-DTEST_FILE_NAME="' + t1 + target + '.txt"']
+    test_file_name_arg=['-DTEST_FILE_NAME="' + t1.replace('-', '_') + target.replace('-', '_') + '.txt"']
 
     if test_extra_libs.has_key(t1)
       lock_source = []
@@ -119,7 +119,7 @@ foreach params : targets
   foreach t1 : tests_failure
     t1_src = t1 + '.c'
     t1 += '-failure'
-    test_file_name_arg=['-DTEST_FILE_NAME="' + t1 + target + '.txt"']
+    test_file_name_arg=['-DTEST_FILE_NAME="' + t1.replace('-', '_') + target.replace('-', '_') + '.txt"']
 
     if test_extra_libs.has_key(t1)
       lock_source = []
@@ -150,7 +150,7 @@ if enable_native_tests
   foreach t1 : tests
     t1_src = t1 + '.c'
     t1_name = t1 + '-native'
-    test_file_name_arg=['-DTEST_FILE_NAME="' + t1_name + '.txt"']
+    test_file_name_arg=['-DTEST_FILE_NAME="' + t1_name.replace('-', '_') + '.txt"']
 
     test(t1_name,
 	 executable(t1_name, t1_src,
@@ -165,7 +165,7 @@ if enable_native_tests
   foreach t1 : tests_failure
     t1_src = t1 + '.c'
     t1_name = t1 + '-failure--native'
-    test_file_name_arg=['-DTEST_FILE_NAME="' + t1_name + '.txt"']
+    test_file_name_arg=['-DTEST_FILE_NAME="' + t1_name.replace('-', '_') + '.txt"']
 
     test(t1_name,
 	 executable(t1_name, t1_src,

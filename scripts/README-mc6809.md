@@ -222,6 +222,17 @@ the program and its data area, so a large floating-point program can run out
 of room where the same program fits on bare metal -- the kernel says so
 (`Error #207`, memory full) at start-up rather than half way through.
 
+`-Dprintf-aliases=false` is not incidental.  Turning aliases on is a global
+switch: it emits `-D_PICOLIBC_PRINTF` for every test built with
+`printf_compile_args_d`, which pulls the double `vfprintf` into all of them,
+and on a 64K target most of them then do not fit -- measured at Os-fp, build
+failures go from 69 to 187, every one a section overflow.  A test that really
+needs a particular printf variant opts in on its own rule, as
+`libc-testsuite/sscanf` does with `-D_PICOLIBC_SCANF='d'` and a `--defsym`.
+The consequence to remember is that any `printf_compile_args_*` a test asks
+for here is **silently ignored**; if a test's diagnostics need floating point,
+they have to be written another way (the math tests print bit patterns).
+
 The start-up code, the `<os9.h>` system-call shims and `mc6809-os9.lds` come
 from the compiler's OS-9 runtime (`libclang_rt.os9`, built by the LLVM tree's
 `runtimes/builtins-mc6809-unknown-os9` target); the cross file's `os9_lds`

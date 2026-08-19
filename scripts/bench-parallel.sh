@@ -182,6 +182,15 @@ export LLVM_SYMBOLIZER_PATH=/dev/null
 # MAME wrappers (e.g. `Os-hd6309-mame` alongside `O2` in DEFAULT_LEVELS).
 COMMON=(
   -Dformat-default=integer
+  # printf-aliases stays off: turning it on is global.  It emits
+  # -D_PICOLIBC_PRINTF for every test built with printf_compile_args_d,
+  # which pulls the double vfprintf into all of them -- and on a 64K
+  # target most of them then do not fit.  Measured at Os-fp: build
+  # failures 69 -> 187, every one of them a section overflow.  (The
+  # first measurement, when this was tried and reverted in May 2026,
+  # was OK 96 -> 69.)  A test that genuinely needs a printf variant
+  # opts in by itself, the way libc-testsuite/sscanf does with
+  # -D_PICOLIBC_SCANF='d' plus a --defsym on its own rule.
   -Dprintf-aliases=false
   -Dstdio-float=false
   -Dposix-extensions=false

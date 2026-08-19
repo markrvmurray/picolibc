@@ -27,6 +27,8 @@
 #   USIM_CYCLES=1        report `cycles=<N>` on stderr (the program's own
 #                        instructions cannot be separated from the boot's;
 #                        this is the whole run)
+#   NITROS9_SETIME       date to set the guest clock to (default: the host's;
+#                        `off` leaves the kernel's 1986 epoch)
 #   NITROS9_USIM_EXTRA   extra usim09pt options (tracing, --brk-gated ...)
 #   KEEP_OS9_WORKDIR=1   keep the per-run working directory
 #
@@ -83,7 +85,17 @@ cp "$NITROS9_BOOT_DSK" "$boot"
 # command echo and the sentinel.
 cmd="$name"
 [ -n "$args" ] && cmd="$name $args"
-input="\\r\\r\\rchx /j0/cmds\\rchd /j0\\r$cmd\\r"
+input="\\r\\r\\r"
+# The kernel's clock starts at its epoch (1986), which anything comparing
+# time() against a modern date fails on; set it from the host unless told
+# otherwise (NITROS9_SETIME=off).  Before chx, while the system commands are
+# still the execution directory.
+if [ "${NITROS9_SETIME:-auto}" != off ]; then
+  setime=$NITROS9_SETIME
+  [ "${setime:-auto}" = auto ] && setime=$(date "+%Y/%m/%d %H:%M:%S")
+  input="${input}setime $setime\\r"
+fi
+input="${input}chx /j0/cmds\\rchd /j0\\r$cmd\\r"
 if [ -n "$stdin" ]; then
   # Each stdin line becomes a console line; a trailing newline is implied.
   input="$input$(printf '%s' "$stdin" | sed 's/$/\\r/' | tr -d '\n')"

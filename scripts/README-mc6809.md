@@ -205,6 +205,22 @@ from the compiler's OS-9 runtime (`libclang_rt.os9`, built by the LLVM tree's
 `runtimes/builtins-mc6809-unknown-os9` target); the cross file's `os9_lds`
 property points at the script and must exist before configuring.
 
+Ninja does not know that the test programs depend on the compiler's OS-9
+runtime, so after rebuilding it (`crt0`, `crt1`, `libclang_rt.os9.a`, or
+`mc6809-os9.lds`) delete the test binaries to force a relink -- otherwise the
+tests run against the previous runtime:
+
+```sh
+python3 - <<'EOF'
+import json, os
+for e in json.load(open('builddir-mc6809-os9-Os/meson-info/intro-tests.json')):
+    p = e['cmd'][-1] if e['cmd'] else None
+    if p and os.path.isfile(p) and os.access(p, os.X_OK) and '.p/' not in p:
+        os.remove(p)
+EOF
+ninja -C builddir-mc6809-os9-Os -k0
+```
+
 Each test runs on a real NitrOS-9 boot (~2 s), driven by
 `scripts/run-mc6809-os9` as meson's `exe_wrapper`:
 
@@ -215,3 +231,7 @@ export PATH=…/usim:$PATH                                       # usim09pt
 PICOLIBC_BUILDDIR=$PWD/builddir-mc6809-os9-Os \
     python3 scripts/run-mc6809-tests --jobs 8 --include-fake-fs
 ```
+
+The runner sets the guest's clock from the host at every boot (the kernel
+starts at its 1986 epoch); `NITROS9_SETIME=off` leaves it alone, and
+`NITROS9_SETIME='2026/08/19 12:00:00'` pins it.

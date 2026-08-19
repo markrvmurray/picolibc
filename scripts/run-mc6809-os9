@@ -31,6 +31,9 @@
 #   NITROS9_SETIME       date to set the guest clock to (default: the host's;
 #                        `off` leaves the kernel's 1986 epoch)
 #   NITROS9_USIM_EXTRA   extra usim09pt options (tracing, --brk-gated ...)
+#   OS9_MAX_MODULE       largest module a task can map (default 57344 = the
+#                        seven 8K blocks a Level 2 task has); anything bigger
+#                        is reported E$MemFul (207) without being run
 #   MC6809_FP_MODULE     the FPO9 floating-point module to put on the disk
 #                        (the cross file passes --fp-module; a program doing
 #                        floating point links it at start-up)
@@ -90,6 +93,22 @@ fi
 [ -n "$toolchain_ref" ] || [ -z "$fp_module" ] ||
   toolchain_ref="$(dirname "$fp_module")/libclang_rt.os9.a"
 check_freshness "$toolchain_ref" "$module"
+
+# A Level 2 task can map seven 8K blocks ($E000-$FFFF stays the kernel's),
+# shared between the program, its data area and anything it links.  A module
+# that needs all seven leaves nowhere for the data area -- and NitrOS-9 does
+# not say so: the load wedges with no error and no prompt, and the run dies
+# at the instruction cap minutes later.  Just under the line the kernel
+# reports E$MemFul properly, so answer the same way at once rather than
+# spend five minutes finding out.  Measured: 55568 bytes -> E$MemFul,
+# 57568 -> wedge.
+: "${OS9_MAX_MODULE:=57344}"
+module_size=$(wc -c < "$module" | tr -d ' ')
+if [ "$module_size" -gt "$OS9_MAX_MODULE" ]; then
+  echo "$(basename "$0"): $(basename "$module") is $module_size bytes -- more" >&2
+  echo "  than the $OS9_MAX_MODULE a task can map, so it cannot be given a data area" >&2
+  exit 207
+fi
 
 : "${NITROS9_BOOT_DSK:?need NITROS9_BOOT_DSK (a NitrOS-9 IDE boot image)}"
 : "${NITROS9_FIRMWARE:?need NITROS9_FIRMWARE (the Pico-Thing .srec)}"

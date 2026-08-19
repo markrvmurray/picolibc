@@ -52,11 +52,13 @@ picolibc_os9_ld = files(os9_lds)[0]
 
 srcs_os9 = [
   'access.c',
+  'chdir.c',
   'close.c',
   'dirent.c',
   'errno.c',
   'fstat.c',
   'ftruncate.c',
+  'getcwd.c',
   'getentropy.c',
   'getpid.c',
   'gettimeofday.c',
@@ -64,9 +66,11 @@ srcs_os9 = [
   'kill.c',
   'lseek.c',
   'mkdir.c',
+  'os9-dir.c',
   'open.c',
   'read.c',
   'sbrk.c',
+  'rename.c',
   'rmdir.c',
   'stat.c',
   'unlink.c',
@@ -77,9 +81,7 @@ srcs_os9 = [
 # recognise (__fake_<name>) and skip themselves.
 srcs_os9_fake = [
   '../semihost/fake/fake_fstatvfs.c',
-  '../semihost/fake/fake_getcwd.c',
   '../semihost/fake/fake_getrlimit.c',
-  '../semihost/fake/fake_rename.c',
   '../semihost/fake/fake_setrlimit.c',
   '../semihost/fake/fake_statvfs.c',
 ]

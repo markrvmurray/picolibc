@@ -51,7 +51,9 @@ endif
 picolibc_os9_ld = files(os9_lds)[0]
 
 srcs_os9 = [
+  'access.c',
   'close.c',
+  'dirent.c',
   'errno.c',
   'fstat.c',
   'ftruncate.c',
@@ -61,9 +63,11 @@ srcs_os9 = [
   'isatty.c',
   'kill.c',
   'lseek.c',
+  'mkdir.c',
   'open.c',
   'read.c',
   'sbrk.c',
+  'rmdir.c',
   'stat.c',
   'unlink.c',
   'write.c',
@@ -72,13 +76,9 @@ srcs_os9 = [
 # The calls this layer does not (yet) make: picolibc's fakes, which the tests
 # recognise (__fake_<name>) and skip themselves.
 srcs_os9_fake = [
-  '../semihost/fake/fake_access.c',
-  '../semihost/fake/fake_closedir.c',
   '../semihost/fake/fake_fstatvfs.c',
   '../semihost/fake/fake_getcwd.c',
   '../semihost/fake/fake_getrlimit.c',
-  '../semihost/fake/fake_opendir.c',
-  '../semihost/fake/fake_readdir.c',
   '../semihost/fake/fake_rename.c',
   '../semihost/fake/fake_setrlimit.c',
   '../semihost/fake/fake_statvfs.c',

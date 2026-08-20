@@ -196,7 +196,7 @@ input="${input}echo CIDONE\\r"
 cycles_flag=""
 [ "${USIM_CYCLES:-0}" = 1 ] && cycles_flag="--cycles"
 
-(cd "$workdir" && "$USIM" --timeout="$NITROS9_TIMEOUT" $cycles_flag ${NITROS9_USIM_EXTRA:-} \
+(cd "$workdir" && exec "$USIM" --timeout="$NITROS9_TIMEOUT" $cycles_flag ${NITROS9_USIM_EXTRA:-} \
     --input-first="$NITROS9_INPUT_FIRST" --input-step=500000 \
     --input="$input" -f "$workdir/picothing.fram" \
     -d "$boot" -D "$disk" "$NITROS9_FIRMWARE" >"$log" 2>"$workdir/usim.err") &
@@ -212,6 +212,9 @@ while kill -0 "$pid" 2>/dev/null; do
   sleep 1
   waited=$((waited + 1))
 done
+# The emulator never stops on its own, and killing the shell that started it
+# leaves it running: one left behind holds a core for as long as the machine
+# is up, which slows every later test enough to look like a fault in the test.
 kill "$pid" 2>/dev/null || true
 wait "$pid" 2>/dev/null
 usim_rc=$?

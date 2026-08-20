@@ -8,6 +8,8 @@
 #
 # Lit phase, once per invocation (cheap, ~5s):
 #   3.5 llvm-lit -v test/CodeGen/MC6809/ + test/MC/MC6809/Execution/
+#       + clang/test/{CodeGen,Sema,Driver}/mc6809* + the OS-9 runtime
+#       cases (which must actually run: see the count check)
 #       → one runs row with opt_level='lit' + one results row per lit
 #       test.  The on-usim execution suite (Bug #358) is part of this
 #       gate — it runs each .s end-to-end on usim09batch/MAME.
@@ -554,12 +556,30 @@ _lit_tally() {
             "$clang_root"/test/Sema/mc6809-*.c; do
     [ -f "$f" ] && testpaths="$testpaths $f"
   done
+  # What the driver actually emits -- the libraries, the linker script, the
+  # module name.  These cost milliseconds and were outside the gate, which
+  # is how one of them stayed broken through several benches that each said
+  # no regression.
+  for f in "$clang_root"/test/Driver/mc6809*.c; do
+    [ -f "$f" ] && testpaths="$testpaths $f"
+  done
+  # The end-to-end OS-9 cases: each boots NitrOS-9 and checks a real
+  # console.  They need the opt-in below, and self-skip without it -- see
+  # the count check after the run.
+  local os9_runtime="$llvm_root/../compiler-rt/test/mc6809-os9-runtime"
+  local os9_runtime_ran=0
+  if [ -d "$os9_runtime" ]; then
+    testpaths="$testpaths $os9_runtime"
+    os9_runtime_ran=1
+  fi
 
   # USIM09BATCH + MAMELLVM6309 must be in the environment or the
   # Execution suite self-skips every test as UNSUPPORTED.
   # shellcheck disable=SC2086
   USIM09BATCH="$USIM/usim09batch" \
   MAMELLVM6309="$MAME_RUNNER" \
+  MC6809_OS9_RUNTIME_TESTS=1 \
+  NITROS9_USIM09PT="$USIM/usim09pt" \
     "$lit" -v --no-progress-bar $testpaths > "$outfile" 2>&1
   local lit_rc=$?
 
@@ -602,6 +622,22 @@ _lit_tally() {
   local tag=" ok "
   [ "${fail:-0}"  -gt 0 ] 2>/dev/null && tag="FAIL"
   [ "${unres:-0}" -gt 0 ] 2>/dev/null && tag="UNRESOLVED"
+
+  # A suite that reports UNSUPPORTED for every case has not passed, it has
+  # not run: without its NitrOS-9 images the OS-9 cases skip themselves, and
+  # a gate that counts that as green is a gate nobody should trust.
+  if [ "$os9_runtime_ran" = 1 ]; then
+    local os9_pass
+    os9_pass=$(grep -c '^PASS: MC6809 OS-9 Runtime' "$outfile" 2>/dev/null)
+    if [ "${os9_pass:-0}" -eq 0 ] 2>/dev/null; then
+      tag="OS9-RUNTIME-DID-NOT-RUN"
+      echo "==[ $(ts) FAIL: the OS-9 runtime cases reported nothing --" \
+           "NitrOS-9 images not found?  See $outfile ]==" | tee -a "$LOG"
+      # A gate that ran nothing must not pass, for the same reason a level
+      # that built nothing must not.
+      bench_failed=1
+    fi
+  fi
 
   echo "==[ $(ts) lit tally done: $tag PASS=${pass:-0} FAIL=${fail:-0} XFAIL=${xfail:-0} UNSUPP=${unsupp:-0} UNRES=${unres:-0} run_id=$run_id ]==" | tee -a "$LOG"
 }

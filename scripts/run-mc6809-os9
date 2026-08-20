@@ -4,6 +4,21 @@
 #
 # Usage: run-mc6809-os9 [--fp-module FILE] [--toolchain-ref FILE] <module>
 #            [--stdin "string"] [--args "args"]
+#        run-mc6809-os9 --batch LISTFILE [--fp-module FILE]
+#
+# The second form runs many programs from ONE boot.  LISTFILE holds a
+# `name<TAB>path` per line; every program goes on the same disk and runs in
+# turn, and the results come back on stdout as a stream:
+#
+#     @@@BEGIN <name>
+#     ...whatever the program printed...
+#     @@@END <name> rc=<status>
+#
+# A boot costs about two seconds and a program a few hundredths, which is
+# the difference between an OS-9 test level being affordable and not.  If
+# the run never reaches its sentinel -- something hung, or took the machine
+# down -- the stream stops there and the caller re-runs what is missing one
+# at a time.
 #
 # The program is an OS-9 program module (clang --target=mc6809-unknown-os9).
 # Each run boots NitrOS-9 from the IDE image NITROS9_BOOT_DSK (i0) with the
@@ -74,11 +89,13 @@ stdin=""
 args=""
 module=""
 fp_module="${MC6809_FP_MODULE:-}"
+batch_list=""
 toolchain_ref="${MC6809_TOOLCHAIN_REF:-}"
 done=0
 while [ $# -gt 0 -a $done -eq 0 ]; do
   case "$1" in
     --fp-module) fp_module="$2"; shift 2 ;;
+    --batch)     batch_list="$2"; shift 2 ;;
     --toolchain-ref) toolchain_ref="$2"; shift 2 ;;
     --stdin)     stdin="$2";     shift 2 ;;
     --args)      args="$2";      shift 2 ;;
@@ -92,8 +109,115 @@ while [ $# -gt 0 -a $done -eq 0 ]; do
   esac
 done
 
-if [ -z "$module" ]; then
+
+# ---------------------------------------------------------------------------
+# Batch: one disk, one boot, every program in turn.
+# ---------------------------------------------------------------------------
+run_batch() {
+  : "${NITROS9_TIMEOUT:=8000000000}"
+  : "${NITROS9_WALL_SECONDS:=900}"
+  : "${NITROS9_INPUT_FIRST:=78000000}"
+
+  workdir=$(mktemp -d "${TMPDIR:-/tmp}/os9batch.XXXXXX")
+  trap '[ "${KEEP_OS9_WORKDIR:-0}" = 1 ] || rm -rf "$workdir"' EXIT
+  boot="$workdir/boot.dsk"; disk="$workdir/test.dsk"; log="$workdir/usim.log"
+  cp "$NITROS9_BOOT_DSK" "$boot"
+  "$OS9" format "$disk" -e -l16384 -q -nTEST >/dev/null
+  "$OS9" makdir "$disk,CMDS" >/dev/null
+  if [ -n "$fp_module" ] && [ -f "$fp_module" ]; then
+    "$OS9" copy -r "$fp_module" "$disk,CMDS/FPO9" >/dev/null
+    "$OS9" attr -q -e -pe -pr "$disk,CMDS/FPO9" >/dev/null
+  fi
+
+  # `echo` lives in the boot disk's command directory and chx moves us away
+  # from it, so the marker after each program names it in full -- which
+  # works at either level, where the shells agree on very little else.
+  input="\\r\\r\\r"
+  if [ "${NITROS9_SETIME:-auto}" != off ]; then
+    setime=$NITROS9_SETIME
+    [ "${setime:-auto}" = auto ] && setime=$(date "+%Y/%m/%d %H:%M:%S")
+    input="${input}setime $setime\\r"
+  fi
+  input="${input}chx /j0/cmds\\rchd /j0\\r"
+  names=""
+  while IFS="	" read -r bname bpath; do
+    [ -n "$bname" ] && [ -f "$bpath" ] || continue
+    # A module too big to be given a data area takes the whole boot down
+    # with it at Level 2 -- and everything after it in this batch.  Leave it
+    # out; the caller will run it alone and be told E$MemFul at once.
+    if [ "${OS9_MAX_MODULE:-0}" -gt 0 ]; then
+      bsize=$(wc -c < "$bpath" | tr -d " ")
+      [ "$bsize" -le "$OS9_MAX_MODULE" ] || continue
+    fi
+    # Same guard as a single run: a binary older than the toolchain is a
+    # wrong answer waiting to happen.  Leave it out and the caller runs it
+    # by itself, where the complaint reaches the tally as an error.
+    if [ "${MC6809_ALLOW_STALE:-0}" != 1 ] && [ -n "$toolchain_ref" ] &&
+       [ -e "$toolchain_ref" ] && [ "$toolchain_ref" -nt "$bpath" ]; then
+      continue
+    fi
+    "$OS9" copy -r "$bpath" "$disk,CMDS/$bname" >/dev/null 2>&1 || continue
+    "$OS9" attr -q -e -pe -pr "$disk,CMDS/$bname" >/dev/null 2>&1
+    names="$names $bname"
+    # Nothing may go between a program and its marker: a record starts at the
+    # line the shell echoes for the program, which is recognised by ending in
+    # the program's name, so any other command naming it would start a second
+    # record and swallow the rest of the boot.
+    input="${input}${bname}\\r/dd/cmds/echo @@@${bname}@@@\\r"
+  done < "$batch_list"
+  input="${input}/dd/cmds/echo CIDONE\\r"
+
+  (cd "$workdir" && exec "$USIM" --timeout="$NITROS9_TIMEOUT" ${NITROS9_USIM_EXTRA:-} \
+      --input-first="$NITROS9_INPUT_FIRST" --input-step=500000 \
+      --input="$input" -f "$workdir/picothing.fram" \
+      -d "$boot" -D "$disk" "$NITROS9_FIRMWARE" >"$log" 2>"$workdir/usim.err") &
+  pid=$!
+  waited=0
+  while kill -0 "$pid" 2>/dev/null; do
+    grep -aq 'CIDONE' "$log" 2>/dev/null && break
+    [ "$waited" -ge "$NITROS9_WALL_SECONDS" ] && break
+    sleep 1; waited=$((waited + 1))
+  done
+  # The emulator never stops on its own, and one left running holds a core
+  # for as long as the machine is up -- which slows every later test enough
+  # to look like a fault in the test.
+  kill "$pid" 2>/dev/null || true
+  sleep 1
+  kill -9 "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null
+
+  # What a program printed is what came between its own echoed command line
+  # and its marker; its status is the shell's `Error #nnn` in that stretch.
+  tr -d '\000' <"$log" | tr '\r' '\n' |
+  awk -v names="$names" '
+    BEGIN { n = split(names, want, " "); cur = ""; rc = 0 }
+    {
+      if (match($0, /@@@[A-Za-z0-9_]+@@@/)) {
+        tok = substr($0, RSTART + 3, RLENGTH - 6)
+        if (cur != "" && tok == cur) { printf "@@@END %s rc=%d\n", cur, rc; cur = ""; rc = 0 }
+        next
+      }
+      if (cur == "") {
+        for (i = 1; i <= n; i++)
+          if (want[i] != "" && length($0) >= length(want[i]) &&
+              substr($0, length($0) - length(want[i]) + 1) == want[i]) {
+            cur = want[i]; rc = 0; printf "@@@BEGIN %s\n", cur; break
+          }
+        next
+      }
+      if ($0 ~ /^[Ee][Rr][Rr][Oo][Rr] #[0-9]+/) {
+        s = $0; sub(/^[Ee][Rr][Rr][Oo][Rr] #0*/, "", s); sub(/[^0-9].*/, "", s)
+        rc = s + 0; next
+      }
+      print
+    }'
+  grep -aq 'CIDONE' "$log" || return 124
+  return 0
+}
+
+if [ -z "$module" ] && [ -z "$batch_list" ]; then
   echo "usage: run-mc6809-os9 <module> [--stdin string] [--args string]" >&2
+  echo "       run-mc6809-os9 --batch listfile" >&2
   exit 99
 fi
 
@@ -141,6 +265,19 @@ if [ -z "${NITROS9_FIRMWARE:-}" ] && [ -d "$_lvldir" ]; then
 fi
 : "${NITROS9_BOOT_DSK:?need NITROS9_BOOT_DSK, or NITROS9_RECIPES + NITROS9_LEVEL}"
 : "${NITROS9_FIRMWARE:?need NITROS9_FIRMWARE, or NITROS9_RECIPES + NITROS9_LEVEL}"
+
+if [ -n "$batch_list" ]; then
+  [ -r "$batch_list" ] || { echo "run-mc6809-os9: cannot read $batch_list" >&2; exit 99; }
+  # Level 2 gives a task seven 8K blocks; Level 1 shares one address space
+  # and says E$MemFul politely instead of wedging, so it needs no ceiling.
+  if [ "${NITROS9_LEVEL:-2}" = 2 ]; then
+    : "${OS9_MAX_MODULE:=57344}"
+  else
+    : "${OS9_MAX_MODULE:=0}"
+  fi
+  run_batch
+  exit $?
+fi
 : "${NITROS9_INPUT_FIRST:=78000000}"
 : "${NITROS9_TIMEOUT:=2000000000}"
 : "${NITROS9_WALL_SECONDS:=600}"

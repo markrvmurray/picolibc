@@ -45,7 +45,10 @@ import json
 import os
 import re
 import sqlite3
+import signal
 import subprocess
+import tempfile
+import time
 import sys
 import threading
 from collections import Counter
@@ -303,8 +306,78 @@ def _wipe_stale_objects(builddir, verbose=True):
     return n
 
 
+# --- OS-9 batching ---------------------------------------------------------
+# A NitrOS-9 boot costs ~2 s and the program itself a few hundredths, so
+# running one test per boot is nearly all boot.  run-mc6809-os9 --batch puts
+# a group of programs on one disk and runs them from a single boot; this
+# turns the tally's test list into those groups and reads the results back.
+# How many programs share a boot.  The right number falls as workers rise:
+# with one worker a boot is pure overhead and big groups pay (measured 2.5x
+# at --jobs 1), but with eight the boots already overlap and a big group is
+# a long serial tail that the pool waits on.  Measured over the whole OS-9
+# FP level at --jobs 8: off 270s, 2/293s, 3/201s, 4/225s, 6/354s, 12/365s.
+OS9_BATCH_AUTO = 0
+OS9_BATCH_MANY_JOBS = 3
+OS9_BATCH_ONE_JOB = 12
+
+
+def os9_batch_size(requested, jobs):
+    if requested != OS9_BATCH_AUTO:
+        return requested
+    # Level 2 only.  Level 1 shares one address space between every program
+    # and keeps each module it has run, so a boot that has already run a few
+    # has less room for the next: measured there, batching was three times
+    # slower than a boot per test AND failed three tests that pass alone --
+    # nothing to weigh against getting the wrong answer.
+    if os.environ.get("NITROS9_LEVEL", "2") != "2":
+        return 1
+    return OS9_BATCH_ONE_JOB if jobs <= 1 else OS9_BATCH_MANY_JOBS
+
+
+# meson's introspection does not expose `should_fail`, so a test that is
+# meant to fail would come back from a batch as a plain failure.  The few
+# there are keep going through meson, one boot each.
+OS9_NO_BATCH = {
+    "test-hosted-exit-fail",
+    "test-abort-failure",
+}
+
+
 def _is_os9_builddir(builddir):
     return "os9" in os.path.basename(str(builddir))
+
+
+def _os9_wrapper_args(builddir):
+    """The exe_wrapper arguments meson uses for this level.
+
+    A batch has to put the same things on the disk as a single run does --
+    the floating-point module, the toolchain the binaries must not be older
+    than -- and the cross file the level was configured with is where both
+    are written down."""
+    cross = None
+    log = Path(builddir) / "meson-logs/meson-log.txt"
+    try:
+        for line in log.read_text(errors="replace").splitlines():
+            m = re.search(r"--cross-file=(\S+)", line)
+            if m:
+                cross = m.group(1)
+                break
+            if line.strip().startswith("Cross files"):
+                cross = line.split(":", 1)[1].strip().split()[0]
+                break
+    except Exception:
+        pass
+    if not cross:
+        cross = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "cross-clang-mc6809-unknown-os9.txt")
+    try:
+        for line in open(cross, errors="replace"):
+            if line.startswith("exe_wrapper"):
+                items = re.findall(r"'([^']*)'", line)
+                return [a for a in items[1:] if a]
+    except Exception:
+        pass
+    return []
 
 
 def _os9_fp_module(builddir):
@@ -323,6 +396,105 @@ def _os9_fp_module(builddir):
             if p.exists():
                 return str(p)
     return None
+
+
+def _os9_cmd_name(name, taken):
+    """An OS-9 command name: letters and digits, 29 at most, unique."""
+    base = re.sub(r"[^A-Za-z0-9]", "", name)[:29] or "t"
+    cand, n = base, 0
+    while cand in taken:
+        n += 1
+        suffix = str(n)
+        cand = base[:29 - len(suffix)] + suffix
+    taken.add(cand)
+    return cand
+
+
+def run_os9_batches(tests, builddir, size, jobs=1, verbose=True):
+    """Run `tests` in groups, one boot per group, `jobs` groups at a time.
+
+    Returns {test_name: (rc, output)} for every program that ran between its
+    own echoed command line and its own end marker.  A boot that stopped
+    early simply reports fewer of them -- the marker is printed by the shell
+    after the program exits, so a record that has one is complete -- and the
+    caller runs whatever is missing the ordinary way."""
+    runner = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "run-mc6809-os9")
+    if not os.path.exists(runner):
+        return {}
+    wrapper_args = _os9_wrapper_args(builddir)
+    fp = os.environ.get("MC6809_FP_MODULE") or _os9_fp_module(builddir)
+    if fp and "--fp-module" not in wrapper_args:
+        wrapper_args += ["--fp-module", fp]
+    # A slow program would hold up everything sharing its boot, and the
+    # harness already knows which those are: they keep a boot to themselves.
+    batchable = [t for t in tests
+                 if t["name"] not in OS9_NO_BATCH and t["name"] not in SLOW_TESTS]
+    # Dealt round-robin, not sliced: the test list runs suite by suite, so
+    # slices collect a slow suite into one boot that then overruns its cap
+    # and yields nothing.  Dealing spreads the slow ones over every boot.
+    ngroups = (len(batchable) + size - 1) // size if batchable else 0
+    groups = [batchable[i::ngroups] for i in range(ngroups)] if ngroups else []
+    results = {}
+    lock = threading.Lock()
+    done = [0]
+
+    def run_group(group):
+        taken, by_cmd = set(), {}
+        with tempfile.NamedTemporaryFile("w", suffix=".lst", delete=False) as lf:
+            for t in group:
+                cmd_name = _os9_cmd_name(t["name"], taken)
+                by_cmd[cmd_name] = t["name"]
+                lf.write(f"{cmd_name}\t{t['cmd'][0]}\n")
+            listfile = lf.name
+        argv = [runner, "--batch", listfile] + wrapper_args
+        env = os.environ.copy()
+        env.setdefault("NITROS9_WALL_SECONDS", str(30 + 45 * len(group)))
+        # Its own session, so a cap that fires takes the emulator with it:
+        # an orphaned emulator never exits, and a core spinning on one slows
+        # every test that follows until the whole run looks like a timeout.
+        try:
+            proc = subprocess.Popen(argv, stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL, text=True,
+                                    env=env, start_new_session=True)
+            try:
+                stdout, _ = proc.communicate(timeout=150 + 45 * len(group))
+                stream = stdout
+            except subprocess.TimeoutExpired:
+                stream = ""
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except Exception:
+                    proc.kill()
+                proc.communicate()
+        except Exception:
+            stream = ""
+        finally:
+            os.unlink(listfile)
+        got, cur, buf = {}, None, []
+        for line in stream.split("\n"):
+            if line.startswith("@@@BEGIN "):
+                cur, buf = line[9:].strip(), []
+            elif line.startswith("@@@END ") and cur:
+                parts = line.split()
+                rc = int(parts[2][3:]) if len(parts) >= 3 and parts[2].startswith("rc=") else 0
+                if parts[1] == cur:
+                    got[by_cmd.get(cur, cur)] = (rc, "\n".join(buf))
+                cur, buf = None, []
+            elif cur is not None:
+                buf.append(line)
+        with lock:
+            results.update(got)
+            done[0] += 1
+            if verbose:
+                print(f"batch {done[0]}/{len(groups)}: {len(group)} programs, "
+                      f"{len(got)} reported", flush=True)
+
+    if groups:
+        with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
+            list(pool.map(run_group, groups))
+    return results
+
 
 
 def preflight_fresh_binaries(skip_ninja=False, verbose=True, builddir=None):
@@ -1111,6 +1283,16 @@ def main():
                          "this flag when actually measuring the semihost "
                          "layer or when USim has been extended with real "
                          "file I/O.")
+    ap.add_argument("--os9-batch", type=int, default=OS9_BATCH_AUTO,
+                    metavar="N",
+                    help="OS-9 levels only: run N programs from each "
+                         "NitrOS-9 boot instead of one.  The default picks "
+                         "%d with one worker and %d with more, which is "
+                         "where each measured fastest.  1 disables it; "
+                         "anything a batch does not report -- a program "
+                         "that hung, or took the machine down -- is re-run "
+                         "one per boot."
+                         % (OS9_BATCH_ONE_JOB, OS9_BATCH_MANY_JOBS))
     ap.add_argument("--refresh-only", action="store_true",
                     help="Bring the level up to date against the current "
                          "compiler and stop: wipe objects the backend has "
@@ -1274,14 +1456,31 @@ def main():
             os.environ["MC6809_FP_MODULE"] = _fp
             print(f"[os9] floating-point module: {_fp}", flush=True)
 
+    # One NitrOS-9 boot per test is nearly all boot, so run the OS-9 levels
+    # in groups from a single boot and keep the pool for what is left.
+    os9_batched = {}
+    _batch_size = os9_batch_size(args.os9_batch, args.jobs)
+    if _batch_size > 1 and _is_os9_builddir(BUILDDIR):
+        t0 = time.time()
+        os9_batched = run_os9_batches(tests, BUILDDIR, _batch_size,
+                                      jobs=args.jobs)
+        print(f"batched {len(os9_batched)}/{len(tests)} tests in "
+              f"{time.time() - t0:.0f}s; the rest run one boot each",
+              flush=True)
+
     mode = "one-at-a-time" if args.jobs == 1 else f"{args.jobs}-at-a-time"
     print(f"running {len(tests)} tests {mode}…", flush=True)
 
     def execute(t):
         name = t["name"]
-        safe = re.sub(r"[^A-Za-z0-9._-]", "_", name)
-        logbase = f"{LOGBASE}-{safe}"
-        parsed = run_single_test(name, logbase)
+        if name in os9_batched:
+            rc, out = os9_batched[name]
+            result = {0: "OK", 77: "SKIP", 99: "ERROR"}.get(rc, "FAIL")
+            parsed = (name, result, rc, out, "", 0.0, None, None)
+        else:
+            safe = re.sub(r"[^A-Za-z0-9._-]", "_", name)
+            logbase = f"{LOGBASE}-{safe}"
+            parsed = run_single_test(name, logbase)
         if parsed is None:
             parsed = (name, "ERROR", -1, "", "", 0.0, None, None)
         pname, result, rc, out, err, dur, cycles, tb = parsed

@@ -400,7 +400,9 @@ def _os9_fp_module(builddir):
 
 def _os9_cmd_name(name, taken):
     """An OS-9 command name: letters and digits, 29 at most, unique."""
-    base = re.sub(r"[^A-Za-z0-9]", "", name)[:29] or "t"
+    # Same rule the runner uses for a single boot, so a program sees the
+    # same argv[0] either way.
+    base = re.sub(r"[^A-Za-z0-9_]", "", name)[:29] or "t"
     cand, n = base, 0
     while cand in taken:
         n += 1
@@ -428,8 +430,11 @@ def run_os9_batches(tests, builddir, size, jobs=1, verbose=True):
         wrapper_args += ["--fp-module", fp]
     # A slow program would hold up everything sharing its boot, and the
     # harness already knows which those are: they keep a boot to themselves.
+    # A batch runs each program by name with nothing after it, so a test that
+    # meson gives arguments to would quietly run without them.
     batchable = [t for t in tests
-                 if t["name"] not in OS9_NO_BATCH and t["name"] not in SLOW_TESTS]
+                 if t["name"] not in OS9_NO_BATCH and t["name"] not in SLOW_TESTS
+                 and len(t.get("cmd", [])) <= 1]
     # Dealt round-robin, not sliced: the test list runs suite by suite, so
     # slices collect a slow suite into one boot that then overruns its cap
     # and yields nothing.  Dealing spreads the slow ones over every boot.

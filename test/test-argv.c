@@ -50,7 +50,10 @@ static const char *expect_args[] = { "hello", "world" };
 int
 main(int argc, char **argv)
 {
-#if defined(__HEXAGON_ARCH__)
+/* Where the start-up code builds argv: Hexagon from its own get_cmdline, and
+ * OS-9 from the parameter string the shell hands the module (argv[0] is the
+ * module's own name, which the shell strips from that string). */
+#if defined(__HEXAGON_ARCH__) || defined(__OS9__)
     unsigned i;
     int      errors = 0;
 
@@ -78,7 +81,7 @@ main(int argc, char **argv)
 
     return errors;
 #else
-    printf("Hexagon-only argv test; skipping\n");
+    printf("no argv on this target; skipping\n");
     (void)argc;
     (void)argv;
     (void)expect_prog;

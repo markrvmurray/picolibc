@@ -37,6 +37,14 @@ static int failures = 0;
 static volatile float vol_f;
 static volatile double vol_d;
 
+/* The square root through the compiler's own libcall rather than libm's
+ * sqrtf: a level built without libm has no sqrtf, and linking failed there
+ * for the sake of one assertion out of nine, at levels where fenv is exactly
+ * as testable as anywhere else -- it is the MC6839 control block, not a
+ * library.  This is the routine sqrtf reaches anyway, and sqrt_probe in this
+ * directory already calls it directly for the same reason. */
+extern float __sqrtsf2(float);
+
 int main(void) {
 #if defined(__FAST_MATH__)
     /* Bug #335: -Ofast implies -ffast-math, under which the compiler
@@ -50,7 +58,7 @@ int main(void) {
     /* Test 1: sqrt(-1) raises FE_INVALID. */
     feclearexcept(FE_ALL_EXCEPT);
     vol_f = -1.0f;
-    vol_f = sqrtf(vol_f);
+    vol_f = __sqrtsf2(vol_f);
     (void)vol_f;
     EXPECT(fetestexcept(FE_INVALID) != 0, "sqrt(-1) raises FE_INVALID");
 

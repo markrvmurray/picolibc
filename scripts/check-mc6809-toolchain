@@ -41,7 +41,11 @@ pass=0; fail=0
 run_case() {
   name=$1; triple=$2; expect=$3
   cat > "$work/$name.c"
-  if ! "$CLANG" --target="$triple" "$work/$name.c" -o "$work/$name.bin" \
+  # A simulator needs a start-up that calls exit(); picolibc's plain crt0 does
+  # not, because a program on hardware does not return from main.
+  crt0=
+  case "$triple" in *os9) ;; *) crt0=-mcrt0=semihost ;; esac
+  if ! "$CLANG" --target="$triple" $crt0 "$work/$name.c" -o "$work/$name.bin" \
         > "$work/$name.build" 2>&1; then
     echo "FAIL $name ($triple): did not build"
     sed 's/^/    /' "$work/$name.build" | head -5
@@ -53,10 +57,18 @@ run_case() {
   case "$triple" in
     *os9) got=$(NITROS9_LEVEL=${NITROS9_LEVEL:-2} \
                 $TIMEOUT "$SCRIPT_DIR/run-mc6809-os9" "$work/$name.bin" \
-                2>/dev/null </dev/null) ;;
+                2>/dev/null </dev/null) ; rc=$? ;;
     *)    got=$($TIMEOUT "$USIM09BATCH" "$work/$name.bin" \
-                2>/dev/null </dev/null) ;;
+                2>/dev/null </dev/null) ; rc=$? ;;
   esac
+  # 124 is what `timeout` reports when it had to kill the thing.  A program
+  # that printed the right answer and then never stopped has not passed:
+  # reading its output and calling it done is how a check comes to take
+  # minutes per case and report ok.
+  if [ "$rc" = 124 ]; then
+    echo "FAIL $name ($triple): did not terminate"
+    fail=$((fail + 1)); return
+  fi
   # The console adds NULs and line endings of its own; compare the substance.
   got=$(printf '%s' "$got" | tr -d '\000\r' | sed '/^$/d')
   if [ "$got" = "$expect" ]; then

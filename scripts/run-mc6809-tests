@@ -303,6 +303,28 @@ def _wipe_stale_objects(builddir, verbose=True):
     return n
 
 
+def _is_os9_builddir(builddir):
+    return "os9" in os.path.basename(str(builddir))
+
+
+def _os9_fp_module(builddir):
+    """The FPO9 module the compiler staged, for the batch disk."""
+    for c in _compiler_binaries(builddir):
+        if not c.endswith("clang"):
+            continue
+        try:
+            out = subprocess.run([c, "-target", "mc6809-unknown-os9",
+                                  "-print-resource-dir"],
+                                 capture_output=True, text=True, timeout=60)
+        except Exception:
+            continue
+        if out.returncode == 0:
+            p = Path(out.stdout.strip()) / "lib/mc6809-unknown-os9/FPO9"
+            if p.exists():
+                return str(p)
+    return None
+
+
 def preflight_fresh_binaries(skip_ninja=False, verbose=True, builddir=None):
     """Read intro-tests.json, refresh every test binary, return the
     subset that now exists, is executable, AND is no older than the
@@ -1240,6 +1262,17 @@ def main():
                               -1, 0.0, None, rec_ol, None)
         print(f"[BUILDFAIL] recorded {len(buildfail)} link-failed "
               f"test(s) up front", flush=True)
+
+    # The floating-point ROM is a module the program links to at run time, so
+    # it has to be on the disk of every run -- and a level built with libm but
+    # booted without it does not fail loudly, it just gets the wrong answers.
+    # Find it once here so one boot and a batch of twelve are given the same
+    # disk.
+    if _is_os9_builddir(BUILDDIR) and not os.environ.get("MC6809_FP_MODULE"):
+        _fp = _os9_fp_module(BUILDDIR)
+        if _fp:
+            os.environ["MC6809_FP_MODULE"] = _fp
+            print(f"[os9] floating-point module: {_fp}", flush=True)
 
     mode = "one-at-a-time" if args.jobs == 1 else f"{args.jobs}-at-a-time"
     print(f"running {len(tests)} tests {mode}…", flush=True)

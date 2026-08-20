@@ -142,6 +142,31 @@ done
 
 check_decb
 
+# The friendly names, which are what somebody who unpacked this would type.
+# They are symlinks, and clang reads the target off its own name -- so this
+# checks both that they exist and that the sysroot is findable under the
+# triple each name computes, which is not the same triple in every case.
+check_names() {
+  for name in mc6809-clang mc6809-os9-clang mc6809-decb-clang; do
+    if [ ! -x "$PREFIX/bin/$name" ]; then
+      echo "FAIL $name: not in the toolchain"
+      fail=$((fail + 1)); continue
+    fi
+    printf 'int main(void) { return 0; }\n' > "$work/name.c"
+    if "$PREFIX/bin/$name" "$work/name.c" -o "$work/name.bin" \
+          > "$work/name.build" 2>&1; then
+      echo "ok   $name"
+      pass=$((pass + 1))
+    else
+      echo "FAIL $name: did not build"
+      sed 's/^/    /' "$work/name.build" | head -4
+      fail=$((fail + 1))
+    fi
+  done
+}
+
+check_names
+
 echo "---"
 echo "toolchain: $PREFIX"
 echo "pass=$pass fail=$fail"

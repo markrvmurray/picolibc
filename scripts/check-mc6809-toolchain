@@ -24,6 +24,14 @@ CLANG=$PREFIX/bin/clang
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 USIM09BATCH=${USIM09BATCH:-usim09batch}
+# `timeout` if the system has one; without it a wedged program hangs the run,
+# which is worth knowing about but not worth refusing to run over.
+if command -v timeout >/dev/null 2>&1; then
+  TIMEOUT="timeout ${MC6809_CHECK_TIMEOUT:-120}"
+else
+  TIMEOUT=
+fi
+
 work=$(mktemp -d "${TMPDIR:-/tmp}/mc6809-check.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
@@ -39,10 +47,15 @@ run_case() {
     sed 's/^/    /' "$work/$name.build" | head -5
     fail=$((fail + 1)); return
   fi
+  # Closed stdin and a cap on the clock: a simulator that inherits this
+  # script's input waits for it, and a program that never finishes must fail
+  # the check rather than hang it.
   case "$triple" in
     *os9) got=$(NITROS9_LEVEL=${NITROS9_LEVEL:-2} \
-                "$SCRIPT_DIR/run-mc6809-os9" "$work/$name.bin" 2>/dev/null) ;;
-    *)    got=$("$USIM09BATCH" "$work/$name.bin" 2>/dev/null) ;;
+                $TIMEOUT "$SCRIPT_DIR/run-mc6809-os9" "$work/$name.bin" \
+                2>/dev/null </dev/null) ;;
+    *)    got=$($TIMEOUT "$USIM09BATCH" "$work/$name.bin" \
+                2>/dev/null </dev/null) ;;
   esac
   # The console adds NULs and line endings of its own; compare the substance.
   got=$(printf '%s' "$got" | tr -d '\000\r' | sed '/^$/d')

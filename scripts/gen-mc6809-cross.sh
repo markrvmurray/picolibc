@@ -13,6 +13,8 @@
 #   LLVM_REPO          llvm-mc6809 checkout        (default: ../llvm-mc6809)
 #   LLVM_BUILD_SUBDIR  build dir within LLVM_REPO  (default: llvm/cmake-build-debug-system)
 #   LLVM_BIN           toolchain bin directory     (default: $LLVM_REPO/$LLVM_BUILD_SUBDIR/bin)
+#   MC6809_TOOLCHAIN   an installed toolchain prefix; its bin/ becomes
+#                      LLVM_BIN, and the rest is derived from that compiler
 # Override any of them by exporting before invoking.
 
 set -eu
@@ -22,6 +24,14 @@ PICO=${PICO:-$(cd "$SCRIPT_DIR/.." && pwd)}
 PARENT=$(dirname "$PICO")
 LLVM_REPO=${LLVM_REPO:-$PARENT/llvm-mc6809}
 LLVM_BUILD_SUBDIR=${LLVM_BUILD_SUBDIR:-llvm/cmake-build-debug-system}
+# An installed toolchain instead of a build tree: one variable points the
+# generated cross files at it, and everything else follows -- the resource
+# directory, the OS-9 linker script and the floating-point module are all
+# derived by asking that compiler where they are.
+MC6809_TOOLCHAIN=${MC6809_TOOLCHAIN:-}
+if [ -n "$MC6809_TOOLCHAIN" ]; then
+	LLVM_BIN=${LLVM_BIN:-$MC6809_TOOLCHAIN/bin}
+fi
 LLVM_BIN=${LLVM_BIN:-$LLVM_REPO/$LLVM_BUILD_SUBDIR/bin}
 
 TEMPLATE=$SCRIPT_DIR/cross-clang-mc6809-unknown-elf.txt.in

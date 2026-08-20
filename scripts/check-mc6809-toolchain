@@ -1,0 +1,92 @@
+#!/bin/sh
+# check-mc6809-toolchain — does an installed MC6809 toolchain work?
+#
+# Usage: check-mc6809-toolchain [PREFIX]        (or set MC6809_TOOLCHAIN)
+#
+# Compiles a handful of ordinary C programs with nothing but `--target`, the
+# way somebody who has unpacked a toolchain would, and runs each one: bare
+# metal on USim, OS-9 on a real NitrOS-9 boot.  Nothing here names a library,
+# a linker script or an include path, which is the whole point -- if the
+# driver cannot find its own sysroot, this fails.
+#
+# This is the acceptance test for a bundle.  It is deliberately not the
+# picolibc test suite: that suite links the libc.a it has just built, so it
+# exercises the compiler but never the *installed* library.
+#
+#   NITROS9_LEVEL   which NitrOS-9 the OS-9 cases boot (default 2)
+#   USIM09BATCH     the bare-metal simulator (default: usim09batch on PATH)
+set -u
+
+PREFIX=${1:-${MC6809_TOOLCHAIN:-}}
+[ -n "$PREFIX" ] || { echo "usage: $0 PREFIX  (or set MC6809_TOOLCHAIN)" >&2; exit 2; }
+CLANG=$PREFIX/bin/clang
+[ -x "$CLANG" ] || { echo "$0: no clang at $CLANG" >&2; exit 2; }
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+USIM09BATCH=${USIM09BATCH:-usim09batch}
+work=$(mktemp -d "${TMPDIR:-/tmp}/mc6809-check.XXXXXX")
+trap 'rm -rf "$work"' EXIT
+
+pass=0; fail=0
+
+# case NAME TRIPLE EXPECTED <<'EOF' ... source ... EOF
+run_case() {
+  name=$1; triple=$2; expect=$3
+  cat > "$work/$name.c"
+  if ! "$CLANG" --target="$triple" "$work/$name.c" -o "$work/$name.bin" \
+        > "$work/$name.build" 2>&1; then
+    echo "FAIL $name ($triple): did not build"
+    sed 's/^/    /' "$work/$name.build" | head -5
+    fail=$((fail + 1)); return
+  fi
+  case "$triple" in
+    *os9) got=$(NITROS9_LEVEL=${NITROS9_LEVEL:-2} \
+                "$SCRIPT_DIR/run-mc6809-os9" "$work/$name.bin" 2>/dev/null) ;;
+    *)    got=$("$USIM09BATCH" "$work/$name.bin" 2>/dev/null) ;;
+  esac
+  # The console adds NULs and line endings of its own; compare the substance.
+  got=$(printf '%s' "$got" | tr -d '\000\r' | sed '/^$/d')
+  if [ "$got" = "$expect" ]; then
+    echo "ok   $name ($triple)"
+    pass=$((pass + 1))
+  else
+    echo "FAIL $name ($triple): got [$got] want [$expect]"
+    fail=$((fail + 1))
+  fi
+}
+
+for triple in mc6809-unknown-unknown mc6809-unknown-os9; do
+  run_case hello "$triple" "hello, world" <<'EOF'
+#include <stdio.h>
+int main(void) { printf("hello, world\n"); return 0; }
+EOF
+
+  run_case heap "$triple" "toolchain 6809" <<'EOF'
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+int main(void) {
+  char *p = malloc(64);
+  if (!p) return 1;
+  strcpy(p, "toolchain");
+  printf("%s %d\n", p, 6809);
+  free(p);
+  return 0;
+}
+EOF
+
+  run_case arith "$triple" "42 7 1000000" <<'EOF'
+#include <stdio.h>
+static long mul(long a, long b) { return a * b; }
+int main(void) {
+  int a = 6, b = 7;
+  printf("%d %d %ld\n", a * b, b, mul(1000L, 1000L));
+  return 0;
+}
+EOF
+done
+
+echo "---"
+echo "toolchain: $PREFIX"
+echo "pass=$pass fail=$fail"
+[ "$fail" -eq 0 ]

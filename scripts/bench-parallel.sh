@@ -76,6 +76,12 @@ PICO=${PICO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
 PARENT=$(dirname "$PICO")
 LLVM_REPO=${LLVM_REPO:-$PARENT/llvm-mc6809}
 LLVM_BUILD_SUBDIR=${LLVM_BUILD_SUBDIR:-llvm/cmake-build-debug-system}
+# MC6809_TOOLCHAIN points the whole bench at an installed toolchain instead
+# of a build tree: its bin/ is the compiler, and the cross files generated
+# below follow.  Without it, nothing changes.
+if [ -n "${MC6809_TOOLCHAIN:-}" ]; then
+  LLVM_BIN=${LLVM_BIN:-$MC6809_TOOLCHAIN/bin}
+fi
 LLVM_BIN=${LLVM_BIN:-$LLVM_REPO/$LLVM_BUILD_SUBDIR/bin}
 USIM=${USIM:-$PARENT/usim}
 MAME_RUNNER=${MAME_RUNNER:-$PARENT/mame/run-mc6809-mame}
@@ -162,7 +168,8 @@ export LLVM_NM="$LLVM_BIN/llvm-nm"
 # Generate the meson cross files for this machine's toolchain location.
 # They are gitignored (machine-specific absolute paths) — see
 # scripts/gen-mc6809-cross.sh. Regenerating is idempotent and cheap.
-PICO="$PICO" LLVM_BIN="$LLVM_BIN" "$PICO/scripts/gen-mc6809-cross.sh" >>"$LOG" 2>&1 \
+PICO="$PICO" LLVM_BIN="$LLVM_BIN" MC6809_TOOLCHAIN="${MC6809_TOOLCHAIN:-}" \
+  "$PICO/scripts/gen-mc6809-cross.sh" >>"$LOG" 2>&1 \
   || { echo "bench-parallel: failed to generate cross files (see $LOG)" >&2; exit 1; }
 
 # Suppress LLVM crash-handler symbolisation. Without FP support, every

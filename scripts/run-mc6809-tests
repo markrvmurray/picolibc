@@ -92,6 +92,17 @@ USIM_CAP_RC = 124
 # their own bucket rather than let them stand as failures nobody reads.
 OS9_MEMFUL_RC = 207
 
+# Two paths open on one file do not see each other at Level 1: a reader gets
+# the sectors the file has been given, unwritten, while the writer's data is
+# still in RBF's buffer -- measured with a program that calls I$Create,
+# I$Write and I$Open directly, so it is the OS and not this library.  Level 2
+# reads back what was written.  The tests that need the POSIX behaviour get
+# their own bucket at Level 1 rather than standing as failures nobody reads.
+OS9_L1_INCOHERENT = {
+    "test-fflush":  "reads a file through a second path while writing it",
+    "test-setvbuf": "reads a file through a second path while writing it",
+}
+
 # Per-test usim instruction caps. Keys are the bare test name as stored
 # in meson's intro-tests.json (what the harness passes to `meson test`);
 # meson itself renders a fuller "suite - project:name" form in its logs,
@@ -341,6 +352,11 @@ OS9_NO_BATCH = {
     "test-hosted-exit-fail",
     "test-abort-failure",
 }
+
+
+def _bare_test_name(name):
+    """The test's own name, without the suite meson prefixes it with."""
+    return name.split(":")[-1].strip()
 
 
 def _is_os9_builddir(builddir):
@@ -1165,6 +1181,11 @@ def run_multi(args):
         elif rc == OS9_MEMFUL_RC and result == "FAIL" and "os9" in str(bd):
             result = "TOOBIG"
             parsed = (pname, result, rc, out, err, dur, cycles, tb)
+        elif (result == "FAIL" and "os9" in str(bd) and
+              os.environ.get("NITROS9_LEVEL") == "1" and
+              _bare_test_name(name) in OS9_L1_INCOHERENT):
+            result = "OSLIMIT"
+            parsed = (pname, result, rc, out, err, dur, cycles, tb)
         return lvl, parsed
 
     def record(level_parsed, completed_idx, total):
@@ -1178,7 +1199,7 @@ def run_multi(args):
         with print_lock:
             print(f"[{completed_idx:>3}/{total}] {line}", flush=True)
             ftally.write(line + "\n")
-            if result not in ("OK", "EXPECTEDFAIL", "SKIP", "TOOBIG"):
+            if result not in ("OK", "EXPECTEDFAIL", "SKIP", "TOOBIG", "OSLIMIT"):
                 flog.write("=" * 70 + "\n")
                 flog.write(f"[{lvl}] {result}: {pname}  "
                            f"(rc={rc}, {dur:.2f}s)\n")
@@ -1215,7 +1236,7 @@ def run_multi(args):
             ftally.write(f"[{lvl}]\n")
             for k in ("OK", "EXPECTEDFAIL", "SKIP", "FAIL",
                       "UNEXPECTEDPASS", "ERROR", "TIMEOUT",
-                      "TOOBIG", "BUILDFAIL"):
+                      "TOOBIG", "OSLIMIT", "BUILDFAIL"):
                 if per_level[lvl].get(k):
                     ftally.write(f"  {k:14s} {per_level[lvl][k]}\n")
             ftally.write(f"  TOTAL          {sum(per_level[lvl].values())}\n")
@@ -1495,6 +1516,11 @@ def main():
         elif rc == OS9_MEMFUL_RC and result == "FAIL" and "os9" in str(BUILDDIR):
             result = "TOOBIG"
             parsed = (pname, result, rc, out, err, dur, cycles, tb)
+        elif (result == "FAIL" and "os9" in str(BUILDDIR) and
+              os.environ.get("NITROS9_LEVEL") == "1" and
+              _bare_test_name(name) in OS9_L1_INCOHERENT):
+            result = "OSLIMIT"
+            parsed = (pname, result, rc, out, err, dur, cycles, tb)
         return parsed
 
     def record(parsed, completed_idx, total):
@@ -1506,7 +1532,7 @@ def main():
         with print_lock:
             print(f"[{completed_idx:>2}/{total}] {line}", flush=True)
             ftally.write(line + "\n")
-            if result not in ("OK", "EXPECTEDFAIL", "SKIP", "TOOBIG"):
+            if result not in ("OK", "EXPECTEDFAIL", "SKIP", "TOOBIG", "OSLIMIT"):
                 flog.write("=" * 70 + "\n")
                 flog.write(f"{result}: {pname}  (rc={rc}, {dur:.2f}s)\n")
                 flog.write("-" * 70 + "\n")
@@ -1548,7 +1574,7 @@ def main():
     parts = [f"{k}={counts[k]}"
              for k in ("OK", "EXPECTEDFAIL", "SKIP", "FAIL",
                        "UNEXPECTEDPASS", "ERROR", "TIMEOUT",
-                       "TOOBIG", "BUILDFAIL")
+                       "TOOBIG", "OSLIMIT", "BUILDFAIL")
              if counts.get(k)]
     print("  ".join(parts) + f"  TOTAL={sum(counts.values())}")
     print(f"per-test: {OUT}")

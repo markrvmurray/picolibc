@@ -806,15 +806,28 @@ def text_bytes_of(command):
     [run-mc6809, <ELF>]. The ELF is the last argument that exists as a
     file and isn't the exe-wrapper (command[0]). Never raises — a size
     probe must not perturb the tally."""
-    if not _LLVM_SIZE or not command:
+    if not command:
         return None
-    wrapper = command[0] if command else None
+    wrapper = command[0] if len(command) > 1 else None
     elf = None
     for arg in reversed(command):
         if isinstance(arg, str) and arg != wrapper and os.path.isfile(arg):
             elf = arg
             break
     if elf is None:
+        return None
+    # An OS-9 program module is not an ELF and llvm-size can make nothing of
+    # it.  Its whole file is the program -- header, code, data and CRC, all of
+    # which the kernel has to find room for -- so its size is the honest
+    # measure there, and the one that says how near a test is to the ceiling
+    # a task's blocks impose.
+    try:
+        with open(elf, "rb") as f:
+            if f.read(2) == b"\x87\xcd":       # an OS-9 module's sync bytes
+                return os.path.getsize(elf)
+    except OSError:
+        pass
+    if not _LLVM_SIZE:
         return None
     try:
         out = subprocess.run([_LLVM_SIZE, elf], capture_output=True,
@@ -1502,7 +1515,19 @@ def main():
         if name in os9_batched:
             rc, out = os9_batched[name]
             result = {0: "OK", 77: "SKIP", 99: "ERROR"}.get(rc, "FAIL")
-            parsed = (name, result, rc, out, "", 0.0, None, None)
+            # Under the name meson's own logs use, so a test that shared a
+            # boot and one that did not are the same row in the ledger --
+            # `test-posix - picolibc:test-rmdir`, not the bare name the
+            # harness dispatches by.
+            suite = (t.get("suite") or [None])[0]          # "picolibc:test-posix"
+            full = name
+            if suite and ":" in suite:
+                project, subdir = suite.split(":", 1)
+                full = f"{subdir} - {project}:{name}"
+            # Size still comes from the program itself, which sharing a boot
+            # does not change.
+            parsed = (full, result, rc, out, "", 0.0, None,
+                      text_bytes_of(t.get("cmd")))
         else:
             safe = re.sub(r"[^A-Za-z0-9._-]", "_", name)
             logbase = f"{LOGBASE}-{safe}"

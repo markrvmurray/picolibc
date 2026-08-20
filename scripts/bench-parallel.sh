@@ -103,6 +103,7 @@ sqlite_bench() {
 SIMULATOR="usim"
 USIM_CROSS=$PICO/scripts/cross-clang-mc6809-unknown-elf.txt
 MAME_CROSS=$PICO/scripts/cross-clang-mc6809-unknown-elf-mame.txt
+OS9_CROSS=$PICO/scripts/cross-clang-mc6809-unknown-os9.txt
 CROSS=$USIM_CROSS
 BD_SUFFIX=""
 
@@ -234,6 +235,15 @@ level_opts() {
     # -fno-stack-protector, ...) from the Ofast builddirs.
     Ofast) echo "-Doptimization=plain -Dc_args=['-O3','-ffast-math'] -Dcpp_args=['-O3','-ffast-math']" ;;
 
+    # ---- OS-9, hosted on NitrOS-9 ----
+    # A different library altogether: picolibc's OS-9 system layer instead
+    # of the bare-metal semihost one, no picocrt (the OS-9 CRT comes from
+    # compiler-rt), and a console that is the shell's.  os9-Os runs at
+    # Level 1 and os9-Os-fp at Level 2 -- floating point needs the FPO9
+    # module beside the program, which only Level 2 has room for.
+    os9-Os) echo "-Doptimization=s -Dpicocrt=false -Dsemihost=false -Dos-os9=true -Dposix-console=true" ;;
+    os9-Os-fp) echo "-Doptimization=s -Dpicocrt=false -Dsemihost=false -Dos-os9=true -Dposix-console=true -Dstdio-float=true -Dwant-libm=true" ;;
+
     # ---- plain MC6809, LTO ----
     O2-lto) echo "-Doptimization=2 -Db_lto=true" ;;
     O3-lto) echo "-Doptimization=3 -Db_lto=true" ;;
@@ -309,6 +319,7 @@ level_cross() {
   # MAME cross-file. Glob `*-mame*` would over-match anything containing
   # the substring; the explicit alternation keeps intent legible.
   case "$1" in
+    os9-*)            echo "$OS9_CROSS" ;;
     *-mame|*-mame-fp) echo "$MAME_CROSS" ;;
     *)                echo "$CROSS" ;;
   esac
@@ -620,7 +631,8 @@ O2-lto,O3-lto,Os-lto,\
 O0-fp,O1-fp,O2-fp,O3-fp,Og-fp,Os-fp,Oz-fp,Ofast-fp,\
 Os-lto-fp,\
 O2-hd6309-mame,Og-hd6309-mame,Os-hd6309-mame,Os-lto-hd6309-mame,\
-O2-hd6309-mame-fp,Og-lto-hd6309-mame-fp,Os-hd6309-mame-fp,Os-lto-hd6309-mame-fp"
+O2-hd6309-mame-fp,Og-lto-hd6309-mame-fp,Os-hd6309-mame-fp,Os-lto-hd6309-mame-fp,\
+os9-Os,os9-Os-fp"
 # 2026-05-09 expansion: previously 12 levels.  Now 28 levels:
 #   - plain non-LTO:       O0..Ofast                       (8, unchanged)
 #   - plain LTO:           O2-lto, O3-lto, Os-lto          (3, +2 new)
@@ -881,7 +893,13 @@ if [ $skip_tally -eq 0 ]; then
     # backends' incomparable cycle series apart. The builddir ($bd) is unchanged.
     lvl_suffix="$(level_bd_suffix "$lvl")"
     rec_label="$(level_record_label "$lvl")"
-    multi="${multi:+$multi,}${rec_label}${lvl_suffix}:${bd}"
+    case "$lvl" in
+      # Each OS-9 level boots a different NitrOS-9, and the level it wants
+      # is an environment variable -- one shared pool cannot hold two of
+      # them, so they are tallied one at a time below.
+      os9-*) os9_levels="${os9_levels:+$os9_levels }${lvl}:${bd}" ;;
+      *)     multi="${multi:+$multi,}${rec_label}${lvl_suffix}:${bd}" ;;
+    esac
   done
   if [ -z "$multi" ]; then
     echo "==[ $(ts) no tally levels available ]==" | tee -a "$LOG"
@@ -897,6 +915,26 @@ if [ $skip_tally -eq 0 ]; then
         $slow_arg $np_arg $tests_arg 2>&1 | tee -a "$LOG"
     echo "==[ $(ts) tally pool done ]==" | tee -a "$LOG"
   fi
+
+  # OS-9 levels, one at a time.  --include-fake-fs because the tests those
+  # cover need a real filesystem, which is exactly what OS-9 has and the
+  # semihost layer does not.  No cycles: a NitrOS-9 boot is most of what a
+  # run costs, so a cycle count here would be measuring the operating
+  # system, not the program (see the note in run-mc6809-tests).
+  for entry in ${os9_levels:-}; do
+    lvl="${entry%%:*}"; bd="${entry#*:}"
+    case "$lvl" in
+      os9-Os) n9level=1 ;;
+      *)      n9level=2 ;;
+    esac
+    tests_arg="";  [ -n "$tests_filter" ] && tests_arg="--tests $tests_filter"
+    echo "==[ $(ts) tally $lvl (NitrOS-9 Level $n9level, --jobs $test_jobs) ]==" \
+      | tee -a "$LOG"
+    MC6809_BENCH_DB="$DB" NITROS9_LEVEL="$n9level" PICOLIBC_BUILDDIR="$bd" \
+      "$PICO/scripts/run-mc6809-tests" \
+        --record --jobs "$test_jobs" --opt-level "$lvl" --include-fake-fs \
+        $tests_arg 2>&1 | tee -a "$LOG"
+  done
 fi
 
 echo "==[ $(ts) bench-parallel END ]==" | tee -a "$LOG"

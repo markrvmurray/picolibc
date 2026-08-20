@@ -323,6 +323,9 @@ nothing; without it the run would report failures that are not failures"; \
 
 echo "---"
 echo "toolchain: $PREFIX"
+# Which one was checked: a candidate that passes is only useful if the report
+# says which candidate it was.
+echo "version:   $("$CLANG" --version | head -1)"
 echo "pass=$pass fail=$fail"
 if [ "$env_error" -ne 0 ]; then
   echo "$0: some cases could not be run, so this is not a pass" >&2

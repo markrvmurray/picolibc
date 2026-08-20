@@ -71,6 +71,15 @@ emit "$SCRIPT_DIR/cross-clang-mc6809-unknown-elf-mame.txt" "$hd6309_wrapper"    
 emit "$SCRIPT_DIR/cross-clang-mc6809-unknown-elf-dp7F.txt" "$PICO/scripts/run-mc6809"     127
 
 # OS-9 / NitrOS-9: its own template (no flash/RAM/direct-page model); the
+# DECB: the driver supplies the start-up code and the linker script, so the
+# cross file names neither.  No exe_wrapper: nothing here can run one.
+DECB_TEMPLATE=$SCRIPT_DIR/cross-clang-mc6809-unknown-decb.txt.in
+if [ -f "$DECB_TEMPLATE" ]; then
+	sed -e "s|%%LLVM_BIN%%|$LLVM_BIN|g" \
+	    "$DECB_TEMPLATE" > "$SCRIPT_DIR/cross-clang-mc6809-unknown-decb.txt"
+	echo "  wrote $SCRIPT_DIR/cross-clang-mc6809-unknown-decb.txt"
+fi
+
 # linker script lives in the compiler's resource directory.
 OS9_TEMPLATE=$SCRIPT_DIR/cross-clang-mc6809-unknown-os9.txt.in
 OS9_RESDIR=$("$LLVM_BIN/clang" --target=mc6809-unknown-os9 -print-resource-dir 2>/dev/null)/lib/mc6809-unknown-os9

@@ -1725,6 +1725,9 @@ has_os_linux = false
 # libos/os9 support (OS-9 / NitrOS-9 on mc6809)
 has_os_os9 = false
 
+# libos/decb support (Disk Extended Color BASIC on mc6809)
+has_os_decb = false
+
 # any POSIX support
 has_os_posix = false
 
@@ -1827,6 +1830,16 @@ elif has_os_linux
   endif
   if linkerscript_test_variant == ''
     linkerscript_test_variant = 'linux'
+  endif
+elif has_os_decb
+  # The start-up code comes from the compiler's runtime rather than picocrt,
+  # and so does the linker script -- the driver adds both for this triple, so
+  # unlike OS-9 there is no script for the build to name.
+  if crt0_test_variant == ''
+    crt0_test_variant = 'hosted'
+  endif
+  if oslib_test_variant == ''
+    oslib_test_variant = 'decb'
   endif
 elif has_os_os9
   # The OS-9 start-up code comes from the compiler's runtime, not picocrt,

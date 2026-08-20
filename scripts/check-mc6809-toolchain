@@ -80,6 +80,35 @@ run_case() {
   fi
 }
 
+# DECB can be built but not run: there is no CoCo emulator here.  Checking
+# that it links and comes out wrapped in the LOADM/EXEC envelope is not the
+# same as checking it works, and is not claimed to be -- but a bundle whose
+# DECB half does not link is broken, and that this does catch.
+check_decb() {
+  cat > "$work/decb.c" <<'PROG'
+#include <stdio.h>
+int main(void) { printf("hello\n"); return 0; }
+PROG
+  if ! "$CLANG" --target=mc6809-unknown-decb "$work/decb.c" \
+        -o "$work/decb.bin" > "$work/decb.build" 2>&1; then
+    echo "FAIL decb (mc6809-unknown-decb): did not build"
+    sed 's/^/    /' "$work/decb.build" | head -5
+    fail=$((fail + 1)); return
+  fi
+  # $00, then two bytes of length, then the load address; and the last five
+  # bytes are $FF, $0000 and the exec address.
+  head=$(od -An -N1 -tx1 "$work/decb.bin" | tr -d ' \n')
+  tail=$(od -An -j $(( $(wc -c < "$work/decb.bin") - 5 )) -N1 -tx1 \
+            "$work/decb.bin" | tr -d ' \n')
+  if [ "$head" = "00" ] && [ "$tail" = "ff" ]; then
+    echo "ok   decb (mc6809-unknown-decb): links, LOADM envelope (not run)"
+    pass=$((pass + 1))
+  else
+    echo "FAIL decb (mc6809-unknown-decb): envelope is [$head ... $tail]"
+    fail=$((fail + 1))
+  fi
+}
+
 for triple in mc6809-unknown-unknown mc6809-unknown-os9; do
   run_case hello "$triple" "hello, world" <<'EOF'
 #include <stdio.h>
@@ -110,6 +139,8 @@ int main(void) {
 }
 EOF
 done
+
+check_decb
 
 echo "---"
 echo "toolchain: $PREFIX"

@@ -1332,6 +1332,11 @@ def main():
                          "that hung, or took the machine down -- is re-run "
                          "one per boot."
                          % (OS9_BATCH_ONE_JOB, OS9_BATCH_MANY_JOBS))
+    ap.add_argument("--list-skip", action="store_true",
+                    help="print the tests this harness declines to run on a "
+                         "bare-metal target, as CATEGORY<TAB>NAME, and exit. "
+                         "It is here so another checker does not have to keep "
+                         "its own copy of these lists.")
     ap.add_argument("--refresh-only", action="store_true",
                     help="Bring the level up to date against the current "
                          "compiler and stop: wipe objects the backend has "
@@ -1369,6 +1374,13 @@ def main():
                          "the ledger when --record is set. Overrides any "
                          "--opt-level / PICOLIBC_BUILDDIR settings.")
     args = ap.parse_args()
+
+    if args.list_skip:
+        for name in sorted(FAKE_FS_TESTS):
+            print(f"os-dependent\t{name}")
+        for name in sorted(SLOW_TESTS):
+            print(f"slow\t{name}")
+        return 0
 
     if args.record:
         os.environ["USIM_CYCLES"] = "1"

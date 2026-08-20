@@ -1,7 +1,8 @@
 #!/bin/sh
 # check-mc6809-toolchain — does an installed MC6809 toolchain work?
 #
-# Usage: check-mc6809-toolchain [PREFIX]        (or set MC6809_TOOLCHAIN)
+# Usage: check-mc6809-toolchain [--corpus [--corpus-dir DIR]] [PREFIX]
+#                                               (or set MC6809_TOOLCHAIN)
 #
 # Compiles a handful of ordinary C programs with nothing but `--target`, the
 # way somebody who has unpacked a toolchain would, and runs each one: bare
@@ -10,19 +11,36 @@
 # driver cannot find its own sysroot, this fails.
 #
 # This is the acceptance test for a bundle.  It is deliberately not the
-# picolibc test suite: that suite links the libc.a it has just built, so it
-# exercises the compiler but never the *installed* library.
+# picolibc test suite as the suite is normally run: that run links the libc.a
+# it has just built, so it exercises the compiler but never the *installed*
+# library.  `--corpus` closes that gap the other way round -- it takes the
+# suite's programs as source and compiles them against the bundle, one plain
+# clang command each, no meson and no build tree.  That is the difference
+# between "the compiler in the tarball works" and "the tarball works".
 #
 #   NITROS9_LEVEL   which NitrOS-9 the OS-9 cases boot (default 2)
 #   USIM09BATCH     the bare-metal simulator (default: usim09batch on PATH)
 set -u
+
+CORPUS=
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+while [ $# -gt 0 ]; do
+  case "$1" in
+    # No optional argument here on purpose: `--corpus DIR PREFIX` and
+    # `--corpus PREFIX` cannot both be read correctly, and the wrong reading
+    # silently checks the wrong thing.
+    --corpus)     CORPUS=$SCRIPT_DIR/../test; shift ;;
+    --corpus-dir) CORPUS=$2; shift 2 ;;
+    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+    *) break ;;
+  esac
+done
 
 PREFIX=${1:-${MC6809_TOOLCHAIN:-}}
 [ -n "$PREFIX" ] || { echo "usage: $0 PREFIX  (or set MC6809_TOOLCHAIN)" >&2; exit 2; }
 CLANG=$PREFIX/bin/clang
 [ -x "$CLANG" ] || { echo "$0: no clang at $CLANG" >&2; exit 2; }
 
-SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 USIM09BATCH=${USIM09BATCH:-usim09batch}
 # `timeout` if the system has one; without it a wedged program hangs the run,
 # which is worth knowing about but not worth refusing to run over.
@@ -32,10 +50,26 @@ else
   TIMEOUT=
 fi
 
+# What this needs besides the bundle.  A missing simulator is not a broken
+# bundle, and must not be reported as one: without it nothing here can be
+# checked at all, so say which piece is absent and stop.  The same rule as
+# the bench's OS-9 gate -- a check that did not run must never read as green.
+missing=
+command -v "$USIM09BATCH" >/dev/null 2>&1 \
+  || missing="$missing\n  $USIM09BATCH (USim's batch simulator; ~/GitHub/usim,\
+ or set USIM09BATCH)"
+command -v "${NITROS9_USIM09PT:-usim09pt}" >/dev/null 2>&1 \
+  || missing="$missing\n  usim09pt (the Pico-Thing simulator, for the OS-9 cases)"
+if [ -n "$missing" ]; then
+  # shellcheck disable=SC2059
+  printf "$0: cannot check a toolchain without:$missing\n" >&2
+  exit 2
+fi
+
 work=$(mktemp -d "${TMPDIR:-/tmp}/mc6809-check.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
-pass=0; fail=0
+pass=0; fail=0; env_error=0
 
 # case NAME TRIPLE EXPECTED <<'EOF' ... source ... EOF
 run_case() {
@@ -57,7 +91,14 @@ run_case() {
   case "$triple" in
     *os9) got=$(NITROS9_LEVEL=${NITROS9_LEVEL:-2} \
                 $TIMEOUT "$SCRIPT_DIR/run-mc6809-os9" "$work/$name.bin" \
-                2>/dev/null </dev/null) ; rc=$? ;;
+                2>"$work/$name.err" </dev/null) ; rc=$?
+          # The runner works out the boot image itself and says so when it
+          # cannot.  That is a missing NitrOS-9, not a broken toolchain.
+          if grep -q "need NITROS9_" "$work/$name.err" 2>/dev/null; then
+            echo "----  $name ($triple): not checked -- \
+$(sed -n '1s/.*: //p' "$work/$name.err")"
+            env_error=1; return
+          fi ;;
     *)    got=$($TIMEOUT "$USIM09BATCH" "$work/$name.bin" \
                 2>/dev/null </dev/null) ; rc=$? ;;
   esac
@@ -167,7 +208,124 @@ check_names() {
 
 check_names
 
+# ------------------------------------------------------------------ corpus
+# picolibc's own test programs, compiled against the installed library with
+# one plain clang command each.  Three things are deliberately not attempted:
+#
+#   * tests that need a filesystem, because a bare-metal semihost has none.
+#     The list lives in run-mc6809-tests, which is the harness that owns it;
+#     asking it beats keeping a second copy here that drifts.
+#   * tests that are only #included by another test -- they are not programs.
+#   * anything that fails to link *purely* for want of a symbol.  The bundled
+#     libc is integer-only, has no POSIX extensions and no wide characters,
+#     so some of the suite cannot link against it; the symbol each one wanted
+#     is printed, because "not in this libc" is a property of the bundle and
+#     "not in any libc" would be a fault in it.  Any other build error -- a missing header, a
+#     linker script the driver cannot find, no libc at all -- is a real
+#     failure and is reported as one, because that is what a broken bundle
+#     looks like.
+corpus_skips() {
+  python3 "$SCRIPT_DIR/run-mc6809-tests" --list-skip 2>/dev/null | cut -f2
+}
+
+# A handful of the suite's programs are not plain programs: they want a
+# particular start-up, or a sanitizer, or they are meant to fail.  meson knows
+# this from test/meson.build; here it is four lines, each saying why.  If one
+# goes stale the corpus reports a failure, which is the right way round.
+corpus_flags() {
+  case "$1" in
+    # A host program: it uses pthreads and is built for the build machine.
+    native-locks)      echo SKIP ;;
+    # Checks that the minimal start-up does *not* run constructors, so it has
+    # to be linked against that start-up.
+    constructor-skip)  echo "-mcrt0=minimal" ;;
+    # Wants -fsanitize=undefined and a runtime to trap into; we have neither.
+    test-ubsan)        echo SKIP ;;
+    # Two sources, as meson builds it.
+    test-ilp32)        echo "$CORPUS/test-ilp32-sub.c" ;;
+    *)                 echo "" ;;
+  esac
+}
+
+# Programs whose job is to exit non-zero (meson's tests_should_fail).
+corpus_inverted() {
+  case "$1" in test-except|test-hosted-exit-fail) return 0 ;; esac
+  return 1
+}
+
+run_corpus() {
+  [ -d "$CORPUS" ] || { echo "FAIL corpus: no directory $CORPUS"; \
+                        fail=$((fail + 1)); return; }
+  skips=$(corpus_skips)
+  [ -n "$skips" ] || { echo "FAIL corpus: run-mc6809-tests --list-skip said \
+nothing; without it the run would report failures that are not failures"; \
+                       fail=$((fail + 1)); return; }
+  # Sources that other sources include are not programs of their own.
+  included=$(cat "$CORPUS"/*.c 2>/dev/null \
+             | sed -n 's/^#include "\(.*\.c\)"/\1/p' | sort -u)
+  cok=0; cskip=0; cunsup=0; cfail=0; unsup_names=
+  for src in "$CORPUS"/*.c; do
+    [ -f "$src" ] || continue
+    base=$(basename "$src"); name=${base%.c}
+    echo "$included" | grep -qx "$base" && continue
+    echo "$skips" | grep -qx "$name" && continue
+    # Nor is a source without a main(): it is half of a test that meson links
+    # with its other half.  Without this they fail to link and the run blames
+    # the bundle for it.  A file that includes another source is a program
+    # even so -- that is where its main() comes from.
+    grep -qE '^(int[[:space:]]+)?main[[:space:]]*\(|^#include ".*\.c"' \
+         "$src" || continue
+    extra=$(corpus_flags "$name")
+    [ "$extra" = SKIP ] && continue
+    crt0=-mcrt0=semihost
+    case "$extra" in *-mcrt0=*) crt0= ;; esac
+    # shellcheck disable=SC2086
+    if ! "$CLANG" --target=mc6809-unknown-unknown $crt0 $extra -Os \
+          -I"$CORPUS" "$src" -o "$work/c.bin" > "$work/c.build" 2>&1; then
+      if grep -q "undefined symbol" "$work/c.build" \
+         && ! grep -qi "no such file\|cannot find\|not found\|unable to" \
+                 "$work/c.build"; then
+        why=$(sed -n 's/.*undefined symbol: \([A-Za-z_0-9]*\).*/\1/p' \
+                 "$work/c.build" | head -1)
+        cunsup=$((cunsup + 1)); unsup_names="$unsup_names $name($why)"
+        continue
+      fi
+      echo "FAIL corpus/$name: did not build"
+      sed 's/^/    /' "$work/c.build" | head -3
+      cfail=$((cfail + 1)); continue
+    fi
+    $TIMEOUT "$USIM09BATCH" "$work/c.bin" >"$work/c.out" 2>&1 </dev/null
+    rc=$?
+    # A test that is supposed to fail has passed when it did.
+    if corpus_inverted "$name"; then
+      case "$rc" in 0) rc=1 ;; 124) ;; *) rc=0 ;; esac
+    fi
+    case "$rc" in
+      0)   cok=$((cok + 1)) ;;
+      77)  cskip=$((cskip + 1)) ;;
+      124) echo "FAIL corpus/$name: did not terminate"; cfail=$((cfail + 1)) ;;
+      *)   echo "FAIL corpus/$name: rc=$rc"
+           tr -d '\000\r' < "$work/c.out" | sed '/^$/d' | tail -2 \
+             | sed 's/^/    /'
+           cfail=$((cfail + 1)) ;;
+    esac
+  done
+  echo "corpus $CORPUS: ok=$cok skip=$cskip fail=$cfail unsupported=$cunsup"
+  # Named with the symbol that was missing, not just counted.  The bundled
+  # libc is built integer-only, without the POSIX extensions and without wide
+  # characters, so some of the suite cannot link against it -- but which, and
+  # for want of what, is the half of the number worth reading.
+  [ -n "$unsup_names" ] && echo "  not in this libc:$unsup_names"
+  pass=$((pass + cok)); fail=$((fail + cfail))
+}
+
+[ -n "$CORPUS" ] && run_corpus
+
 echo "---"
 echo "toolchain: $PREFIX"
 echo "pass=$pass fail=$fail"
+if [ "$env_error" -ne 0 ]; then
+  echo "$0: some cases could not be run, so this is not a pass" >&2
+  exit 2
+fi
 [ "$fail" -eq 0 ]

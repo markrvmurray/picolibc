@@ -35,12 +35,32 @@
 #include "decb-private.h"
 #include <unistd.h>
 
-/* What is above the program is the heap.  The linker script marks where it
- * starts; where it ends is BASIC's stack coming down to meet it, and there
- * is no supported way to ask BASIC how far down that is -- so the ceiling is
- * a fixed reserve below the current stack, taken once.  A program that wants
- * more should say so with a bigger reserve at link time. */
+/* What is above the program is the heap -- if BASIC has been told to stay
+ * out of it.  A CoCo program loaded at, say, $3F00 is expected to be preceded
+ * by
+ *
+ *     CLEAR 200,&H3EFF
+ *
+ * which moves BASIC's string space and stack *below* that address and leaves
+ * everything above for the program.  Without it BASIC's variables, strings
+ * and stack sit exactly where this heap would grow, and a program that
+ * allocates walks over them: it runs, it prints, and then it wrecks BASIC on
+ * the way out.  That failure was found on a real CoCo 3 under MAME -- printf
+ * worked and the machine died on the return -- and it is why this asks BASIC
+ * where its memory ends rather than guessing from the stack pointer.
+ *
+ * Two of BASIC's own words say what is where:
+ *
+ *   [$0074]  the top of RAM              ($7FFF on the machines tested)
+ *   [$0027]  the top of BASIC's memory, which is what CLEAR moves
+ *
+ * so the heap runs from the end of the program to the top of RAM, and there
+ * is no heap at all if BASIC still claims that space.
+ */
 extern char __heap_start[];
+
+#define DECB_TOP_OF_RAM   (*(char **)0x0074)
+#define DECB_TOP_OF_BASIC (*(char **)0x0027)
 
 #ifndef DECB_STACK_RESERVE
 #define DECB_STACK_RESERVE 512
@@ -55,12 +75,17 @@ sbrk(ptrdiff_t incr)
     char *prev;
 
     if (heap_cur == NULL) {
-        char *sp;
-        __asm__ __volatile__("sts %0" : "=m"(sp));
         heap_cur = __heap_start;
-        heap_end = sp - DECB_STACK_RESERVE;
-        if (heap_end < heap_cur)
+        if (DECB_TOP_OF_BASIC >= heap_cur) {
+            /* BASIC still owns this memory: no CLEAR, or not enough of one.
+             * Refusing is the kind failure -- allocating here would corrupt
+             * the interpreter the program has to return to. */
             heap_end = heap_cur;
+        } else {
+            heap_end = DECB_TOP_OF_RAM - DECB_STACK_RESERVE;
+            if (heap_end < heap_cur)
+                heap_end = heap_cur;
+        }
     }
     if (incr < 0 || (size_t)(heap_end - heap_cur) < (size_t)incr) {
         errno = ENOMEM;

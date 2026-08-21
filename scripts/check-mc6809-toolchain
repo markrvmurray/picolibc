@@ -39,7 +39,9 @@ done
 PREFIX=${1:-${MC6809_TOOLCHAIN:-}}
 [ -n "$PREFIX" ] || { echo "usage: $0 PREFIX  (or set MC6809_TOOLCHAIN)" >&2; exit 2; }
 CLANG=$PREFIX/bin/clang
+CLANGXX=$PREFIX/bin/clang++
 [ -x "$CLANG" ] || { echo "$0: no clang at $CLANG" >&2; exit 2; }
+[ -x "$CLANGXX" ] || { echo "$0: no clang++ at $CLANGXX" >&2; exit 2; }
 
 USIM09BATCH=${USIM09BATCH:-usim09batch}
 # `timeout` if the system has one; without it a wedged program hangs the run,
@@ -192,6 +194,77 @@ check_variants
 # that it links and comes out wrapped in the LOADM/EXEC envelope is not the
 # same as checking it works, and is not claimed to be -- but a bundle whose
 # DECB half does not link is broken, and that this does catch.
+# C++.  Not a standard library -- there is none, and libc++ would not fit --
+# but the language over the C library: the headers under their C++ names, and
+# the handful of symbols the compiler emits calls to.  One program uses all
+# of them, because each is easy to leave out and hard to notice missing.
+check_cxx() {
+  for triple in mc6809-unknown-unknown mc6809-unknown-os9; do
+    crt0=; case "$triple" in *os9) ;; *) crt0=-mcrt0=semihost ;; esac
+    cat > "$work/cxx.cpp" <<'PROG'
+#include <cstdio>
+#include <cstring>
+struct Counter {
+  static int live;
+  Counter() { ++live; }
+  virtual ~Counter() { --live; }
+  virtual const char *name() const { return "Counter"; }
+};
+int Counter::live = 0;
+struct Named : Counter { const char *name() const override { return "Named"; } };
+static Counter global;                       // a global with a constructor
+template <class T> static T twice(T v) { return v + v; }
+int main() {
+  Counter *c = new Named;                    // operator new
+  const char *n = c->name();                 // virtual dispatch
+  delete c;                                  // virtual dtor -> sized delete
+  static const char *s = "statics";          // guard functions
+  char buf[16];
+  std::strcpy(buf, s);
+  std::printf("%s %s %d %d\n", n, buf, twice(21), Counter::live);
+  return 0;
+}
+PROG
+    # shellcheck disable=SC2086
+    if ! "$CLANGXX" --target="$triple" $crt0 -Os "$work/cxx.cpp" \
+          -o "$work/cxx.bin" > "$work/cxx.build" 2>&1; then
+      echo "FAIL c++ ($triple): did not build"
+      sed 's/^/    /' "$work/cxx.build" | head -4
+      fail=$((fail + 1)); continue
+    fi
+    case "$triple" in
+      *os9) got=$(NITROS9_LEVEL=${NITROS9_LEVEL:-2} $TIMEOUT \
+                  "$SCRIPT_DIR/run-mc6809-os9" "$work/cxx.bin" \
+                  2>/dev/null </dev/null) ;;
+      *)    got=$($TIMEOUT "$USIM09BATCH" "$work/cxx.bin" \
+                  2>/dev/null </dev/null) ;;
+    esac
+    got=$(printf '%s' "$got" | tr -d '\000\r' | sed '/^$/d')
+    if [ "$got" = "Named statics 42 1" ]; then
+      echo "ok   c++ ($triple)"
+      pass=$((pass + 1))
+    else
+      echo "FAIL c++ ($triple): got [$got] want [Named statics 42 1]"
+      fail=$((fail + 1))
+    fi
+  done
+
+  # The two the toolchain does not have, refused where they are written
+  # rather than at link time by a mangled name.
+  printf 'int main() { try { throw 1; } catch (int) { } return 0; }\n' \
+    > "$work/eh.cpp"
+  if "$CLANGXX" --target=mc6809-unknown-unknown -c "$work/eh.cpp" \
+        -o "$work/eh.o" > "$work/eh.build" 2>&1; then
+    echo "FAIL c++ exceptions: accepted, and there is no unwinder"
+    fail=$((fail + 1))
+  else
+    echo "ok   c++ exceptions: refused at compile time"
+    pass=$((pass + 1))
+  fi
+}
+
+check_cxx
+
 check_decb() {
   cat > "$work/decb.c" <<'PROG'
 #include <stdio.h>
@@ -255,7 +328,8 @@ check_decb
 # checks both that they exist and that the sysroot is findable under the
 # triple each name computes, which is not the same triple in every case.
 check_names() {
-  for name in mc6809-clang mc6809-os9-clang mc6809-decb-clang; do
+  for name in mc6809-clang mc6809-os9-clang mc6809-decb-clang \
+             mc6809-clang++ mc6809-os9-clang++ mc6809-decb-clang++; do
     if [ ! -x "$PREFIX/bin/$name" ]; then
       echo "FAIL $name: not in the toolchain"
       fail=$((fail + 1)); continue

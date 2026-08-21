@@ -33,6 +33,8 @@
 #
 # Environment:
 #   NITROS9_USIM09PT     the emulator (default: usim09pt on the path)
+#   NITROS9_CPU          6809 (default) or 6309.  Picks the `l<level>_6309`
+#                        recipe and runs the emulator as an HD6309.
 #   NITROS9_LEVEL        1 or 2 (default 2).  The modules themselves are the
 #                        same at either level -- U is the data base wherever
 #                        the kernel puts it -- so a level is a boot image,
@@ -167,7 +169,7 @@ run_batch() {
   done < "$batch_list"
   input="${input}/dd/cmds/echo CIDONE\\r"
 
-  (cd "$workdir" && exec "$USIM" --timeout="$NITROS9_TIMEOUT" ${NITROS9_USIM_EXTRA:-} \
+  (cd "$workdir" && exec "$USIM" --timeout="$NITROS9_TIMEOUT" $_cpu_flag ${NITROS9_USIM_EXTRA:-} \
       --input-first="$NITROS9_INPUT_FIRST" --input-step=500000 \
       --input="$input" -f "$workdir/picothing.fram" \
       -d "$boot" -D "$disk" "$NITROS9_FIRMWARE" >"$log" 2>"$workdir/usim.err") &
@@ -256,9 +258,29 @@ fi
 # A level is a boot image, not a build: the same module runs at either.
 : "${NITROS9_LEVEL:=2}"
 : "${NITROS9_RECIPES:=$HOME/Documents/NitrOS-9/nitros9/recipes/picothing}"
-_lvldir="$NITROS9_RECIPES/l$NITROS9_LEVEL"
+
+# The processor is a boot image too.  A 6309 program needs a NitrOS-9 built
+# for the 6309 -- not because of the module's language byte, which stays $11
+# on both, but because the system's own code is assembled with the 6309
+# instructions and the emulator has to be told to provide them.  The recipes
+# name that build `l<level>_6309`.
+: "${NITROS9_CPU:=6809}"
+case "$NITROS9_CPU" in
+  6809)        _cpudir= ;;
+  6309|hd6309) NITROS9_CPU=6309; _cpudir=_6309 ;;
+  *) echo "$(basename "$0"): NITROS9_CPU is 6809 or 6309, not $NITROS9_CPU" >&2
+     exit 99 ;;
+esac
+[ "$NITROS9_CPU" = 6309 ] && _cpu_flag=--hd6309 || _cpu_flag=
+
+_lvldir="$NITROS9_RECIPES/l${NITROS9_LEVEL}${_cpudir}"
 if [ -z "${NITROS9_BOOT_DSK:-}" ] && [ -d "$_lvldir" ]; then
-  NITROS9_BOOT_DSK="$_lvldir/NOS9_6809_L${NITROS9_LEVEL}_DEV_picothing_x0.dsk"
+  # The 6809 recipes carry an `_x0` image built by an older top-level make;
+  # a freshly built recipe has only the plain one.  Either boots.
+  for _img in "$_lvldir/NOS9_${NITROS9_CPU}_L${NITROS9_LEVEL}_DEV_picothing_x0.dsk" \
+              "$_lvldir/NOS9_${NITROS9_CPU}_L${NITROS9_LEVEL}_DEV_picothing.dsk"; do
+    [ -f "$_img" ] && { NITROS9_BOOT_DSK=$_img; break; }
+  done
 fi
 if [ -z "${NITROS9_FIRMWARE:-}" ] && [ -d "$_lvldir" ]; then
   NITROS9_FIRMWARE="$_lvldir/rel_picothing.srec"
@@ -333,7 +355,7 @@ input="${input}echo CIDONE\\r"
 cycles_flag=""
 [ "${USIM_CYCLES:-0}" = 1 ] && cycles_flag="--cycles"
 
-(cd "$workdir" && exec "$USIM" --timeout="$NITROS9_TIMEOUT" $cycles_flag ${NITROS9_USIM_EXTRA:-} \
+(cd "$workdir" && exec "$USIM" --timeout="$NITROS9_TIMEOUT" $cycles_flag $_cpu_flag ${NITROS9_USIM_EXTRA:-} \
     --input-first="$NITROS9_INPUT_FIRST" --input-step=500000 \
     --input="$input" -f "$workdir/picothing.fram" \
     -d "$boot" -D "$disk" "$NITROS9_FIRMWARE" >"$log" 2>"$workdir/usim.err") &

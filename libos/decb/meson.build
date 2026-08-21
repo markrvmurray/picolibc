@@ -44,6 +44,7 @@ has_os_decb = true
 has_os_library = true
 
 srcs_decb = [
+  'rom.S',
   'close.c',
   'exit.c',
   'getpid.c',

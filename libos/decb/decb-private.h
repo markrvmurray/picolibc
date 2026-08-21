@@ -40,34 +40,13 @@
 #define DECB_POLCAT 0xA000
 #define DECB_CHROUT 0xA002
 
-/* Write one character through the ROM.  The character is fetched while the
- * direct page is still ours, since the operand may itself be direct-page
- * addressed; only then is DP zeroed for the ROM. */
-static inline void __decb_putc(char __c) {
-  __asm__ __volatile__("lda %0\n\t"
-                       "pshs u,dp\n\t"
-                       "clrb\n\ttfr b,dp\n\t"
-                       "jsr [%c1]\n\t"
-                       "puls dp,u"
-                       :
-                       : "m"(__c), "i"(DECB_CHROUT)
-                       : "a", "b", "x", "y", "cc", "memory");
-}
-
-/* Poll the keyboard: the key, or 0 if none is waiting.  DP is put back
- * before the result is stored, for the same reason. */
-static inline char __decb_getc(void) {
-  char __c;
-  __asm__ __volatile__("pshs u,dp\n\t"
-                       "clrb\n\ttfr b,dp\n\t"
-                       "jsr [%c1]\n\t"
-                       "puls dp,u\n\t"
-                       "sta %0"
-                       : "=m"(__c)
-                       : "i"(DECB_POLCAT)
-                       : "a", "b", "x", "y", "cc", "memory");
-  return __c;
-}
+/* The two ROM calls live in rom.S, out of line and deliberately so: this
+ * target does not honour inline-asm register clobbers, so an asm that uses D
+ * -- as zeroing the direct page must -- corrupts whatever the allocator had
+ * there.  A write() loop kept its counter in D and printed for ever.  As
+ * ordinary functions the call convention does the work instead. */
+void __decb_putc(char __c);
+char __decb_getc(void);
 
 /* The stack BASIC handed the program, saved by the start-up code so that
  * _exit() can go back to it from wherever it is called. */

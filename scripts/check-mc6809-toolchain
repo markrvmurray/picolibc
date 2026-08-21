@@ -71,16 +71,21 @@ trap 'rm -rf "$work"' EXIT
 
 pass=0; fail=0; env_error=0
 
-# case NAME TRIPLE EXPECTED <<'EOF' ... source ... EOF
+# case NAME TRIPLE EXPECTED [CFLAGS] <<'EOF' ... source ... EOF
 run_case() {
-  name=$1; triple=$2; expect=$3
+  name=$1; triple=$2; expect=$3; extra=${4:-}
+  # Code built for the 6309 needs a 6309 to run on.  Both simulators take the
+  # same switch for it.
+  sim_extra=
+  case "$extra" in *hd6309*) sim_extra=--hd6309 ;; esac
   cat > "$work/$name.c"
   # A simulator needs a start-up that calls exit(); picolibc's plain crt0 does
   # not, because a program on hardware does not return from main.
   crt0=
   case "$triple" in *os9) ;; *) crt0=-mcrt0=semihost ;; esac
-  if ! "$CLANG" --target="$triple" $crt0 "$work/$name.c" -o "$work/$name.bin" \
-        > "$work/$name.build" 2>&1; then
+  # shellcheck disable=SC2086
+  if ! "$CLANG" --target="$triple" $crt0 $extra "$work/$name.c" \
+        -o "$work/$name.bin" > "$work/$name.build" 2>&1; then
     echo "FAIL $name ($triple): did not build"
     sed 's/^/    /' "$work/$name.build" | head -5
     fail=$((fail + 1)); return
@@ -90,6 +95,7 @@ run_case() {
   # the check rather than hang it.
   case "$triple" in
     *os9) got=$(NITROS9_LEVEL=${NITROS9_LEVEL:-2} \
+                NITROS9_USIM_EXTRA="${NITROS9_USIM_EXTRA:-} $sim_extra" \
                 $TIMEOUT "$SCRIPT_DIR/run-mc6809-os9" "$work/$name.bin" \
                 2>"$work/$name.err" </dev/null) ; rc=$?
           # The runner works out the boot image itself and says so when it
@@ -99,7 +105,8 @@ run_case() {
 $(sed -n '1s/.*: //p' "$work/$name.err")"
             env_error=1; return
           fi ;;
-    *)    got=$($TIMEOUT "$USIM09BATCH" "$work/$name.bin" \
+    *)    # shellcheck disable=SC2086
+          got=$($TIMEOUT "$USIM09BATCH" $sim_extra "$work/$name.bin" \
                 2>/dev/null </dev/null) ; rc=$? ;;
   esac
   # 124 is what `timeout` reports when it had to kill the thing.  A program
@@ -125,6 +132,65 @@ $(sed -n '1s/.*: //p' "$work/$name.err")"
 # that it links and comes out wrapped in the LOADM/EXEC envelope is not the
 # same as checking it works, and is not claimed to be -- but a bundle whose
 # DECB half does not link is broken, and that this does catch.
+# The 6309 libraries.  Two things have to be true and only one of them shows
+# up in a program's output: it must have been linked against the library built
+# for a 6309, and it must run on one.  A 6809 library links and runs perfectly
+# well on a 6309, so a bundle whose multilib rules never matched would still
+# print the right answer while quietly shipping the wrong library -- hence the
+# link line is inspected for the variant directory as well.
+check_hd6309() {
+  for triple in mc6809-unknown-unknown mc6809-unknown-os9; do
+    printf 'int main(void) { return 0; }\n' > "$work/multi.c"
+    if "$CLANG" --target="$triple" -mcpu=hd6309 -### "$work/multi.c" \
+         -o "$work/multi.bin" 2>&1 | grep -q "hd6309/lib"; then
+      echo "ok   hd6309 library ($triple)"
+      pass=$((pass + 1))
+    else
+      echo "FAIL hd6309 library ($triple): the link does not use hd6309/lib"
+      fail=$((fail + 1))
+    fi
+  done
+
+  run_case hd6309 mc6809-unknown-unknown "hello from 6309" -mcpu=hd6309 <<'EOF'
+#include <stdio.h>
+int main(void) { printf("hello from %d\n", 6309); return 0; }
+EOF
+
+  check_os9_hd6309
+}
+
+# An OS-9 program built for the 6309 cannot be run by anything here, and the
+# reason is worth knowing rather than working around: the linker marks the
+# module `6309 Obj` in its header, and NitrOS-9 matches a module by type *and*
+# language (kernel `ffmodul.asm`), so a 6809 system does not find it at all --
+# it reports error 234, non-existent module. That is the kernel being right.
+# Running one needs a NitrOS-9 built for the 6309, and the images here are the
+# 6809 build.  So check what can be checked: it links, and it says what it is.
+check_os9_hd6309() {
+  printf '#include <stdio.h>\nint main(void) { printf("6309\\n"); return 0; }\n' \
+    > "$work/o9.c"
+  if ! "$CLANG" --target=mc6809-unknown-os9 -mcpu=hd6309 "$work/o9.c" \
+        -o "$work/o9.bin" > "$work/o9.build" 2>&1; then
+    echo "FAIL hd6309 (mc6809-unknown-os9): did not build"
+    sed 's/^/    /' "$work/o9.build" | head -4
+    fail=$((fail + 1)); return
+  fi
+  # Byte 6 of an OS-9 module header is type and language: $11 is a 6809
+  # program, $17 a 6309 one.
+  lang=$(od -An -j6 -N1 -tx1 "$work/o9.bin" | tr -d ' \n')
+  if [ "$lang" = 17 ]; then
+    echo "ok   hd6309 (mc6809-unknown-os9): links, module header says 6309 \
+(not run: needs a 6309 NitrOS-9)"
+    pass=$((pass + 1))
+  else
+    echo "FAIL hd6309 (mc6809-unknown-os9): module header language is \
+\$$lang, wanted \$17 -- a 6809 system would run 6309 code"
+    fail=$((fail + 1))
+  fi
+}
+
+check_hd6309
+
 check_decb() {
   cat > "$work/decb.c" <<'PROG'
 #include <stdio.h>

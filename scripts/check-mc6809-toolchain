@@ -19,6 +19,9 @@
 # between "the compiler in the tarball works" and "the tarball works".
 #
 #   NITROS9_LEVEL   which NitrOS-9 the OS-9 cases boot (default 2)
+#   MC6809_MAMECOCO3  a CoCo-capable MAME (mamecoco3-headless) for the DECB
+#                     cases; without it they report "not checked" rather than
+#                     passing or failing, since a CoCo needs Tandy's ROMs
 #   USIM09BATCH     the bare-metal simulator (default: usim09batch on PATH)
 set -u
 
@@ -322,6 +325,109 @@ EOF
 done
 
 check_decb
+
+# DECB, actually run.  This needs a CoCo, which is a separate MAME build with
+# Tandy's ROMs, and ToolShed's `decb` to write a Disk BASIC floppy -- neither
+# ships with the toolchain and neither can.  When they are absent the cases
+# say so and are neither passed nor failed; when they are present both
+# processors are run, because everything about this target was found by
+# running it.
+#
+# What it costs: about a minute and a half of emulated time per case, nearly
+# all of it BASIC's keyboard accepting a few characters a second.
+MAMECOCO3=${MC6809_MAMECOCO3:-$(command -v mamecoco3-headless 2>/dev/null)}
+
+decb_ready() {
+  [ -n "$MAMECOCO3" ] && [ -x "$MAMECOCO3" ] || return 1
+  command -v decb >/dev/null 2>&1 || return 1
+  # The ROMs are Tandy's; MAME refuses to start without them, and it looks
+  # for them relative to the working directory rather than to itself -- so
+  # this asks from where they live.  (`coco3h` wants its own name: MAME will
+  # not fall back to coco3.zip even though the ROM is the same.)
+  ( cd "$(dirname "$MAMECOCO3")" && ./mamecoco3 -verifyroms "$1" ) >/dev/null 2>&1
+}
+
+# decb_run MACHINE CFLAGS -> prints the CoCo's text screen
+decb_run() {
+  _machine=$1; _flags=$2
+  # The VDG has no lowercase -- BASIC stores it as inverse-video uppercase --
+  # so the marker is uppercase and the comparison never sees case.
+  cat > "$work/decb.c" <<'PROG'
+#include <stdio.h>
+int main(void) { long a = 100000L; printf("DECB RAN %ld\n", a / 7); return 0; }
+PROG
+  # shellcheck disable=SC2086
+  "$CLANG" --target=mc6809-unknown-decb $_flags -Os "$work/decb.c" \
+      -o "$work/decb.bin" > "$work/decb.build" 2>&1 || return 2
+  rm -f "$work/decb.dsk"
+  decb dskini "$work/decb.dsk" >/dev/null 2>&1 || return 2
+  decb copy -2 -b "$work/decb.bin" "$work/decb.dsk,HELLO.BIN" >/dev/null 2>&1 || return 2
+
+  # One short line at a time: MAME's keyboard queue is fixed-size and a CoCo
+  # types slowly, so a single long autoboot command loses everything after
+  # the first Enter.  CLEAR moves BASIC below the program, without which the
+  # heap has nowhere to go and printf cannot get a buffer.
+  cat > "$work/decb.lua" <<'LUA'
+local nat = manager.machine.natkeyboard
+emu.wait(6);  nat:post('CLEAR 200,&H3EFF\n')
+emu.wait(30); nat:post('LOADM"HELLO"\n')
+emu.wait(25); nat:post('EXEC\n')
+emu.wait(20)
+local mem = manager.machine.devices[":maincpu"].spaces["program"]
+for row = 0, 15 do
+  local line = ""
+  for col = 0, 31 do
+    local b = mem:read_u8(0x0400 + row * 32 + col)
+    local c
+    if b >= 0x60 and b <= 0x7F then c = b - 0x40
+    elseif b >= 0x40 and b <= 0x5F then c = b
+    elseif b >= 0x20 and b <= 0x3F then c = b + 0x20
+    else c = b + 0x40 end
+    line = line .. string.char(c)
+  end
+  print("SCREEN|" .. line)
+end
+LUA
+  # From the emulator's own directory, for the ROMs; every path handed to it
+  # is absolute.
+  ( cd "$(dirname "$MAMECOCO3")" &&
+    "$MAMECOCO3" --machine="$_machine" -1 "$work/decb.dsk" --no-snap 95 \
+        -- -autoboot_script "$work/decb.lua" ) 2>/dev/null |
+    sed -n 's/^SCREEN|//p'
+}
+
+check_decb_run() {
+  for pair in "coco3:" "coco3h:-mcpu=hd6309"; do
+    machine=${pair%%:*}; flags=${pair#*:}
+    label="decb run ($machine${flags:+, $flags})"
+    if ! decb_ready "$machine"; then
+      echo "---- $label: not checked -- needs mamecoco3-headless, its Tandy \
+ROMs and ToolShed's decb"
+      continue
+    fi
+    screen=$(decb_run "$machine" "$flags")
+    case "$screen" in
+      *"DECB RAN 14285"*)
+        # And BASIC has to survive it: OK below the output, not a cleared
+        # screen, which is what a program that wrecks the interpreter leaves.
+        if printf '%s' "$screen" | grep -q "OK"; then
+          echo "ok   $label"
+          pass=$((pass + 1))
+        else
+          echo "FAIL $label: ran, but BASIC did not come back"
+          fail=$((fail + 1))
+        fi ;;
+      "") echo "FAIL $label: no screen (did MAME start?)"
+          sed 's/^/       /' "$work/decb.err" 2>/dev/null | tail -3
+          fail=$((fail + 1)) ;;
+      *)  echo "FAIL $label: wanted DECB RAN 14285, screen was:"
+          printf '%s\n' "$screen" | grep -v "^ *$" | sed 's/^/       /' | head -6
+          fail=$((fail + 1)) ;;
+    esac
+  done
+}
+
+check_decb_run
 
 # The friendly names, which are what somebody who unpacked this would type.
 # They are symlinks, and clang reads the target off its own name -- so this

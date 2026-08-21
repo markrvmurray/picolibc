@@ -35,7 +35,8 @@
 #include "decb-private.h"
 #include <stdlib.h>
 
-void *__decb_entry_sp;
+/* Defined by the start-up code, which saves S before anything can push. */
+extern void *__decb_entry_sp;
 
 /* Back to BASIC.  EXEC reached the program with a JSR, so the return address
  * is still on the stack it handed over; the start-up code saved that stack

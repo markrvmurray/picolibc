@@ -167,7 +167,13 @@ variant() {
     fail=$((fail + 1))
   fi
 
-  printf '%s\n' "$vsrc" | run_case "$vdir" "$vtriple" "$vexpect" "$vflags"
+  # Not `printf ... | run_case`: the right-hand side of a pipe is a subshell,
+  # and every count it makes -- pass, fail, and the flag that says a case
+  # could not be attempted -- is discarded when it returns.  Twelve cases
+  # reported into that void, so a variant that failed still left fail=0.
+  # A file keeps run_case in this shell.
+  printf '%s\n' "$vsrc" > "$work/variant.c"
+  run_case "$vdir" "$vtriple" "$vexpect" "$vflags" < "$work/variant.c"
 }
 
 check_variants() {

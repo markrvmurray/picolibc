@@ -393,7 +393,9 @@ LUA
   ( cd "$(dirname "$MAMECOCO3")" &&
     "$MAMECOCO3" --machine="$_machine" -1 "$work/decb.dsk" --no-snap 95 \
         -- -autoboot_script "$work/decb.lua" ) 2>/dev/null |
-    sed -n 's/^SCREEN|//p'
+    # The emulator's own output is not text; C locale so sed treats it as
+    # bytes rather than refusing the stream as an illegal UTF-8 sequence.
+    LC_ALL=C sed -n 's/^SCREEN|//p'
 }
 
 check_decb_run() {

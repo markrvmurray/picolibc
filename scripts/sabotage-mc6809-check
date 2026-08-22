@@ -1,0 +1,128 @@
+#!/bin/sh
+# sabotage-mc6809-check — does the acceptance check actually catch anything?
+#
+# Usage: sabotage-mc6809-check PREFIX [-k]
+#
+# check-mc6809-toolchain decides whether a bundle gets packaged, and until
+# 2026-08-22 twelve of its cases could not report a failure at all: run_case
+# was called on the right of a pipe, so the subshell threw away every count
+# it made and a failing variant still left fail=0.  Five dress rehearsals
+# read as passes.  Nothing would have said otherwise.
+#
+# So: break a copy of a bundle, one way at a time, and require the check to
+# notice.  A check that has never been seen to fail is not evidence.
+#
+# Each case names the FAIL line it expects.  A non-zero exit is NOT enough on
+# its own -- the check also exits 2 when cases could not be run at all, which
+# has nothing to do with the sabotage -- so a sabotage counts as detected
+# only when the tally shows fail>=1 AND the expected line appears.
+#
+#   -k   keep the working copy for inspection
+set -eu
+
+PREFIX=${1:?usage: sabotage-mc6809-check PREFIX [-k]}
+KEEP=${2:-}
+PREFIX=$(cd "$PREFIX" && pwd)
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+CHECK=$SCRIPT_DIR/check-mc6809-toolchain
+[ -x "$CHECK" ] || { echo "$0: no check-mc6809-toolchain beside me" >&2; exit 2; }
+
+work=$(mktemp -d "${TMPDIR:-/tmp}/mc6809-sabotage.XXXXXX")
+copy=$work/bundle
+cleanup() { [ -n "$KEEP" ] || rm -rf "$work"; }
+trap cleanup EXIT
+
+echo "== copying the bundle (it is about to be broken on purpose)"
+cp -a "$PREFIX" "$copy"
+
+TRIPLE=mc6809-unknown-unknown
+RT=$copy/lib/clang-runtimes/$TRIPLE
+RES=$(ls -d "$copy"/lib/clang/*/lib/$TRIPLE 2>/dev/null | head -1)
+
+run_check() {
+  # Without --corpus: the corpus recompiles the whole picolibc suite and adds
+  # minutes per case without testing anything the sabotages touch.
+  "$CHECK" "$copy" > "$work/out" 2>&1 || true
+  sed -n 's/^pass=\([0-9]*\) fail=\([0-9]*\).*/\2/p' "$work/out" | tail -1
+}
+
+cases=0; caught=0; missed=
+
+# sabotage NAME EXPECTED-FAIL-SUBSTRING BREAK-CMD RESTORE-CMD
+sabotage() {
+  name=$1; want=$2; break_it=$3; restore=$4
+  cases=$((cases + 1))
+  printf '%-34s ' "$name"
+  eval "$break_it"
+  failed=$(run_check)
+  eval "$restore"
+  failed=${failed:-0}
+  if [ "$failed" -ge 1 ] && grep -q "$want" "$work/out"; then
+    caught=$((caught + 1))
+    echo "caught (fail=$failed)"
+  else
+    echo "MISSED (fail=$failed, no line matching: $want)"
+    missed="$missed$name
+"
+    cp "$work/out" "$work/missed-$(echo "$name" | tr ' /' '__').log"
+  fi
+}
+
+# The control.  If an unbroken bundle does not pass, nothing below means
+# anything -- a sabotage would be "caught" by whatever was already wrong.
+echo "== control: the bundle as it is"
+before=$(run_check)
+if [ "${before:-1}" -ne 0 ]; then
+  echo "control FAILED: the bundle already reports fail=$before"
+  sed -n '/^FAIL/p' "$work/out" | sed 's/^/    /'
+  echo "$0: cannot test a checker against a bundle that is already broken" >&2
+  exit 2
+fi
+echo "   clean, fail=0 -- the sabotages below start from a passing bundle"
+echo
+
+sabotage "variant directory removed" \
+  "no libc.a there" \
+  "mv '$RT/hd6309' '$work/away'" \
+  "mv '$work/away' '$RT/hd6309'"
+
+sabotage "sysroot header removed" \
+  "FAIL" \
+  "mv '$RT/include/stdio.h' '$work/away'" \
+  "mv '$work/away' '$RT/include/stdio.h'"
+
+sabotage "compiler builtins removed" \
+  "FAIL" \
+  "mv '$RES/libclang_rt.builtins.a' '$work/away'" \
+  "mv '$work/away' '$RES/libclang_rt.builtins.a'"
+
+sabotage "libc.a removed" \
+  "FAIL" \
+  "mv '$RT/lib/libc.a' '$work/away'" \
+  "mv '$work/away' '$RT/lib/libc.a'"
+
+sabotage "start-up object removed" \
+  "FAIL" \
+  "mv '$RT/lib/crt0-semihost.o' '$work/away'" \
+  "mv '$work/away' '$RT/lib/crt0-semihost.o'"
+
+sabotage "target-named tool removed" \
+  "mc6809-os9-clang" \
+  "mv '$copy/bin/mc6809-os9-clang' '$work/away'" \
+  "mv '$work/away' '$copy/bin/mc6809-os9-clang'"
+
+sabotage "multilib rules emptied" \
+  "FAIL" \
+  "cp '$RT/multilib.yaml' '$work/away' && printf 'MultilibVersion: 1.0\nVariants: []\n' > '$RT/multilib.yaml'" \
+  "cp '$work/away' '$RT/multilib.yaml'"
+
+echo
+echo "---"
+echo "sabotages: $cases   caught: $caught   missed: $((cases - caught))"
+if [ -n "$missed" ]; then
+  echo "not caught by the check:"
+  printf '%s' "$missed" | sed 's/^/  /'
+  echo "logs in $work (re-run with -k to keep them)" >&2
+  exit 1
+fi
+echo "every sabotage was caught"

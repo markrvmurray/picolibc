@@ -164,14 +164,26 @@ variant() {
   vtriple=$1; vflags=$2; vdir=$3; vexpect=$4
   vsrc=$(cat)
 
+  # Two separate things, and a bundle can fail either one.  The link must
+  # name the variant's directory -- that is the multilib rules matching --
+  # and the directory must actually hold a library.  Checking only the link
+  # line passes a bundle whose variant was never built: the rules match on
+  # flags, not on what is on disk, so clang still emits the -L, and the
+  # program still runs because a 6809 libc runs on a 6309.  That is the
+  # exact substitution this case exists to catch.
+  vlib=$PREFIX/lib/clang-runtimes/$vtriple/$vdir/libc.a
   # shellcheck disable=SC2086
-  if "$CLANG" --target="$vtriple" $vflags -### -x c - -o "$work/v.bin" \
+  if ! "$CLANG" --target="$vtriple" $vflags -### -x c - -o "$work/v.bin" \
         < /dev/null 2>&1 | grep -q "clang-runtimes/$vtriple/$vdir\"" ; then
-    echo "ok   $vdir library ($vtriple)"
-    pass=$((pass + 1))
-  else
     echo "FAIL $vdir library ($vtriple): the link does not use $vdir/"
     fail=$((fail + 1))
+  elif [ ! -f "$vlib" ]; then
+    echo "FAIL $vdir library ($vtriple): the link uses $vdir/ but there is \
+no libc.a there"
+    fail=$((fail + 1))
+  else
+    echo "ok   $vdir library ($vtriple)"
+    pass=$((pass + 1))
   fi
 
   # Not `printf ... | run_case`: the right-hand side of a pipe is a subshell,

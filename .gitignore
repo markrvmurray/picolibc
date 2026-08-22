@@ -55,4 +55,5 @@ scripts/cross-clang-mc6809-unknown-elf.txt
 scripts/cross-clang-mc6809-unknown-elf-mame.txt
 scripts/cross-clang-mc6809-unknown-elf-dp7F.txt
 scripts/cross-clang-mc6809-unknown-os9.txt
+scripts/cross-clang-mc6809-unknown-decb.txt
 builddir-mc6809*/

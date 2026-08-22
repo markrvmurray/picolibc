@@ -66,6 +66,16 @@ if [ -n "$missing" ]; then
   exit 2
 fi
 
+# Floating point on OS-9 is a module loaded at start-up, and this toolchain
+# ships it.  A program that does no floating point neither looks for it nor
+# minds that it is there, so it costs nothing to always offer it.
+_res=$("$CLANG" -print-resource-dir 2>/dev/null || true)
+if [ -z "${MC6809_FP_MODULE:-}" ] && [ -f "$_res/lib/mc6809-unknown-os9/FPO9" ]
+then
+  MC6809_FP_MODULE=$_res/lib/mc6809-unknown-os9/FPO9
+  export MC6809_FP_MODULE
+fi
+
 work=$(mktemp -d "${TMPDIR:-/tmp}/mc6809-check.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
@@ -128,38 +138,55 @@ $(sed -n '1s/.*: //p' "$work/$name.err")"
   fi
 }
 
-# The 6309 libraries.  Two things have to be true and only one of them shows
-# up in a program's output: it must have been linked against the library built
-# for a 6309, and it must run on one.  A 6809 library links and runs perfectly
-# well on a 6309, so a bundle whose multilib rules never matched would still
-# print the right answer while quietly shipping the wrong library -- hence the
-# link line is inspected for the variant directory as well.
-check_hd6309() {
-  for triple in mc6809-unknown-unknown mc6809-unknown-os9; do
-    printf 'int main(void) { return 0; }\n' > "$work/multi.c"
-    if "$CLANG" --target="$triple" -mcpu=hd6309 -### "$work/multi.c" \
-         -o "$work/multi.bin" 2>&1 | grep -q "hd6309/lib"; then
-      echo "ok   hd6309 library ($triple)"
-      pass=$((pass + 1))
-    else
-      echo "FAIL hd6309 library ($triple): the link does not use hd6309/lib"
-      fail=$((fail + 1))
-    fi
-  done
+# The library variants.  Two things have to be true of each and only one of
+# them shows up in a program's output: the link must use the variant's own
+# directory, and the program must run.  A default library links and runs
+# perfectly well in most of these cases -- a 6809 libc runs on a 6309, and an
+# integer libc links a program that never prints a float -- so a bundle whose
+# multilib rules never matched would still print the right answer while
+# quietly shipping the wrong library.  Hence the link line is inspected for
+# the directory as well.
+#
+# variant TRIPLE "FLAGS" DIR EXPECTED <<'EOF' ... source ... EOF
+variant() {
+  vtriple=$1; vflags=$2; vdir=$3; vexpect=$4
+  vsrc=$(cat)
 
-  # Both targets run a 6309 program of their own: bare metal on the
-  # simulator's 6309, OS-9 on a NitrOS-9 built for one -- the `l<level>_6309`
-  # recipe.  Without that recipe the runner says which image it wanted and the
-  # case is reported as not checked, not as a failure.
+  # shellcheck disable=SC2086
+  if "$CLANG" --target="$vtriple" $vflags -### -x c - -o "$work/v.bin" \
+        < /dev/null 2>&1 | grep -q "clang-runtimes/$vtriple/$vdir\"" ; then
+    echo "ok   $vdir library ($vtriple)"
+    pass=$((pass + 1))
+  else
+    echo "FAIL $vdir library ($vtriple): the link does not use $vdir/"
+    fail=$((fail + 1))
+  fi
+
+  printf '%s\n' "$vsrc" | run_case "$vdir" "$vtriple" "$vexpect" "$vflags"
+}
+
+check_variants() {
   for triple in mc6809-unknown-unknown mc6809-unknown-os9; do
-    run_case hd6309 "$triple" "hello from 6309" -mcpu=hd6309 <<'EOF'
+    variant "$triple" "-mcpu=hd6309" hd6309 "hello from 6309" <<'EOF'
 #include <stdio.h>
 int main(void) { printf("hello from %d\n", 6309); return 0; }
 EOF
+
+    # The floating-point libraries: `%f` prints a number rather than the
+    # literal `*float*`, and sqrt links.  On OS-9 the arithmetic comes from
+    # the FPO9 module, on bare metal from the same ROM linked into the
+    # program.
+    for flags in "-mlibc=float:fp" "-mcpu=hd6309 -mlibc=float:hd6309-fp"; do
+      variant "$triple" "${flags%:*}" "${flags##*:}" "8.000000 4.000000" <<'EOF'
+#include <stdio.h>
+#include <math.h>
+int main(void) { printf("%f %f\n", 3.5 * 2.0 + 1.0, sqrt(16.0)); return 0; }
+EOF
+    done
   done
 }
 
-check_hd6309
+check_variants
 
 # DECB can be built but not run: there is no CoCo emulator here.  Checking
 # that it links and comes out wrapped in the LOADM/EXEC envelope is not the

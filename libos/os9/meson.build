@@ -53,13 +53,19 @@ picolibc_os9_ld = files(os9_lds)[0]
 srcs_os9 = [
   'close.c',
   'errno.c',
+  'fstat.c',
+  'ftruncate.c',
   'getentropy.c',
   'getpid.c',
   'gettimeofday.c',
   'isatty.c',
   'kill.c',
+  'lseek.c',
+  'open.c',
   'read.c',
   'sbrk.c',
+  'stat.c',
+  'unlink.c',
   'write.c',
 ]
 
@@ -68,20 +74,14 @@ srcs_os9 = [
 srcs_os9_fake = [
   '../semihost/fake/fake_access.c',
   '../semihost/fake/fake_closedir.c',
-  '../semihost/fake/fake_fstat.c',
   '../semihost/fake/fake_fstatvfs.c',
-  '../semihost/fake/fake_ftruncate.c',
   '../semihost/fake/fake_getcwd.c',
   '../semihost/fake/fake_getrlimit.c',
-  '../semihost/fake/fake_lseek.c',
-  '../semihost/fake/fake_open.c',
   '../semihost/fake/fake_opendir.c',
   '../semihost/fake/fake_readdir.c',
   '../semihost/fake/fake_rename.c',
   '../semihost/fake/fake_setrlimit.c',
-  '../semihost/fake/fake_stat.c',
   '../semihost/fake/fake_statvfs.c',
-  '../semihost/fake/fake_unlink.c',
 ]
 
 # From the fallback library, which is not folded into libc when an OS library

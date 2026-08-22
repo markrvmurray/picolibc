@@ -273,6 +273,34 @@ check_names() {
   done
 }
 
+# What a build system makes of `clang --version`.  Meson, and others, take the
+# first dotted number in that line as the compiler's version -- so a vendor
+# string carrying a release number ahead of "clang version 24.0.0" makes every
+# meson project believe this is clang 1.0 and refuse to build with it, which
+# is exactly how a rehearsal of the 1.0 release failed.  A release number
+# belongs after the version, in the parentheses.
+check_version_banner() {
+  banner=$("$CLANG" --version | head -1)
+  # The same rule meson's search_version applies: the first dotted number in
+  # the line wins, wherever it appears.
+  first=$(printf '%s' "$banner" | tr ' ' '\n' |
+          grep -m1 -E '^[0-9]{1,2}(\.[0-9]+)+')
+  real=$("$CLANG" --version | sed -n 's/.*clang version \([0-9][^ ]*\).*/\1/p')
+  case "$real" in "$first"*) ;; *) first_bad=1 ;; esac
+  if [ -z "${first_bad:-}" ]; then
+    echo "ok   version banner: a build system reads $first"
+    pass=$((pass + 1))
+  else
+    echo "FAIL version banner: a build system reads [$first], not [$real]"
+    echo "       $banner"
+    echo "       a release number before \"clang version\" is read as the"
+    echo "       compiler's own version; put it after, in the parentheses"
+    fail=$((fail + 1))
+  fi
+}
+
+check_version_banner
+
 check_names
 
 # ------------------------------------------------------------------ corpus

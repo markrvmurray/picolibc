@@ -23,6 +23,13 @@
 #                     cases; without it they report "not checked" rather than
 #                     passing or failing, since a CoCo needs Tandy's ROMs
 #   USIM09BATCH     the bare-metal simulator (default: usim09batch on PATH)
+#   MC6809_CHECK_ALLOW_UNRUNNABLE
+#                   accept a run in which some cases could not be attempted
+#                   at all -- the OS-9 ones with no NitrOS-9 image to boot.
+#                   Without it such a run exits 2, which is the right
+#                   default: a check that did not run must not read green.
+#                   Set it only where the machines cannot exist, and read
+#                   the not-run count that every run now prints.
 set -u
 
 CORPUS=
@@ -84,7 +91,7 @@ fi
 work=$(mktemp -d "${TMPDIR:-/tmp}/mc6809-check.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
-pass=0; fail=0; env_error=0
+pass=0; fail=0; env_error=0; notrun=0
 
 # case NAME TRIPLE EXPECTED [CFLAGS] <<'EOF' ... source ... EOF
 run_case() {
@@ -118,7 +125,7 @@ run_case() {
                2>/dev/null; then
             echo "----  $name ($triple): not checked -- \
 $(sed -n '1s/.*: //p' "$work/$name.err")"
-            env_error=1; return
+            env_error=1; notrun=$((notrun + 1)); return
           fi ;;
     *)    # shellcheck disable=SC2086
           got=$($TIMEOUT "$USIM09BATCH" $sim_extra "$work/$name.bin" \
@@ -168,10 +175,10 @@ variant() {
   fi
 
   # Not `printf ... | run_case`: the right-hand side of a pipe is a subshell,
-  # and every count it makes -- pass, fail, and the flag that says a case
-  # could not be attempted -- is discarded when it returns.  Twelve cases
-  # reported into that void, so a variant that failed still left fail=0.
-  # A file keeps run_case in this shell.
+  # and every count it makes -- pass, fail, not-run, and the flag that says a
+  # case could not be attempted -- is discarded when it returns.  Twelve
+  # cases reported into that void, so a variant that failed still left
+  # fail=0.  A file keeps run_case in this shell.
   printf '%s\n' "$vsrc" > "$work/variant.c"
   run_case "$vdir" "$vtriple" "$vexpect" "$vflags" < "$work/variant.c"
 }
@@ -244,7 +251,15 @@ PROG
     case "$triple" in
       *os9) got=$(NITROS9_LEVEL=${NITROS9_LEVEL:-2} $TIMEOUT \
                   "$SCRIPT_DIR/run-mc6809-os9" "$work/cxx.bin" \
-                  2>/dev/null </dev/null) ;;
+                  2>"$work/cxx.err" </dev/null)
+            # No NitrOS-9 to boot is a missing machine, not a broken C++.
+            # Without this the case reports FAIL and blames the toolchain.
+            if grep -q "need NITROS9_\|NITROS9_CPU is" "$work/cxx.err" \
+                 2>/dev/null; then
+              echo "----  c++ ($triple): not checked -- \
+$(sed -n '1s/.*: //p' "$work/cxx.err")"
+              env_error=1; notrun=$((notrun + 1)); continue
+            fi ;;
       *)    got=$($TIMEOUT "$USIM09BATCH" "$work/cxx.bin" \
                   2>/dev/null </dev/null) ;;
     esac
@@ -411,6 +426,7 @@ check_decb_run() {
     if ! decb_ready "$machine"; then
       echo "---- $label: not checked -- needs mamecoco3-headless, its Tandy \
 ROMs and ToolShed's decb"
+      notrun=$((notrun + 1))
       continue
     fi
     screen=$(decb_run "$machine" "$flags")
@@ -609,9 +625,18 @@ echo "toolchain: $PREFIX"
 # Which one was checked: a candidate that passes is only useful if the report
 # says which candidate it was.
 echo "version:   $("$CLANG" --version | head -1)"
-echo "pass=$pass fail=$fail"
+echo "pass=$pass fail=$fail not-run=$notrun"
 if [ "$env_error" -ne 0 ]; then
-  echo "$0: some cases could not be run, so this is not a pass" >&2
-  exit 2
+  if [ -n "${MC6809_CHECK_ALLOW_UNRUNNABLE:-}" ]; then
+    # Somewhere that cannot have the machines -- CI, where a NitrOS-9 image
+    # and a CoCo's ROMs cannot go.  The cases are still named as not run and
+    # still counted, and the caller has said in advance that it is asking
+    # for a smaller check.  What must never happen is the count vanishing.
+    echo "$0: $notrun case(s) were not run; MC6809_CHECK_ALLOW_UNRUNNABLE" \
+         "is set, so this is a pass over a reduced set -- not a full check" >&2
+  else
+    echo "$0: some cases could not be run, so this is not a pass" >&2
+    exit 2
+  fi
 fi
 [ "$fail" -eq 0 ]

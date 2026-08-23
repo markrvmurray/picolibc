@@ -73,6 +73,7 @@ srcs_os9 = [
   'rename.c',
   'rmdir.c',
   'stat.c',
+  'statvfs.c',
   'unlink.c',
   'write.c',
 ]
@@ -80,10 +81,8 @@ srcs_os9 = [
 # The calls this layer does not (yet) make: picolibc's fakes, which the tests
 # recognise (__fake_<name>) and skip themselves.
 srcs_os9_fake = [
-  '../semihost/fake/fake_fstatvfs.c',
   '../semihost/fake/fake_getrlimit.c',
   '../semihost/fake/fake_setrlimit.c',
-  '../semihost/fake/fake_statvfs.c',
 ]
 
 # From the fallback library, which is not folded into libc when an OS library

@@ -184,3 +184,34 @@ SELECT r.opt_level, res.status, COUNT(*)
 Result statuses: `OK`, `EXPECTEDFAIL`, `SKIP`, `UNSUPPORTED`, `FAIL`,
 `TIMEOUT`, `BUILDFAIL` (a test that fails to build, often the libm-size
 class at `-fp`).
+
+## OS-9 / NitrOS-9 (`mc6809-unknown-os9`)
+
+`gen-mc6809-cross.sh` also writes `cross-clang-mc6809-unknown-os9.txt`, for
+building picolibc as OS-9 program modules.  Configure with:
+
+```sh
+meson setup builddir-mc6809-os9-Os \
+    --cross-file scripts/cross-clang-mc6809-unknown-os9.txt \
+    -Dpicocrt=false -Dsemihost=false -Dos-os9=true -Dposix-console=true \
+    -Dtests=true -Doptimization=s \
+    -Dformat-default=integer -Dprintf-aliases=false -Dstdio-float=false \
+    -Dposix-extensions=false -Dsearch-extensions=true -Dwant-libm=false \
+    -Dmb-capable=false -Dio-long-long=false -Dtests-enable-stack-protector=false
+```
+
+The start-up code, the `<os9.h>` system-call shims and `mc6809-os9.lds` come
+from the compiler's OS-9 runtime (`libclang_rt.os9`, built by the LLVM tree's
+`runtimes/builtins-mc6809-unknown-os9` target); the cross file's `os9_lds`
+property points at the script and must exist before configuring.
+
+Each test runs on a real NitrOS-9 boot (~2 s), driven by
+`scripts/run-mc6809-os9` as meson's `exe_wrapper`:
+
+```sh
+export NITROS9_BOOT_DSK=…/NOS9_6809_L2_DEV_picothing_x0.dsk   # an IDE image
+export NITROS9_FIRMWARE=…/rel_picothing.srec
+export PATH=…/usim:$PATH                                       # usim09pt
+PICOLIBC_BUILDDIR=$PWD/builddir-mc6809-os9-Os \
+    python3 scripts/run-mc6809-tests --jobs 8 --include-fake-fs
+```

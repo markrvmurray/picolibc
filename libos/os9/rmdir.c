@@ -34,12 +34,93 @@
  */
 
 #include "os9-private.h"
+#include "os9-dir.h"
 #include <unistd.h>
 
-/* I$Delete removes an empty directory as it removes a file, and reports
- * E$DNE (mapped to ENOTEMPTY) when it is not empty. */
+/* OS-9 will not delete a file that has the directory attribute set: I$Delete
+ * answers E$FNA.  Its own `deldir` does not try -- it runs `attr -d` first,
+ * which clears the bit by writing the file descriptor sector back (attr.asm).
+ * So removing a directory takes:
+ *
+ *     I$Open   the directory, DIR + UPDATE
+ *     I$GetStt SS.FD           read the descriptor sector
+ *     clear the directory bit in FD.ATT, its first byte
+ *     I$SetStt SS.FD, 1 byte   write just the attribute back
+ *     I$Close
+ *     I$Delete
+ *
+ * Emptiness is checked first, deliberately: the attribute has to go before
+ * the delete is allowed, and a directory that lost its attribute and then
+ * failed to be deleted would be left behind as a plain file.  If the delete
+ * fails anyway, the attribute goes back. */
+#define FD_ATT  0                               /* rbf.d: FD.ATT */
+#define FD_SEG  16                              /* rbf.d: FD.SEG, the header */
+#define ATT_DIR 0x80                            /* os9.d: DIR. */
+
+/* Anything of its own in it?  The first two entries are "." and "..", and an
+ * entry that has been deleted has a zero first byte. */
+static int
+not_empty(int fd)
+{
+    unsigned char entry[OS9_DIRENT_SIZE];
+    int n, seen = 0;
+
+    for (;;) {
+        n = OS9_DIRENT_SIZE;
+        if (_os_read(fd, entry, &n) != 0 || n != OS9_DIRENT_SIZE)
+            return 0;                           /* the end of the directory */
+        if (entry[0] == 0)
+            continue;                           /* a deleted entry */
+        if (++seen > 2)
+            return 1;
+    }
+}
+
+static int
+set_dir_bit(int fd, unsigned char *fdsec, int on)
+{
+    if (on)
+        fdsec[FD_ATT] |= ATT_DIR;
+    else
+        fdsec[FD_ATT] &= (unsigned char)~ATT_DIR;
+    return _os_setstt_buf(fd, OS9_SS_FD, fdsec, 1);
+}
+
 int
 rmdir(const char *path)
 {
-    return OS9_RESULT(_os_delete(path));
+    unsigned char fdsec[FD_SEG];
+    int fd, err, keep;
+
+    err = _os_open(path, OS9_DIR | OS9_UPDATE, &fd);
+    if (err != 0)
+        return OS9_RESULT(err);
+
+    if (not_empty(fd)) {
+        _os_close(fd);
+        errno = ENOTEMPTY;
+        return -1;
+    }
+
+    err = _os_getstt_buf(fd, OS9_SS_FD, fdsec, sizeof fdsec);
+    if (err == 0 && (fdsec[FD_ATT] & ATT_DIR) != 0)
+        err = set_dir_bit(fd, fdsec, 0);
+    _os_close(fd);
+    if (err != 0)
+        return OS9_RESULT(err);
+
+    err = _os_delete(path);
+    if (err == 0)
+        return 0;
+
+    /* Better a directory that would not go than a directory that is no
+     * longer one. */
+    keep = errno;
+    if (_os_open(path, OS9_UPDATE, &fd) == 0) {
+        if (_os_getstt_buf(fd, OS9_SS_FD, fdsec, sizeof fdsec) == 0)
+            (void)set_dir_bit(fd, fdsec, 1);
+        _os_close(fd);
+    }
+    errno = keep;
+    return -1;
 }

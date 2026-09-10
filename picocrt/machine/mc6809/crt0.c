@@ -150,6 +150,26 @@ _start(void)
      * the reset vector at 0xFFFE is injected into the hex file
      * by the run-mc6809 wrapper before USim loads it. */
     __asm__ volatile("lds #__stack");
+#ifdef __6309__
+    /*
+     * HD6309 Native mode (MD bit 0). It is cycle-for-cycle identical
+     * to the 6809 until this runs; native mode drops the dead cycles
+     * from most instructions and is the whole reason to target the
+     * part, so a -mcpu=hd6309 build that never sets MD is benchmarking
+     * a 6809 with extra registers.
+     *
+     * The only semantic change is that an entire-state interrupt frame
+     * grows from 12 bytes to 14 (E and F are stacked between B and DP).
+     * Nothing here reads that frame -- __swi3_trap below is a sentinel
+     * that halts -- so it is safe.
+     *
+     * Define PICOLIBC_MC6809_EMULATION_MODE to leave MD alone, which
+     * is what a like-for-like emulation-vs-native comparison wants.
+     */
+#ifndef PICOLIBC_MC6809_EMULATION_MODE
+    __asm__ volatile("ldmd #1");
+#endif
+#endif
     __asm__ volatile("lbra _cstart");
 }
 

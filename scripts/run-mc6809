@@ -83,8 +83,17 @@ hd6309_flag=""
 if [ "${USIM_HD6309:-0}" = "1" ]; then
   hd6309_flag="--hd6309"
 fi
+# USIM_MD_NATIVE=1 sets the HD6309's MD native bit at reset. picocrt
+# already runs `ldmd #1` for -mcpu=hd6309 builds, so this only matters
+# for a binary built with -DPICOLIBC_MC6809_EMULATION_MODE -- which is
+# how a like-for-like emulation-vs-native comparison is made without
+# rebuilding twice.
+md_native_flag=""
+if [ "${USIM_MD_NATIVE:-0}" = "1" ]; then
+  md_native_flag="--md-native"
+fi
 # Default cap 2B instructions (4x headroom over the slow string tests
 # at ~500M). usim returns rc 124 on cap-hit (GNU timeout convention);
 # we relay it unchanged so the python harness can reclassify
 # FAIL -> TIMEOUT.
-echo "$stdin" | $USIM --timeout="${USIM_TIMEOUT:-2000000000}" $cycles_flag $hd6309_flag "$elf"
+echo "$stdin" | $USIM --timeout="${USIM_TIMEOUT:-2000000000}" $cycles_flag $hd6309_flag $md_native_flag "$elf"

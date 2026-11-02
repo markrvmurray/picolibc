@@ -39,35 +39,31 @@
 extern char __stack[];
 
 /*
- * Bug #192: direct-page (.dp.bss / .dp.data / .dp.rodata) section
- * boundaries provided by the linker script (cross-file's
- * directpage_block in scripts/cross-clang-mc6809-unknown-elf.txt).
+ * Direct-page (.dp.bss / .dp.data / .dp.rodata) section boundaries, from the
+ * linker script (directpage_block in scripts/cross-clang-mc6809-unknown-elf.txt).
+ *
+ * _cstart calls both functions below on every link, and with no __directpage
+ * globals the sections are empty. So compute each size from its boundaries.
+ * A linker-provided size symbol would be the address of a declared object,
+ * which the optimizer takes to be non-null: once memset is inlined at LTO the
+ * zero-length check folds away, and it clears memory until it hits the stack.
  */
 extern char __dp_bss_start[];
-extern char __dp_bss_size[];   /* opaque size: cast to uintptr_t */
+extern char __dp_bss_end[];
 extern char __dp_data_start[];
+extern char __dp_data_end[];
 extern char __dp_data_source[];
-extern char __dp_data_size[];
 
-/*
- * The MC6809 backend strongly-references __do_zero_dp_bss /
- * __do_copy_dp_data only when a TU contains .dp.bss / .dp.data
- * (see MC6809TargetStreamer.cpp:35-45 in llvm-mc6809). When no
- * user __directpage globals exist anywhere in the link, these
- * symbols are unreferenced and the linker drops them. When they
- * ARE referenced, __dp_bss_size / __dp_data_size are non-zero
- * and the loops do useful work.
- */
 void
 __do_zero_dp_bss(void)
 {
-    memset(__dp_bss_start, 0, (uintptr_t)__dp_bss_size);
+    memset(__dp_bss_start, 0, __dp_bss_end - __dp_bss_start);
 }
 
 void
 __do_copy_dp_data(void)
 {
-    memcpy(__dp_data_start, __dp_data_source, (uintptr_t)__dp_data_size);
+    memcpy(__dp_data_start, __dp_data_source, __dp_data_end - __dp_data_start);
 }
 
 /*

@@ -274,6 +274,15 @@ esac
 [ "$NITROS9_CPU" = 6309 ] && _cpu_flag=--hd6309 || _cpu_flag=
 
 _lvldir="$NITROS9_RECIPES/l${NITROS9_LEVEL}${_cpudir}"
+# Only the mega images have the /J0 descriptor the test disk is reached through,
+# so one wins wherever the recipe has been built with its firmware.
+_mega="$NITROS9_RECIPES/l${NITROS9_LEVEL}_mega${_cpudir}"
+if [ -z "${NITROS9_BOOT_DSK:-}" ] &&
+   [ -f "$_mega/NOS9_${NITROS9_CPU}_L${NITROS9_LEVEL}_DEV_picothing_mega.dsk" ] &&
+   [ -f "$_mega/rel_picothing.srec" ]; then
+  NITROS9_BOOT_DSK="$_mega/NOS9_${NITROS9_CPU}_L${NITROS9_LEVEL}_DEV_picothing_mega.dsk"
+  : "${NITROS9_FIRMWARE:=$_mega/rel_picothing.srec}"
+fi
 if [ -z "${NITROS9_BOOT_DSK:-}" ] && [ -d "$_lvldir" ]; then
   # The 6809 recipes carry an `_x0` image built by an older top-level make;
   # a freshly built recipe has only the plain one.  Either boots.

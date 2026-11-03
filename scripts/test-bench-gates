@@ -67,7 +67,7 @@ run_bench() {
   MAME_RUNNER="$work/no-mame" MC6809_BENCH_DB="$work/ledger.sqlite" \
   MC6809_BENCH_LOG="$work/bench.log" MC6809_BENCH_LOCK="$work/bench.lock" \
   STUB_DIR="$stub" \
-    "$pico/scripts/bench-parallel.sh" --skip-build --levels gate-test > "$bench_out" 2>&1
+    "$pico/scripts/bench-parallel.sh" --skip-build --levels gate-test "$@" > "$bench_out" 2>&1
 }
 
 # check NAME WANTED_RC [TEXT_THE_OUTPUT_MUST_CONTAIN]
@@ -177,6 +177,52 @@ kill -9 "$lit_pid" 2>/dev/null
 sleep 0.2
 STUB_LIT_MODE=pass run_bench
 check "nothing is left stale once they have all gone" 0 "" $?
+
+# --- The tally ----------------------------------------------------------------
+
+# A harness that records whatever STUB_TALLY asks for.
+cat > "$pico/scripts/run-mc6809-tests" <<'EOF'
+#!/bin/bash
+while [ $# -gt 0 ]; do
+  [ "$1" = --multi ] && { level=${2%%:*}; break; }
+  shift
+done
+run_id=$(sqlite3 "$MC6809_BENCH_DB" "INSERT INTO runs (timestamp, opt_level)
+  VALUES ('now', '$level'); SELECT last_insert_rowid();")
+n=0
+for status in OK $STUB_TALLY; do
+  n=$((n + 1))
+  sqlite3 "$MC6809_BENCH_DB" "INSERT INTO results (run_id, test_name, suite, status, opt_level)
+    VALUES ($run_id, 'test$n', 'stub', '$status', '$level');"
+done
+exit "${STUB_TALLY_RC:-0}"
+EOF
+mkdir -p "$pico/builddir-mc6809-gate-test"
+: > "$pico/builddir-mc6809-gate-test/build.ninja"
+bench_out=$work/tally.out
+
+tally_case() { # NAME STATUSES WANTED_RC [TEXT] [BENCH_ARGS...]
+  local name=$1 statuses=$2 want=$3 text=${4:-}
+  shift; shift; shift; [ $# -gt 0 ] && shift
+  STUB_LIT_MODE=pass STUB_TALLY=$statuses run_bench "$@"
+  check "$name" "$want" "$text" $?
+}
+
+tally_case "all OK"                       ""                0
+tally_case "EXPECTEDFAIL passes"          "EXPECTEDFAIL"    0
+tally_case "what never ran is not gated here" "SKIP BUILDFAIL TOOBIG OSLIMIT" 0
+tally_case "one FAIL"                     "FAIL"            1 "GATE FAILED: gate-test had 1 FAIL"
+tally_case "the failed test is named"     "FAIL"            1 "gate-test: 1 FAIL: test2"
+tally_case "one TIMEOUT"                  "TIMEOUT"         1 "gate-test had 1 TIMEOUT"
+tally_case "one ERROR"                    "ERROR"           1 "gate-test had 1 ERROR"
+tally_case "one UNEXPECTEDPASS"           "UNEXPECTEDPASS"  1 "gate-test had 1 UNEXPECTEDPASS"
+tally_case "every status is counted"      "FAIL FAIL TIMEOUT" 1 "gate-test had 2 FAIL; gate-test had 1 TIMEOUT"
+tally_case "a FAIL fails a filtered run too" "FAIL"         1 "gate-test had 1 FAIL" --tests any
+# The FAILs above are all in the ledger now.
+tally_case "an earlier bench's FAIL does not count" ""      0
+
+STUB_LIT_MODE=pass STUB_TALLY="" STUB_TALLY_RC=3 run_bench
+check "a harness that fails" 1 "the tally harness exited 3" $?
 
 echo "passed=$passed failed=$failed"
 [ "$failed" -eq 0 ]

@@ -71,7 +71,12 @@
 #
 # Exit status: 1 if a gate failed, and the last line says which: a level that
 # did not build or hit the verifier, a lit run that did not pass or did not
-# run, or a level with no OK results or a collapsed OK count.  Otherwise 0.
+# run, a test that did not pass, a tally harness that failed, or a level with
+# no OK results or a collapsed OK count.  Otherwise 0.
+#
+# A test that did not pass is FAIL, TIMEOUT, ERROR or UNEXPECTEDPASS.
+# EXPECTEDFAIL and SKIP pass, and so do BUILDFAIL, TOOBIG and OSLIMIT: those
+# never ran, and are gated by the build and OK-count checks instead.
 
 set -u
 bench_failed=0
@@ -967,6 +972,9 @@ if [ $skip_tally -eq 0 ]; then
   # picolibc tally runs).
   _lit_tally
 
+  # Everything recorded after this belongs to this bench's tally.
+  tally_after_run_id=$(sqlite_bench "SELECT COALESCE(MAX(run_id), 0) FROM runs;")
+
   # Build "LEVEL:DIR,LEVEL:DIR,…" for run-mc6809-tests --multi.
   # Bug #194 Phase B: when --simulator=mame, tag the LEVEL with
   # `-mame` so the bench ledger records MAME runs as e.g. `Os-mame`,
@@ -1006,6 +1014,8 @@ if [ $skip_tally -eq 0 ]; then
       "$PICO/scripts/run-mc6809-tests" \
         --record --jobs "$test_jobs" --multi "$multi" \
         $slow_arg $np_arg $tests_arg 2>&1 | tee -a "$LOG"
+    harness_rc=${PIPESTATUS[0]}
+    [ "$harness_rc" -eq 0 ] || _gate_fail "the tally harness exited $harness_rc"
     echo "==[ $(ts) tally pool done ]==" | tee -a "$LOG"
   fi
 
@@ -1027,6 +1037,8 @@ if [ $skip_tally -eq 0 ]; then
       "$PICO/scripts/run-mc6809-tests" \
         --record --jobs "$test_jobs" --opt-level "$lvl" --include-fake-fs \
         $tests_arg 2>&1 | tee -a "$LOG"
+    harness_rc=${PIPESTATUS[0]}
+    [ "$harness_rc" -eq 0 ] || _gate_fail "the $lvl tally harness exited $harness_rc"
   done
 fi
 
@@ -1200,10 +1212,29 @@ SELECT opt_level,
  ORDER BY opt_level;
 SQL
 
+# A test that did not pass fails the bench, at any level and whether or not it
+# also failed last time: comparing with the previous run would let a failure
+# through for as long as it stays broken.  This also applies under --tests,
+# which is what a quick check of one test is asking.
+if [ $skip_tally -eq 0 ]; then
+  if ! not_passed=$(sqlite_bench -separator $'\t' "
+      SELECT r.opt_level, res.status, COUNT(*), GROUP_CONCAT(res.test_name, ' ')
+        FROM results res JOIN runs r USING (run_id)
+       WHERE res.run_id > ${tally_after_run_id:-0}
+         AND res.status IN ('FAIL', 'TIMEOUT', 'ERROR', 'UNEXPECTEDPASS')
+       GROUP BY r.opt_level, res.status
+       ORDER BY r.opt_level, res.status;"); then
+    _gate_fail "could not read this tally's results from the ledger"
+  fi
+  while IFS=$'\t' read -r np_level np_status np_count np_tests; do
+    [ -n "$np_level" ] || continue
+    echo "==[ $(ts) FAIL: $np_level: $np_count $np_status: $np_tests ]==" | tee -a "$LOG"
+    _gate_fail "$np_level had $np_count $np_status"
+  done <<<"$not_passed"
+fi
+
 # Surface the failed gates in the exit status so CI / wrappers see the
-# bench as failed. The tally results are still recorded in the ledger
-# (Bug #279's delta block surfaces any test-level regression separately).
-# --no-verify-fail demotes verifier hits to WARN only (build-collapse FAILs
+# bench as failed. --no-verify-fail demotes verifier hits to WARN only (build-collapse FAILs
 # still gate).
 if [ "${bench_failed:-0}" -eq 1 ]; then
   echo "==[ $(ts) bench-parallel: GATE FAILED: $gate_failures ]==" | tee -a "$LOG"

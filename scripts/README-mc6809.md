@@ -86,7 +86,7 @@ run needs no manual step.
 | Script | Role |
 |---|---|
 | `bench-parallel.sh` | **Top-level orchestrator.** Per level: `meson setup` → scrub stale `*.c.o` → `ninja -k 0` build → one shared parallel test pool → record to the ledger. |
-| `test-bench-gates` | Proves the bench's exit status can fail, using a sandboxed copy of the bench and a stub lit. Takes seconds, touches nothing real. |
+| `test-bench-gates` | Proves the bench's exit status can fail and its one-at-a-time lock works, using a sandboxed copy of the bench and a stub lit. Takes seconds, touches nothing real. |
 | `gen-mc6809-cross.sh` | Generate the meson cross files from the template for this machine's toolchain location. |
 | `run-mc6809-tests` | The recording test harness (`--record --multi LEVEL:DIR,…`) that `bench-parallel.sh` calls. |
 | `run-mc6809-tests-local` | Lightweight local variant that sets the tool env vars and runs the harness. |
@@ -170,6 +170,16 @@ alone has been observed insufficient). `bench-parallel.sh` deletes stale
 `*.c.o`/`*.cpp.o` per level during its build phase, which covers the
 common case; a manual single-level build does no scrubbing at all. After
 a backend rebuild, prefer the `--wipe` loop above.
+
+## One bench at a time
+
+`bench-parallel.sh` and `run-mc6809-tests --record` share a kernel lock,
+`$MC6809_BENCH_LOCK` (default `/tmp/mc6809-bench.lock`), held from start to
+exit, and refuse to start if it is taken. The refusal lists the processes
+holding it. It cannot go stale: there is nothing to clean up after a crash, and
+the file itself is never removed. A killed bench's workers keep the lock until
+they exit, because they can still write. Running `usim09batch` or an unrecorded
+`run-mc6809-tests` by hand needs no lock and blocks nothing.
 
 ## The ledger
 

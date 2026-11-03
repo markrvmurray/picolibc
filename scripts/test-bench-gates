@@ -1,5 +1,6 @@
 #!/bin/bash
-# test-bench-gates — can bench-parallel.sh's exit status actually fail?
+# test-bench-gates — can bench-parallel.sh's exit status actually fail, and does
+# its lock stop a second bench without stopping anything else?
 #
 # Runs a copy of the bench in a sandbox, with a stub llvm-lit and its own
 # ledger and logs.  It touches nothing outside its temporary directory: no real
@@ -22,8 +23,8 @@ trap cleanup EXIT
 
 mkdir -p "$stub" "$pico/scripts" "$bin" "$repo/llvm/test/CodeGen/MC6809" \
          "$repo/clang" "$work/usim"
-cp "$SCRIPT_DIR/bench-parallel.sh" "$SCRIPT_DIR/create-bench-db.sh" \
-   "$SCRIPT_DIR/bench-db-schema.sql" "$pico/scripts/"
+cp "$SCRIPT_DIR/bench-parallel.sh" "$SCRIPT_DIR/run-mc6809-tests" \
+   "$SCRIPT_DIR/create-bench-db.sh" "$SCRIPT_DIR/bench-db-schema.sql" "$pico/scripts/"
 # The real generator writes cross files for whichever LLVM_BIN it is given.
 printf '#!/bin/sh\nexit 0\n' > "$pico/scripts/gen-mc6809-cross.sh"
 chmod +x "$pico/scripts/gen-mc6809-cross.sh"
@@ -40,6 +41,19 @@ case "${STUB_LIT_MODE:-pass}" in
   timeout)    line TIMEOUT; exit 1 ;;
   xpass)      line XPASS; exit 1 ;;
   died)       exit 134 ;;
+  # Stay in the lit phase, when no test tool is running, until released.
+  hold)
+    echo $$ > "$STUB_DIR/lit-pid"
+    n=0
+    while [ ! -f "$STUB_DIR/lit-release" ] && [ $n -lt 600 ]; do
+      sleep 0.1; n=$((n + 1))
+    done
+    exit 0 ;;
+  # Be a child of the bench, which must be let through its parent's lock.
+  child)
+    "$PICO/scripts/run-mc6809-tests" --record --multi "none:$STUB_DIR/no-builddir" \
+      > "$STUB_DIR/child.out" 2>&1
+    exit 0 ;;
 esac
 EOF
 chmod +x "$bin/llvm-lit"
@@ -51,7 +65,8 @@ bench_out=$work/bench.out
 run_bench() {
   PICO="$pico" LLVM_REPO="$repo" LLVM_BIN="$bin" USIM="$work/usim" \
   MAME_RUNNER="$work/no-mame" MC6809_BENCH_DB="$work/ledger.sqlite" \
-  MC6809_BENCH_LOG="$work/bench.log" \
+  MC6809_BENCH_LOG="$work/bench.log" MC6809_BENCH_LOCK="$work/bench.lock" \
+  STUB_DIR="$stub" \
     "$pico/scripts/bench-parallel.sh" --skip-build --levels gate-test > "$bench_out" 2>&1
 }
 
@@ -91,6 +106,77 @@ mkdir -p "$repo/compiler-rt/test/mc6809-os9-runtime"
 run_bench
 check "OS-9 cases report nothing" 1 "GATE FAILED: the OS-9 runtime cases did not run" $?
 rmdir "$repo/compiler-rt/test/mc6809-os9-runtime"
+
+# --- The lock ---------------------------------------------------------------
+
+# A bench left in the lit phase, holding the lock.  Sets holder.
+start_holder() {
+  rm -f "$stub/lit-pid" "$stub/lit-release"
+  STUB_LIT_MODE=hold run_bench &
+  holder=$!
+  local n=0
+  while [ ! -s "$stub/lit-pid" ] && [ $n -lt 300 ]; do sleep 0.1; n=$((n + 1)); done
+  [ -s "$stub/lit-pid" ] || { echo "FAIL the holder bench never reached lit"; exit 1; }
+}
+
+run_standalone_tests() { # EXTRA_ENV...
+  env "$@" PICO="$pico" MC6809_BENCH_DB="$work/ledger.sqlite" \
+      MC6809_BENCH_LOCK="$work/bench.lock" \
+    "$pico/scripts/run-mc6809-tests" --record --multi "none:$stub/no-builddir" \
+    > "$bench_out" 2>&1
+}
+
+# Text alone must not block.  The old check matched this.
+python3 -c 'import time; time.sleep(120)  # usim09batch run-mc6809-tests' &
+decoy=$!
+sleep 0.2
+STUB_LIT_MODE=pass run_bench
+check "a process that names the tools does not block" 0 "" $?
+kill "$decoy" 2>/dev/null; wait "$decoy" 2>/dev/null
+
+start_holder
+# The holder must keep its own results; run the rivals into another file.
+holder_out=$bench_out
+bench_out=$work/rival.out
+
+STUB_LIT_MODE=pass run_bench
+check "a second bench is refused while no test tool runs" 1 "another bench is running" $?
+if grep -qF "bench-parallel pid" "$bench_out"; then rc=0; else rc=1; fi
+check "the refusal names the holder" 0 "" "$rc"
+
+run_standalone_tests X=1
+check "a standalone --record is refused" 1 "another bench is recording" $?
+
+run_standalone_tests MC6809_BENCH_LOCK_FD=9
+check "a stale inherited fd setting does not get past the lock" 1 "another bench is recording" $?
+
+touch "$stub/lit-release"
+wait "$holder"
+rc=$?
+bench_out=$holder_out
+check "the bench holding the lock is unharmed" 0 "" "$rc"
+
+STUB_LIT_MODE=child run_bench
+rc=$?
+cp "$stub/child.out" "$bench_out"
+if grep -qF "another bench" "$bench_out" || ! grep -qF -- "--multi" "$bench_out"; then rc=9; fi
+check "the bench's own harness gets through its lock" 0 "" "$rc"
+
+run_standalone_tests X=1
+if grep -qF "another bench" "$bench_out"; then rc=1; else rc=0; fi
+check "a standalone --record runs once the lock is free" 0 "" "$rc"
+
+# Killed outright, with a worker left behind that could still write.
+start_holder
+lit_pid=$(cat "$stub/lit-pid")
+kill -9 "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+bench_out=$work/rival.out
+STUB_LIT_MODE=pass run_bench
+check "a killed bench's surviving worker still holds the lock" 1 "another bench is running" $?
+kill -9 "$lit_pid" 2>/dev/null
+sleep 0.2
+STUB_LIT_MODE=pass run_bench
+check "nothing is left stale once they have all gone" 0 "" $?
 
 echo "passed=$passed failed=$failed"
 [ "$failed" -eq 0 ]

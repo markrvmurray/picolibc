@@ -38,9 +38,13 @@ see scripts/README-mc6809.md):
   LLVM_NM             llvm-nm
   MC6809_BENCH_DB     override SQLite path (default: ~/Documents/
                       mc6809-bench/results.sqlite)
+  MC6809_BENCH_LOCK   lock shared with bench-parallel.sh, so only one thing
+                      records at a time (default: /tmp/mc6809-bench.lock)
 """
 
 import argparse
+import errno
+import fcntl
 import json
 import os
 import re
@@ -1281,6 +1285,40 @@ def run_multi(args):
     return 0
 
 
+def hold_bench_lock():
+    """Take bench-parallel.sh's lock, or exit if something else holds it.
+
+    Under the bench this process inherits the locked descriptor, so it already
+    holds the lock.  Standalone, it takes the lock until it exits.
+    """
+    path = os.environ.get("MC6809_BENCH_LOCK", "/tmp/mc6809-bench.lock")
+    inherited = os.environ.get("MC6809_BENCH_LOCK_FD")
+    if inherited:
+        try:
+            fd = int(inherited)
+            if os.path.samestat(os.fstat(fd), os.stat(path)):
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return
+        except (ValueError, OSError):
+            pass  # not really inherited: compete for the lock below
+
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o666)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as e:
+        if e.errno not in (errno.EWOULDBLOCK, errno.EACCES):
+            raise
+        with open(path) as f:
+            holder = f.read().strip()
+        print(f"run-mc6809-tests: another bench is recording; aborting\n"
+              f"  last holder recorded in {path}: {holder}", file=sys.stderr)
+        sys.exit(1)
+    os.ftruncate(fd, 0)
+    os.write(fd, f"run-mc6809-tests pid {os.getpid()} since "
+                 f"{datetime.now():%Y-%m-%d %H:%M:%S}: "
+                 f"{' '.join(sys.argv)}\n".encode())
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     ap.add_argument("--record", action="store_true",
@@ -1383,6 +1421,7 @@ def main():
         return 0
 
     if args.record:
+        hold_bench_lock()
         os.environ["USIM_CYCLES"] = "1"
 
     if args.multi:

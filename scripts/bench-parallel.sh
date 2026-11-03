@@ -64,6 +64,8 @@
 #                         results record under -hd6309-usim vs -hd6309-mame
 #                         opt_levels respectively. Set =mame for a ground-truth
 #                         cross-check.
+#   MC6809_BENCH_LOCK     the lock that keeps this to one bench at a time
+#                         (default /tmp/mc6809-bench.lock)
 #   MC6809_BENCH_LOG      this run's log (default /tmp/bench-parallel.log); the
 #                         lit log and delta table sit beside it
 #
@@ -728,6 +730,7 @@ tests_filter=""
 verify_fail=1   # Bug #269: VERIFY>0 at any level fails the bench by default.
                 #          --no-verify-fail keeps the old WARN-only behavior.
 
+bench_cmdline="$0 $*"
 while [ $# -gt 0 ]; do
   case "$1" in
     --levels)           levels="$2"; shift 2 ;;
@@ -789,15 +792,39 @@ done
 
 # --- Guardrails ---------------------------------------------------------
 
-# Refuse to start if another tally is already running — two concurrent
-# meson-test processes against the same builddir will trip over each
-# other's meson-logs/. (Cross-builddir concurrency is fine; that's the
-# whole point of this driver.)
-if pgrep -f "run-mc6809-tests|usim09batch" >/dev/null 2>&1; then
-  echo "bench-parallel: another mc6809 test process is running; aborting" >&2
-  pgrep -af "run-mc6809-tests|usim09batch" >&2
+# One bench at a time on this machine: two would scrub each other's build
+# directories, overwrite each other's logs and interleave in the ledger.  This
+# is a kernel lock, so nothing can leave it stale, and it holds for the whole
+# run, build phase included.  Whatever the bench starts inherits fd 9 and so
+# holds the lock with it: if the bench is killed, it stays held until the last
+# worker that could still write has gone.  run-mc6809-tests --record takes the
+# same lock, and recognises the one it inherits from here.
+BENCH_LOCK=${MC6809_BENCH_LOCK:-/tmp/mc6809-bench.lock}
+if ! exec 9>>"$BENCH_LOCK"; then
+  echo "bench-parallel: cannot open $BENCH_LOCK" >&2
   exit 1
 fi
+python3 -c '
+import errno, fcntl, sys
+try:
+    fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except OSError as e:
+    sys.exit(3 if e.errno in (errno.EWOULDBLOCK, errno.EACCES) else 1)
+'
+lock_rc=$?
+if [ "$lock_rc" -eq 3 ]; then
+  echo "bench-parallel: another bench is running; aborting" >&2
+  echo "  last holder recorded in $BENCH_LOCK:" >&2
+  sed 's/^/    /' "$BENCH_LOCK" >&2
+  echo "  processes holding it now:" >&2
+  lsof "$BENCH_LOCK" 2>/dev/null | sed 's/^/    /' >&2
+  exit 1
+elif [ "$lock_rc" -ne 0 ]; then
+  echo "bench-parallel: cannot lock $BENCH_LOCK (python3 status $lock_rc)" >&2
+  exit 1
+fi
+printf 'bench-parallel pid %s since %s: %s\n' "$$" "$(date '+%F %T')" "$bench_cmdline" > "$BENCH_LOCK"
+export MC6809_BENCH_LOCK="$BENCH_LOCK" MC6809_BENCH_LOCK_FD=9
 
 # WAL mode on the ledger. Safe for serial and parallel writes; harmless
 # to re-apply. Needed when --parallel-tallies is on because multiple

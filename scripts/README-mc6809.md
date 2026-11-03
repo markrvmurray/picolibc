@@ -86,6 +86,7 @@ run needs no manual step.
 | Script | Role |
 |---|---|
 | `bench-parallel.sh` | **Top-level orchestrator.** Per level: `meson setup` → scrub stale `*.c.o` → `ninja -k 0` build → one shared parallel test pool → record to the ledger. |
+| `test-bench-gates` | Proves the bench's exit status can fail, using a sandboxed copy of the bench and a stub lit. Takes seconds, touches nothing real. |
 | `gen-mc6809-cross.sh` | Generate the meson cross files from the template for this machine's toolchain location. |
 | `run-mc6809-tests` | The recording test harness (`--record --multi LEVEL:DIR,…`) that `bench-parallel.sh` calls. |
 | `run-mc6809-tests-local` | Lightweight local variant that sets the tool env vars and runs the harness. |

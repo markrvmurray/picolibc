@@ -64,9 +64,23 @@
 #                         results record under -hd6309-usim vs -hd6309-mame
 #                         opt_levels respectively. Set =mame for a ground-truth
 #                         cross-check.
+#   MC6809_BENCH_LOG      this run's log (default /tmp/bench-parallel.log); the
+#                         lit log and delta table sit beside it
+#
+# Exit status: 1 if a gate failed, and the last line says which: a level that
+# did not build or hit the verifier, a lit run that did not pass or did not
+# run, or a level with no OK results or a collapsed OK count.  Otherwise 0.
 
 set -u
 bench_failed=0
+gate_failures=""
+
+# Record a failed gate: the bench carries on, so that the ledger still gets
+# whatever can be measured, and exits 1 at the end naming every one of these.
+_gate_fail() {
+  bench_failed=1
+  gate_failures="${gate_failures:+$gate_failures; }$1"
+}
 
 # Locations. Defaults assume the MC6809 repos are siblings of this
 # picolibc checkout (PICO/../llvm-mc6809, PICO/../usim, PICO/../mame).
@@ -87,7 +101,7 @@ USIM=${USIM:-$PARENT/usim}
 MAME_RUNNER=${MAME_RUNNER:-$PARENT/mame/run-mc6809-mame}
 DB=${MC6809_BENCH_DB:-$HOME/Documents/mc6809-bench/results.sqlite}
 SQLITE_BUSY_TIMEOUT_MS=${MC6809_BENCH_DB_BUSY_TIMEOUT_MS:-60000}
-LOG=/tmp/bench-parallel.log
+LOG=${MC6809_BENCH_LOG:-/tmp/bench-parallel.log}
 
 sqlite_bench() {
   sqlite3 -cmd ".timeout $SQLITE_BUSY_TIMEOUT_MS" "$DB" "$@"
@@ -536,12 +550,15 @@ _lit_tally() {
   local lit="$LLVM_BIN/llvm-lit"
   local llvm_root="$(cd "$LLVM_BIN/../.." && pwd)"
   local clang_root="$(cd "$llvm_root/../clang" && pwd)"
-  local outfile="/tmp/bench-parallel-lit.log"
+  local outfile="${LOG%.log}-lit.log"
 
   echo "==[ $(ts) lit tally start ]==" | tee -a "$LOG"
 
   if [ ! -x "$lit" ] || [ ! -d "$llvm_root/test/CodeGen/MC6809" ]; then
     echo "  lit: skipped (binary or testdir missing)" | tee -a "$LOG"
+    # An installed toolchain ships no llvm-lit and no tests, so there the
+    # gate does not apply.  From a build tree, it has failed to run.
+    [ -n "${MC6809_TOOLCHAIN:-}" ] || _gate_fail "lit did not run"
     return 0
   fi
 
@@ -630,6 +647,13 @@ _lit_tally() {
   [ "${fail:-0}"  -gt 0 ] 2>/dev/null && tag="FAIL"
   [ "${unres:-0}" -gt 0 ] 2>/dev/null && tag="UNRESOLVED"
 
+  # lit's own status is the verdict.  It also covers what the counts above do
+  # not: TIMEOUT, XPASS, and a lit that died before reporting anything.
+  if [ "$lit_rc" -ne 0 ]; then
+    [ "$tag" = " ok " ] && tag="FAIL"
+    _gate_fail "lit exited $lit_rc (FAIL=${fail:-0} UNRESOLVED=${unres:-0}, see $outfile)"
+  fi
+
   # A suite that reports UNSUPPORTED for every case has not passed, it has
   # not run: without its NitrOS-9 images the OS-9 cases skip themselves, and
   # a gate that counts that as green is a gate nobody should trust.
@@ -642,7 +666,7 @@ _lit_tally() {
            "NitrOS-9 images not found?  See $outfile ]==" | tee -a "$LOG"
       # A gate that ran nothing must not pass, for the same reason a level
       # that built nothing must not.
-      bench_failed=1
+      _gate_fail "the OS-9 runtime cases did not run"
     fi
   fi
 
@@ -822,7 +846,7 @@ if [ $skip_build -eq 0 ]; then
     : > "$(wave_log "$lvl")"   2>/dev/null || true
     rm -f "/tmp/bench-parallel-$lvl.rc"
   done
-  : > /tmp/bench-parallel-lit.log 2>/dev/null || true
+  : > "${LOG%.log}-lit.log" 2>/dev/null || true
 
   # The compiler-rt builtins (libclang_rt.builtins.a: soft-float,
   # complex, long-long helpers) live in the LLVM build tree and are
@@ -873,7 +897,6 @@ if [ $skip_build -eq 0 ]; then
   # When --no-verify-fail is passed, verifier hits demote to WARN
   # (informational), and the bench still exits 0. Default is the strict
   # gate.
-  bench_failed=0
   failed_levels=""
   for lvl in "${LEVEL_LIST[@]}"; do
     rcfile="/tmp/bench-parallel-$lvl.rc"
@@ -884,16 +907,16 @@ if [ $skip_build -eq 0 ]; then
     read rc fn en vn < "$rcfile"
     if [ "$max_bin" -eq 0 ]; then
       tag="FAIL"
-      bench_failed=1
+      _gate_fail "$lvl built no binaries"
       failed_levels="${failed_levels:+$failed_levels }$lvl(no-binaries)"
     elif [ "$en" -lt $(( max_bin / 2 )) ]; then
       tag="FAIL"
-      bench_failed=1
+      _gate_fail "$lvl built under half the binaries"
       failed_levels="${failed_levels:+$failed_levels }$lvl(partial-build)"
     elif [ "${vn:-0}" -gt 0 ] 2>/dev/null; then
       if [ "$verify_fail" -eq 1 ]; then
         tag="FAIL"
-        bench_failed=1
+        _gate_fail "$lvl had $vn verifier hits"
         failed_levels="${failed_levels:+$failed_levels }$lvl(verify=${vn})"
       else
         tag="WARN"
@@ -1016,7 +1039,7 @@ this_run_levels=""
 for lvl in "${LEVEL_LIST[@]}"; do
   this_run_levels="${this_run_levels:+$this_run_levels,}'$lvl'"
 done
-sqlite3 -cmd ".timeout $SQLITE_BUSY_TIMEOUT_MS" -separator $'\t' "$DB" <<SQL > /tmp/bench-parallel-delta.tsv 2>/dev/null
+sqlite3 -cmd ".timeout $SQLITE_BUSY_TIMEOUT_MS" -separator $'\t' "$DB" <<SQL > "${LOG%.log}-delta.tsv" 2>/dev/null
 WITH ranked AS (
   SELECT opt_level, run_id,
          ROW_NUMBER() OVER (PARTITION BY opt_level ORDER BY run_id DESC) AS rn
@@ -1094,8 +1117,8 @@ END {
     print "==[ no regression vs previous run ]==";
   }
 }
-' /tmp/bench-parallel-delta.tsv | tee -a "$LOG"
-rm -f /tmp/bench-parallel-delta.tsv
+' "${LOG%.log}-delta.tsv" | tee -a "$LOG"
+rm -f "${LOG%.log}-delta.tsv"
 
 # A level whose latest run has results but not a single OK is a level
 # whose libc.a (or every test link) failed -- BUILDFAIL rows are not
@@ -1118,10 +1141,10 @@ if [ $skip_tally -eq 0 ] && [ -z "$tests_filter" ]; then
     ok_now=${ok_now:-0}; ok_prev=${ok_prev:-0}; tot_now=${tot_now:-0}
     if [ "$tot_now" -gt 0 ] && [ "$ok_now" -eq 0 ]; then
       echo "==[ $(ts) FAIL: $rec produced ZERO OK results out of $tot_now -- libc.a or every test link is broken at this level ]==" | tee -a "$LOG"
-      bench_failed=1
+      _gate_fail "$rec produced no OK results"
     elif [ "$ok_prev" -gt 0 ] && [ $(( ok_now * 2 )) -lt "$ok_prev" ]; then
       echo "==[ $(ts) FAIL: $rec OK count collapsed $ok_prev -> $ok_now vs the previous run of this level ]==" | tee -a "$LOG"
-      bench_failed=1
+      _gate_fail "$rec OK count collapsed $ok_prev -> $ok_now"
     fi
   done
 fi
@@ -1150,14 +1173,13 @@ SELECT opt_level,
  ORDER BY opt_level;
 SQL
 
-# Surface the build-gate, zero-OK and OK-collapse failures in the exit
-# status so CI / wrappers see the bench as failed. The tally results
-# are still recorded in the ledger (Bug #279's delta block surfaces
-# any test-level regression separately), but a non-zero verifier hit
-# count at any level — or a level that failed to build > 50% of its
-# test binaries — should not pass as a green bench. --no-verify-fail
-# demotes verifier hits to WARN only (build-collapse FAILs still gate).
+# Surface the failed gates in the exit status so CI / wrappers see the
+# bench as failed. The tally results are still recorded in the ledger
+# (Bug #279's delta block surfaces any test-level regression separately).
+# --no-verify-fail demotes verifier hits to WARN only (build-collapse FAILs
+# still gate).
 if [ "${bench_failed:-0}" -eq 1 ]; then
+  echo "==[ $(ts) bench-parallel: GATE FAILED: $gate_failures ]==" | tee -a "$LOG"
   exit 1
 fi
 exit 0

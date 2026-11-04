@@ -632,16 +632,28 @@ _lit_tally() {
     SELECT last_insert_rowid();
   ")
 
-  # Parse lit verbose output; emit one INSERT per test.
-  awk -v rid="$run_id" '
-    /^(PASS|FAIL|XFAIL|UNRESOLVED|UNSUPPORTED|XPASS|TIMEOUT|FLAKY): / {
-      status=$1; sub(/:$/,"",status)
-      path=$4
-      n=split(path,parts,"/")
-      tn=parts[n]
-      printf "INSERT INTO results (run_id, test_name, suite, status, opt_level) VALUES (%s, '\''%s'\'', '\''lit-codegen'\'', '\''%s'\'', '\''lit'\'');\n", rid, tn, status
+  # Parse lit verbose output; emit one INSERT per test.  A test is named by
+  # lit's own identifier, "SUITE :: PATH", the only name lit keeps unique: a
+  # suite's name can hold spaces, and the same file name can be in two suites.
+  # The pattern is the whole result line, because -v also prints what failing
+  # tests said, and that can begin "FAIL: " too.
+  local result_line='^(PASS|FAIL|XFAIL|UNRESOLVED|UNSUPPORTED|XPASS|TIMEOUT|FLAKY): .+ :: .+ [(][0-9]+ of [0-9]+[)]$'
+  awk -v rid="$run_id" -v re="$result_line" -v q="'" '
+    $0 ~ re {
+      status=$0; sub(/:.*/,"",status)
+      tn=$0; sub(/^[A-Z]+: /,"",tn); sub(/ [(][0-9]+ of [0-9]+[)]$/,"",tn)
+      gsub(q,q q,tn)
+      printf "INSERT INTO results (run_id, test_name, suite, status, opt_level) VALUES (%s, %s%s%s, %slit-codegen%s, %s%s%s, %slit%s);\n", rid, q, tn, q, q, q, q, status, q, q, q
     }
   ' "$outfile" | sqlite_bench
+
+  # A rejected INSERT only reaches stderr, so count what was kept.
+  local reported recorded
+  reported=$(grep -cE "$result_line" "$outfile" 2>/dev/null)
+  recorded=$(sqlite_bench "SELECT COUNT(*) FROM results WHERE run_id = $run_id;")
+  if [ "${reported:-0}" != "${recorded:-0}" ]; then
+    _gate_fail "the ledger kept ${recorded:-0} of ${reported:-0} lit results, see $outfile"
+  fi
 
   local pass fail xfail unsupp unres
   pass=$(grep -c   '^PASS: '        "$outfile" 2>/dev/null)

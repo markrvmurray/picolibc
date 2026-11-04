@@ -41,6 +41,26 @@ case "${STUB_LIT_MODE:-pass}" in
   timeout)    line TIMEOUT; exit 1 ;;
   xpass)      line XPASS; exit 1 ;;
   died)       exit 134 ;;
+  spaces)
+    echo "PASS: Suite With Spaces :: a.c (2 of 4)"
+    echo "PASS: Suite With Spaces :: b.c (3 of 4)"
+    echo "UNSUPPORTED: Suite With Spaces :: c.c (4 of 4)"
+    exit 0 ;;
+  samename)
+    echo "PASS: One :: dir/same.s (2 of 3)"
+    echo "PASS: Two :: dir/same.s (3 of 3)"
+    exit 0 ;;
+  quote)
+    echo "PASS: stub :: it's.ll (2 of 2)"
+    exit 0 ;;
+  chatter)
+    echo "FAIL: what a failing test printed"
+    echo "PASS: printed :: by a test, with no count"
+    exit 0 ;;
+  duplicate)
+    echo "PASS: stub :: twice.ll (2 of 3)"
+    echo "PASS: stub :: twice.ll (3 of 3)"
+    exit 0 ;;
   # Stay in the lit phase, when no test tool is running, until released.
   hold)
     echo $$ > "$STUB_DIR/lit-pid"
@@ -93,6 +113,33 @@ lit_case "lit UNRESOLVED"        unresolved 1 "UNRESOLVED=1"
 lit_case "lit TIMEOUT"           timeout    1 "GATE FAILED: lit exited 1"
 lit_case "lit XPASS"             xpass      1 "GATE FAILED: lit exited 1"
 lit_case "lit dies with no tally" died      1 "GATE FAILED: lit exited 134"
+
+# --- What the lit phase records -----------------------------------------------
+
+# ledger_case NAME MODE WANTED_ROWS: the rows of the newest lit run must be
+# exactly WANTED_ROWS, one "STATUS test name" per line, after the stub's own PASS.
+ledger_case() {
+  local name=$1 mode=$2 want rows
+  want=$(printf 'PASS stub :: stub/PASS.ll\n%b' "$3" | sort)
+  STUB_LIT_MODE=$mode run_bench
+  local rc=$?
+  rows=$(sqlite3 "$work/ledger.sqlite" "SELECT status || ' ' || test_name FROM results
+    WHERE run_id = (SELECT MAX(run_id) FROM runs WHERE opt_level = 'lit');" | sort)
+  if [ "$rows" != "$want" ]; then
+    echo "FAIL $name: the ledger holds:"; echo "$rows" | sed 's/^/       /'
+    failed=$((failed + 1)); return
+  fi
+  check "$name" 0 "" "$rc"
+}
+
+ledger_case "a suite name with spaces keeps its test names" spaces \
+  'PASS Suite With Spaces :: a.c\nPASS Suite With Spaces :: b.c\nUNSUPPORTED Suite With Spaces :: c.c\n'
+ledger_case "one file name in two suites is two rows" samename \
+  'PASS One :: dir/same.s\nPASS Two :: dir/same.s\n'
+ledger_case "a quote in a test name is recorded" quote "PASS stub :: it's.ll\n"
+ledger_case "what a test printed is not a result" chatter ''
+
+lit_case "the ledger losing a lit result" duplicate 1 "GATE FAILED: the ledger kept 2 of 3 lit results"
 
 mv "$bin/llvm-lit" "$bin/llvm-lit.off"
 run_bench

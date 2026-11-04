@@ -40,12 +40,7 @@ IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #ifndef EXPECT_PROG
-#ifdef __OS9__
-/* argv[0] is the module's name, which cannot hold a dash at Level 1. */
-#define EXPECT_PROG "testargv"
-#else
 #define EXPECT_PROG "test-argv"
-#endif
 #endif
 static const char *expect_prog = EXPECT_PROG;
 static const char *expect_args[] = { "hello", "world" };
@@ -67,7 +62,7 @@ main(int argc, char **argv)
         errors = 1;
     }
 
-    /* Check program name tail matches what is expected */
+    /* Check program name tail matches 'test-argv' */
     const char *tail = strrchr(argv[0], '/');
     tail = tail ? tail + 1 : argv[0];
     if (strcmp(tail, expect_prog) != 0) {

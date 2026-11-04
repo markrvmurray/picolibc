@@ -121,7 +121,8 @@ test_extra_src = {
 }
 
 test_extra_c_args = {
-  'test-argv': ['-DEXPECT_PROG="test-argv"'],
+  # argv[0] on OS-9 is the module's name, which the toolchain gives no dash.
+  'test-argv': [get_option('os-os9') ? '-DEXPECT_PROG="testargv"' : '-DEXPECT_PROG="test-argv"'],
   'test-argv-no-flash': ['-DEXPECT_PROG="test-argv-no-flash"'],
   'test-thread-safety': test_thread_safety_cflags,
   'test-ubsan': test_ubsan_cflags,

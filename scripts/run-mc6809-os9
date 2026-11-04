@@ -401,6 +401,9 @@ done
 # The emulator never stops on its own, and killing the shell that started it
 # leaves it running: one left behind holds a core for as long as the machine
 # is up, which slows every later test enough to look like a fault in the test.
+# Gone by now and it stopped by itself, or something else stopped it.
+alive=0
+kill -0 "$pid" 2>/dev/null && alive=1
 kill "$pid" 2>/dev/null || true
 wait "$pid" 2>/dev/null
 usim_rc=$?
@@ -410,6 +413,13 @@ grep -a 'cycles=' "$workdir/usim.err" >&2 || true
 j0_failed "$log" && exit 99
 
 if ! grep -aq 'CIDONE' "$log"; then
+  # A signal this script did not send says nothing about the program: another
+  # process has killed the emulator, and it must not read as a timeout.
+  if [ "$alive" = 0 ] && [ "$usim_rc" -gt 128 ]; then
+    echo "run-mc6809-os9: the emulator was killed by signal $((usim_rc - 128))" \
+         "from outside, so $name did not get to finish" >&2
+    exit 99
+  fi
   # No sentinel: the run hung or the cap hit.  124 is the timeout
   # convention the tally harness understands.
   echo "run-mc6809-os9: NitrOS-9 run did not reach the sentinel ($name)" >&2

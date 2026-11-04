@@ -31,6 +31,11 @@ EOF
 cat > "$work/usim09pt" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$@" > "$STUB_ARGS"
+case "${STUB_END:-}" in
+  killed) kill -TERM $$; sleep 5 ;;
+  cap)    exit 124 ;;
+  hang)   sleep 30 ;;
+esac
 printf 'OS9:chx /j0/cmds\r'
 [ "${STUB_NO_J0:-0}" = 1 ] && printf '%s\r' "${STUB_NO_J0_TEXT:-ERROR #221}"
 printf 'OS9:chd /j0\rOS9:prog\rhello\rOS9:echo CIDONE\r'
@@ -76,6 +81,14 @@ result "/J0 in /Modules is loaded before the chx" \
 
 NITROS9_FIRMWARE=$recipes/l2/rel_picothing.srec NITROS9_LEVEL=1 run
 result "a named firmware wins" "$(ran_with "$recipes/l2/rel_picothing.srec" && echo 1)"
+
+STUB_END=killed NITROS9_LEVEL=2 run
+result "an emulator killed from outside is an error, not a timeout" \
+  "$([ "$rc" = 99 ] && grep -qF 'killed by signal 15' "$work/err" && echo 1)"
+STUB_END=cap NITROS9_LEVEL=2 run
+result "the instruction cap is a timeout" "$([ "$rc" = 124 ] && echo 1)"
+STUB_END=hang NITROS9_WALL_SECONDS=1 NITROS9_LEVEL=2 run
+result "the wall-clock cap is a timeout" "$([ "$rc" = 124 ] && echo 1)"
 
 cp "$module" "$work/other-name"
 : > "$STUB_COPIES"

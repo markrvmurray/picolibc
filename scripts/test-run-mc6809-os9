@@ -1,0 +1,97 @@
+#!/bin/bash
+# test-run-mc6809-os9 — does run-mc6809-os9 choose the right image and firmware,
+# load /J0 where an image needs it, and refuse an image that cannot reach the
+# test disk?
+#
+# Runs against stub os9 and usim09pt tools in a temporary directory.  It boots
+# nothing; compiler-rt/test/mc6809-os9-runtime does that with the real images.
+#
+# Usage: test-run-mc6809-os9 [-k]      (-k keeps the sandbox for inspection)
+set -u
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+KEEP=${1:-}
+work=$(mktemp -d "${TMPDIR:-/tmp}/mc6809-os9-runner.XXXXXX")
+recipes=$work/recipes
+module=$work/prog
+trap '[ -n "$KEEP" ] || rm -rf "$work"' EXIT
+
+cat > "$work/os9" <<'EOF'
+#!/bin/sh
+# A disk is a text file; `os9 dir IMAGE,Modules` prints it.
+case "$1" in
+  dir) cat "${2%%,*}" ;;
+  format) : > "$2" ;;
+esac
+exit 0
+EOF
+# The emulator records its arguments and plays the console back.
+cat > "$work/usim09pt" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$@" > "$STUB_ARGS"
+printf 'OS9:chx /j0/cmds\r'
+[ "${STUB_NO_J0:-0}" = 1 ] && printf '%s\r' "${STUB_NO_J0_TEXT:-ERROR #221}"
+printf 'OS9:chd /j0\rOS9:prog\rhello\rOS9:echo CIDONE\r'
+sleep 30
+EOF
+chmod +x "$work/os9" "$work/usim09pt"
+: > "$module"
+
+export OS9_TOOL=$work/os9 NITROS9_USIM09PT=$work/usim09pt NITROS9_SETIME=off
+export NITROS9_RECIPES=$recipes STUB_ARGS=$work/args
+unset NITROS9_BOOT_DSK NITROS9_FIRMWARE NITROS9_CPU MC6809_FP_MODULE
+
+passed=0 failed=0
+result() { # NAME OK
+  if [ "$2" = 1 ]; then echo "ok   $1"; passed=$((passed + 1))
+  else echo "FAIL $1"; [ -f "$work/err" ] && sed 's/^/       /' "$work/err"; failed=$((failed + 1)); fi
+}
+run() { rm -f "$STUB_ARGS"; "$SCRIPT_DIR/run-mc6809-os9" "$module" > "$work/out" 2> "$work/err"; rc=$?; }
+ran_with() { grep -qF -- "$1" "$STUB_ARGS" 2>/dev/null; }
+# The boot image is copied, so it is known by what it holds.
+mega() { # LEVEL [TEXT]
+  mkdir -p "$recipes/l$1_mega"
+  printf '%s\n' "${2:-}" > "$recipes/l$1_mega/NOS9_6809_L$1_DEV_picothing_mega.dsk"
+}
+
+mega 1 "j0_pt.dd"
+mega 2 ""
+mkdir -p "$recipes/l2" "$recipes/other"
+touch -t 202601010000 "$recipes/l2/rel_picothing.srec"
+touch -t 202602010000 "$recipes/other/rel_picothing.srec"
+
+NITROS9_LEVEL=2 run
+result "a level 2 run succeeds" "$([ "$rc" = 0 ] && echo 1)"
+result "the newest firmware is used, wherever it is" \
+  "$(ran_with "$recipes/other/rel_picothing.srec" && echo 1)"
+result "/J0 in the bootfile is not loaded" "$(ran_with 'load /dd/modules' || echo 1)"
+
+NITROS9_LEVEL=1 run
+result "a level 1 run succeeds with no firmware of its own" "$([ "$rc" = 0 ] && echo 1)"
+result "/J0 in /Modules is loaded before the chx" \
+  "$(ran_with 'load /dd/modules/j0_pt.dd\rchx /j0/cmds' && echo 1)"
+
+NITROS9_FIRMWARE=$recipes/l2/rel_picothing.srec NITROS9_LEVEL=1 run
+result "a named firmware wins" "$(ran_with "$recipes/l2/rel_picothing.srec" && echo 1)"
+
+for text in "ERROR #221" "Error #221 - module not found"; do
+  STUB_NO_J0=1 STUB_NO_J0_TEXT=$text NITROS9_LEVEL=2 run
+  result "chx failing with '$text' is an error, not the program's result" \
+    "$([ "$rc" = 99 ] && grep -qF 'cannot reach the test disk' "$work/err" && echo 1)"
+done
+
+rm -rf "$recipes/l1_mega"
+mkdir -p "$recipes/l1"; : > "$recipes/l1/NOS9_6809_L1_DEV_picothing.dsk"
+NITROS9_LEVEL=1 run
+result "a plain image is not a stand-in for a mega one" \
+  "$([ "$rc" = 99 ] && [ ! -e "$STUB_ARGS" ] && echo 1)"
+
+NITROS9_BOOT_DSK=$recipes/l1/NOS9_6809_L1_DEV_picothing.dsk NITROS9_LEVEL=1 run
+result "a named image is used as given" "$([ "$rc" = 0 ] && echo 1)"
+
+rm -f "$recipes"/*/rel_picothing.srec
+NITROS9_LEVEL=2 run
+result "no firmware anywhere is an error" "$([ "$rc" = 99 ] && [ ! -e "$STUB_ARGS" ] && echo 1)"
+
+echo "passed=$passed failed=$failed"
+[ "$failed" -eq 0 ]

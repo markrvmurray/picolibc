@@ -39,11 +39,12 @@
 #                        same at either level -- U is the data base wherever
 #                        the kernel puts it -- so a level is a boot image,
 #                        not a build.
-#   NITROS9_RECIPES      where the NitrOS-9 recipes live; with it set, the
-#                        boot image and firmware follow from NITROS9_LEVEL
+#   NITROS9_RECIPES      where the NitrOS-9 recipes live: the boot image follows
+#                        from NITROS9_LEVEL and NITROS9_CPU, the firmware is the
+#                        newest rel_picothing.srec in any recipe
 #                        (default ~/Documents/NitrOS-9/nitros9/recipes/picothing)
-#   NITROS9_BOOT_DSK     a bootable NitrOS-9 IDE (flat) image; overrides the
-#                        one NITROS9_LEVEL would pick
+#   NITROS9_BOOT_DSK     a bootable NitrOS-9 IDE (flat) image with a /J0
+#                        descriptor; overrides the one NITROS9_LEVEL would pick
 #   NITROS9_FIRMWARE     the Pico-Thing boot firmware (.srec); likewise
 #   OS9_TOOL             ToolShed's os9 (default: os9 on the path)
 #   NITROS9_INPUT_FIRST  cycles before the first console byte (login prompt
@@ -112,6 +113,19 @@ while [ $# -gt 0 -a $done -eq 0 ]; do
 done
 
 
+# An image that cannot reach the test disk fails at the chx, before any program
+# runs, which must not read as a problem with the program.  Level 1's kernel
+# says ERROR, Level 2's shell says Error.
+j0_failed() {
+  _chx=$(tr -d '\000' <"$1" | tr '\r' '\n' | awk '
+    index($0, "chx /j0/cmds") { seen = 1; next }
+    seen && NF { if (toupper($0) ~ /^ERROR #/) print; exit }')
+  [ -n "$_chx" ] || return 1
+  echo "$(basename "$0"): $NITROS9_BOOT_DSK cannot reach the test disk:" \
+       "chx /j0/cmds gave '$_chx'.  It needs a /J0 descriptor, as the mega images have." >&2
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # Batch: one disk, one boot, every program in turn.
 # ---------------------------------------------------------------------------
@@ -140,7 +154,7 @@ run_batch() {
     [ "${setime:-auto}" = auto ] && setime=$(date "+%Y/%m/%d %H:%M:%S")
     input="${input}setime $setime\\r"
   fi
-  input="${input}chx /j0/cmds\\rchd /j0\\r"
+  input="${input}${load_j0}chx /j0/cmds\\rchd /j0\\r"
   names=""
   while IFS="	" read -r bname bpath; do
     [ -n "$bname" ] && [ -f "$bpath" ] || continue
@@ -187,6 +201,9 @@ run_batch() {
   sleep 1
   kill -9 "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null
+
+  # Without a stream the caller runs each program alone, where this is an error.
+  j0_failed "$log" && return 124
 
   # What a program printed is what came between its own echoed command line
   # and its marker; its status is the shell's `Error #nnn` in that stretch.
@@ -273,29 +290,25 @@ case "$NITROS9_CPU" in
 esac
 [ "$NITROS9_CPU" = 6309 ] && _cpu_flag=--hd6309 || _cpu_flag=
 
-_lvldir="$NITROS9_RECIPES/l${NITROS9_LEVEL}${_cpudir}"
-# Only the mega images have the /J0 descriptor the test disk is reached through,
-# so one wins wherever the recipe has been built with its firmware.
-_mega="$NITROS9_RECIPES/l${NITROS9_LEVEL}_mega${_cpudir}"
-if [ -z "${NITROS9_BOOT_DSK:-}" ] &&
-   [ -f "$_mega/NOS9_${NITROS9_CPU}_L${NITROS9_LEVEL}_DEV_picothing_mega.dsk" ] &&
-   [ -f "$_mega/rel_picothing.srec" ]; then
-  NITROS9_BOOT_DSK="$_mega/NOS9_${NITROS9_CPU}_L${NITROS9_LEVEL}_DEV_picothing_mega.dsk"
-  : "${NITROS9_FIRMWARE:=$_mega/rel_picothing.srec}"
+# Only the mega images have the /J0 descriptor the test disk is reached through.
+: "${NITROS9_BOOT_DSK:=$NITROS9_RECIPES/l${NITROS9_LEVEL}_mega${_cpudir}/NOS9_${NITROS9_CPU}_L${NITROS9_LEVEL}_DEV_picothing_mega.dsk}"
+# One REL boots every level and processor, so any recipe's copy will do; the
+# newest is the one least likely to predate the images.
+: "${NITROS9_FIRMWARE:=$(ls -t "$NITROS9_RECIPES"/*/rel_picothing.srec 2>/dev/null | head -1)}"
+for _need in "$NITROS9_BOOT_DSK" "$NITROS9_FIRMWARE"; do
+  if [ ! -f "$_need" ]; then
+    echo "$(basename "$0"): no such file: ${_need:-rel_picothing.srec in $NITROS9_RECIPES}" >&2
+    echo "  build the images with NitrOS-9's .github/workflows/nitros9.sh" >&2
+    exit 99
+  fi
+done
+
+# Level 2 mega images have /J0 in the bootfile.  Level 1's module directory has
+# no room for it there, so it is on the disk to be loaded.
+load_j0=""
+if "$OS9" dir "$NITROS9_BOOT_DSK,Modules" 2>/dev/null | grep -q 'j0_pt\.dd'; then
+  load_j0="load /dd/modules/j0_pt.dd\\r"
 fi
-if [ -z "${NITROS9_BOOT_DSK:-}" ] && [ -d "$_lvldir" ]; then
-  # The 6809 recipes carry an `_x0` image built by an older top-level make;
-  # a freshly built recipe has only the plain one.  Either boots.
-  for _img in "$_lvldir/NOS9_${NITROS9_CPU}_L${NITROS9_LEVEL}_DEV_picothing_x0.dsk" \
-              "$_lvldir/NOS9_${NITROS9_CPU}_L${NITROS9_LEVEL}_DEV_picothing.dsk"; do
-    [ -f "$_img" ] && { NITROS9_BOOT_DSK=$_img; break; }
-  done
-fi
-if [ -z "${NITROS9_FIRMWARE:-}" ] && [ -d "$_lvldir" ]; then
-  NITROS9_FIRMWARE="$_lvldir/rel_picothing.srec"
-fi
-: "${NITROS9_BOOT_DSK:?need NITROS9_BOOT_DSK, or NITROS9_RECIPES + NITROS9_LEVEL}"
-: "${NITROS9_FIRMWARE:?need NITROS9_FIRMWARE, or NITROS9_RECIPES + NITROS9_LEVEL}"
 
 if [ -n "$batch_list" ]; then
   [ -r "$batch_list" ] || { echo "run-mc6809-os9: cannot read $batch_list" >&2; exit 99; }
@@ -354,7 +367,7 @@ if [ "${NITROS9_SETIME:-auto}" != off ]; then
   [ "${setime:-auto}" = auto ] && setime=$(date "+%Y/%m/%d %H:%M:%S")
   input="${input}setime $setime\\r"
 fi
-input="${input}chx /j0/cmds\\rchd /j0\\r$cmd\\r"
+input="${input}${load_j0}chx /j0/cmds\\rchd /j0\\r$cmd\\r"
 if [ -n "$stdin" ]; then
   # Each stdin line becomes a console line; a trailing newline is implied.
   input="$input$(printf '%s' "$stdin" | sed 's/$/\\r/' | tr -d '\n')"
@@ -388,6 +401,8 @@ wait "$pid" 2>/dev/null
 usim_rc=$?
 
 grep -a 'cycles=' "$workdir/usim.err" >&2 || true
+
+j0_failed "$log" && exit 99
 
 if ! grep -aq 'CIDONE' "$log"; then
   # No sentinel: the run hung or the cap hit.  124 is the timeout

@@ -86,6 +86,7 @@ run needs no manual step.
 | Script | Role |
 |---|---|
 | `bench-parallel.sh` | **Top-level orchestrator.** Per level: `meson setup` → scrub stale `*.c.o` → `ninja -k 0` build → one shared parallel test pool → record to the ledger. |
+| `test-run-mc6809-os9` | Proves `run-mc6809-os9` finds the one firmware, loads `/J0` where an image needs it, and refuses an image that cannot reach the test disk, using stub tools. Takes seconds. |
 | `test-bench-gates` | Proves the bench's exit status can fail and its one-at-a-time lock works, using a sandboxed copy of the bench and a stub lit. Takes seconds, touches nothing real. |
 | `gen-mc6809-cross.sh` | Generate the meson cross files from the template for this machine's toolchain location. |
 | `run-mc6809-tests` | The recording test harness (`--record --multi LEVEL:DIR,…`) that `bench-parallel.sh` calls. |
@@ -281,7 +282,7 @@ Each test runs on a real NitrOS-9 boot (~2 s), driven by
 `scripts/run-mc6809-os9` as meson's `exe_wrapper`:
 
 ```sh
-export NITROS9_BOOT_DSK=…/NOS9_6809_L2_DEV_picothing_x0.dsk   # an IDE image
+export NITROS9_BOOT_DSK=…/NOS9_6809_L2_DEV_picothing_mega.dsk # has /J0
 export NITROS9_FIRMWARE=…/rel_picothing.srec
 export PATH=…/usim:$PATH                                       # usim09pt
 PICOLIBC_BUILDDIR=$PWD/builddir-mc6809-os9-Os \
@@ -297,9 +298,10 @@ NITROS9_LEVEL=1 PICOLIBC_BUILDDIR=$PWD/builddir-mc6809-os9-Os-fp \
             --opt-level os9-l1-Os-fp
 ```
 
-`NITROS9_LEVEL` (default 2) picks the boot image and firmware out of
-`NITROS9_RECIPES`; an explicit `NITROS9_BOOT_DSK`/`NITROS9_FIRMWARE` still
-wins.  Give the run its own `--opt-level` label so the two levels get
+`NITROS9_LEVEL` (default 2) picks the mega boot image out of
+`NITROS9_RECIPES`, whose `/J0` descriptor is how the test disk is reached. The
+firmware is the newest `rel_picothing.srec` there, since one REL boots every
+level. An explicit `NITROS9_BOOT_DSK`/`NITROS9_FIRMWARE` still wins.  Give the run its own `--opt-level` label so the two levels get
 separate ledger rows.
 
 Expect a very different shape at Level 1: it has no DAT, so a program

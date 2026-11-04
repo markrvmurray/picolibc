@@ -418,10 +418,27 @@ def _os9_fp_module(builddir):
     return None
 
 
+def _os9_module_name(path):
+    """The name in an OS-9 module's header, or None if it is not one."""
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+    except OSError:
+        return None
+    if data[:2] != b"\x87\xcd" or len(data) < 6:
+        return None
+    name = bytearray()
+    for byte in data[int.from_bytes(data[4:6], "big"):]:
+        name.append(byte & 0x7F)
+        if byte & 0x80:
+            return name.decode("ascii", "replace")
+    return None
+
+
 def _os9_cmd_name(name, taken):
     """An OS-9 command name: letters and digits, 29 at most, unique."""
-    # Same rule the runner uses for a single boot, so a program sees the
-    # same argv[0] either way.
+    # A program's file has to have its module's name, as in a single boot,
+    # or the kernel loads a second copy to run it.
     base = re.sub(r"[^A-Za-z0-9_]", "", name)[:29] or "t"
     cand, n = base, 0
     while cand in taken:
@@ -468,7 +485,8 @@ def run_os9_batches(tests, builddir, size, jobs=1, verbose=True):
         taken, by_cmd = set(), {}
         with tempfile.NamedTemporaryFile("w", suffix=".lst", delete=False) as lf:
             for t in group:
-                cmd_name = _os9_cmd_name(t["name"], taken)
+                cmd_name = _os9_cmd_name(
+                    _os9_module_name(t["cmd"][0]) or t["name"], taken)
                 by_cmd[cmd_name] = t["name"]
                 lf.write(f"{cmd_name}\t{t['cmd'][0]}\n")
             listfile = lf.name

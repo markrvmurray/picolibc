@@ -326,9 +326,14 @@ fi
 : "${NITROS9_TIMEOUT:=2000000000}"
 : "${NITROS9_WALL_SECONDS:=600}"
 
-# OS-9 command names: letters, digits, underscore; at most 29 characters.
-name=$(basename "$module")
-name=$(printf '%s' "$name" | tr -cd 'A-Za-z0-9_' | cut -c1-29)
+# The file must have the module's own name.  Under any other name the shell can
+# load it but the kernel cannot then find it, and loads a second copy to run --
+# which at Level 1, where everything shares one address space, is reported as
+# running out of memory.
+name=$("$OS9" ident -s "$module" 2>/dev/null | awk 'NF { n = $NF } END { print n }')
+if [ -z "$name" ]; then
+  name=$(basename "$module" | tr -cd 'A-Za-z0-9_' | cut -c1-29)
+fi
 [ -n "$name" ] || name=prog
 
 workdir=$(mktemp -d "${TMPDIR:-/tmp}/os9run.XXXXXX")

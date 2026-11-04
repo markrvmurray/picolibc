@@ -21,6 +21,8 @@ cat > "$work/os9" <<'EOF'
 # A disk is a text file; `os9 dir IMAGE,Modules` prints it.
 case "$1" in
   dir) cat "${2%%,*}" ;;
+  ident) printf '\n  10 $11 $000000 . %s\n' "$STUB_MODULE_NAME" ;;
+  copy) printf '%s\n' "$*" >> "$STUB_COPIES" ;;
   format) : > "$2" ;;
 esac
 exit 0
@@ -39,6 +41,7 @@ chmod +x "$work/os9" "$work/usim09pt"
 
 export OS9_TOOL=$work/os9 NITROS9_USIM09PT=$work/usim09pt NITROS9_SETIME=off
 export NITROS9_RECIPES=$recipes STUB_ARGS=$work/args
+export STUB_MODULE_NAME=prog STUB_COPIES=$work/copies
 unset NITROS9_BOOT_DSK NITROS9_FIRMWARE NITROS9_CPU MC6809_FP_MODULE
 
 passed=0 failed=0
@@ -73,6 +76,13 @@ result "/J0 in /Modules is loaded before the chx" \
 
 NITROS9_FIRMWARE=$recipes/l2/rel_picothing.srec NITROS9_LEVEL=1 run
 result "a named firmware wins" "$(ran_with "$recipes/l2/rel_picothing.srec" && echo 1)"
+
+cp "$module" "$work/other-name"
+: > "$STUB_COPIES"
+rm -f "$STUB_ARGS"
+"$SCRIPT_DIR/run-mc6809-os9" "$work/other-name" > "$work/out" 2> "$work/err"
+result "the disk file has the module's name, not the file's" \
+  "$(grep -qF 'CMDS/prog' "$STUB_COPIES" && ! grep -qF 'othername' "$STUB_COPIES" && ran_with '\rprog\r' && echo 1)"
 
 for text in "ERROR #221" "Error #221 - module not found"; do
   STUB_NO_J0=1 STUB_NO_J0_TEXT=$text NITROS9_LEVEL=2 run

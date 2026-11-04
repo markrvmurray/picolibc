@@ -191,6 +191,10 @@ two tables:
 - `results(run_id, test_name, suite, status, wall_seconds, cycles, rc,
   opt_level, text_bytes)`.
 
+Lit rows (`opt_level='lit'`) name a test by lit's identifier, such as
+`LLVM :: CodeGen/MC6809/add.ll`. Rows from before that change hold the bare
+file name, and `Runtime` for the one OS-9 case that was kept.
+
 ```sql
 -- latest per-level tally
 SELECT r.opt_level, res.status, COUNT(*)

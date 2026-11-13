@@ -118,15 +118,19 @@ result "level 1 has no fixed limit and boots" "$([ "$rc" != 207 ] && [ -e "$STUB
 rm -rf "$recipes/l1_mega"
 mkdir -p "$recipes/l1"; : > "$recipes/l1/NOS9_6809_L1_DEV_picothing.dsk"
 NITROS9_LEVEL=1 run
-result "a plain image is not a stand-in for a mega one" \
-  "$([ "$rc" = 99 ] && [ ! -e "$STUB_ARGS" ] && echo 1)"
+result "a plain image is not a stand-in for a mega one, so there is nothing to boot" \
+  "$([ "$rc" = 77 ] && [ ! -e "$STUB_ARGS" ] && echo 1)"
 
 NITROS9_BOOT_DSK=$recipes/l1/NOS9_6809_L1_DEV_picothing.dsk NITROS9_LEVEL=1 run
 result "a named image is used as given" "$([ "$rc" = 0 ] && echo 1)"
 
 rm -f "$recipes"/*/rel_picothing.srec
 NITROS9_LEVEL=2 run
-result "no firmware anywhere is an error" "$([ "$rc" = 99 ] && [ ! -e "$STUB_ARGS" ] && echo 1)"
+result "no firmware anywhere is nothing to boot" "$([ "$rc" = 77 ] && [ ! -e "$STUB_ARGS" ] && echo 1)"
+
+rm -rf "$recipes"
+NITROS9_LEVEL=2 run
+result "no recipes at all is nothing to boot" "$([ "$rc" = 77 ] && [ ! -e "$STUB_ARGS" ] && echo 1)"
 
 echo "passed=$passed failed=$failed"
 [ "$failed" -eq 0 ]

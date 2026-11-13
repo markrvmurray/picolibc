@@ -119,10 +119,10 @@ run_case() {
     *os9) got=$(NITROS9_LEVEL=${NITROS9_LEVEL:-2} NITROS9_CPU=$os9_cpu \
                 $TIMEOUT "$SCRIPT_DIR/run-mc6809-os9" "$work/$name.bin" \
                 2>"$work/$name.err" </dev/null) ; rc=$?
-          # The runner works out the boot image itself and says so when it
-          # cannot.  That is a missing NitrOS-9, not a broken toolchain.
-          if grep -q "need NITROS9_\|NITROS9_CPU is" "$work/$name.err" \
-               2>/dev/null; then
+          # The runner exits 77 when there is no NitrOS-9 to boot.  That is a
+          # missing machine, not a broken toolchain.  Go by the status: the
+          # wording of the message is not a contract.
+          if [ "$rc" = 77 ]; then
             echo "----  $name ($triple): not checked -- \
 $(sed -n '1s/.*: //p' "$work/$name.err")"
             env_error=1; notrun=$((notrun + 1)); return
@@ -263,11 +263,11 @@ PROG
     case "$triple" in
       *os9) got=$(NITROS9_LEVEL=${NITROS9_LEVEL:-2} $TIMEOUT \
                   "$SCRIPT_DIR/run-mc6809-os9" "$work/cxx.bin" \
-                  2>"$work/cxx.err" </dev/null)
-            # No NitrOS-9 to boot is a missing machine, not a broken C++.
-            # Without this the case reports FAIL and blames the toolchain.
-            if grep -q "need NITROS9_\|NITROS9_CPU is" "$work/cxx.err" \
-                 2>/dev/null; then
+                  2>"$work/cxx.err" </dev/null) ; rc=$?
+            # No NitrOS-9 to boot (the runner's 77) is a missing machine, not
+            # a broken C++.  Without this the case reports FAIL and blames the
+            # toolchain.
+            if [ "$rc" = 77 ]; then
               echo "----  c++ ($triple): not checked -- \
 $(sed -n '1s/.*: //p' "$work/cxx.err")"
               env_error=1; notrun=$((notrun + 1)); continue

@@ -28,7 +28,9 @@
 # status is the one the shell reports: NitrOS-9 prints `Error #nnn` for a
 # non-zero F$Exit status, so that number is this script's exit code, 0
 # otherwise -- which is what meson's test harness needs (77 = skip, 99 =
-# error).  --stdin text follows the command line on the console, one line
+# error).  77 means there is no NitrOS-9 here to boot: no boot image, or no
+# firmware.  That is a missing machine, not a failed program, and callers
+# rely on the status rather than on what the message says.  --stdin text follows the command line on the console, one line
 # at a time; --args are the command's parameter words.
 #
 # Environment:
@@ -302,7 +304,7 @@ for _need in "$NITROS9_BOOT_DSK" "$NITROS9_FIRMWARE"; do
   if [ ! -f "$_need" ]; then
     echo "$(basename "$0"): no such file: ${_need:-rel_picothing.srec in $NITROS9_RECIPES}" >&2
     echo "  build the images with NitrOS-9's .github/workflows/nitros9.sh" >&2
-    exit 99
+    exit 77
   fi
 done
 

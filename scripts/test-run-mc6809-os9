@@ -103,6 +103,18 @@ for text in "ERROR #221" "Error #221 - module not found"; do
     "$([ "$rc" = 99 ] && grep -qF 'cannot reach the test disk' "$work/err" && echo 1)"
 done
 
+# The size limit follows the level the run boots, even the default one.
+head -c 60000 /dev/zero > "$work/big"
+size_run() { rm -f "$STUB_ARGS"; "$SCRIPT_DIR/run-mc6809-os9" "$work/big" > "$work/out" 2> "$work/err"; rc=$?; }
+(unset NITROS9_LEVEL; size_run; echo "$rc" > "$work/rc")
+rc=$(cat "$work/rc")
+result "too big for level 2 is refused when the level is left to default" \
+  "$([ "$rc" = 207 ] && [ ! -e "$STUB_ARGS" ] && echo 1)"
+NITROS9_LEVEL=2 size_run
+result "too big for level 2 is refused at level 2" "$([ "$rc" = 207 ] && echo 1)"
+NITROS9_LEVEL=1 size_run
+result "level 1 has no fixed limit and boots" "$([ "$rc" != 207 ] && [ -e "$STUB_ARGS" ] && echo 1)"
+
 rm -rf "$recipes/l1_mega"
 mkdir -p "$recipes/l1"; : > "$recipes/l1/NOS9_6809_L1_DEV_picothing.dsk"
 NITROS9_LEVEL=1 run

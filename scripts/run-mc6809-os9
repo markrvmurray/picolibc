@@ -246,6 +246,10 @@ fi
   toolchain_ref="$(dirname "$fp_module")/libclang_rt.os9.a"
 check_freshness "$toolchain_ref" "$module"
 
+# A level is a boot image, not a build: the same module runs at either.
+: "${NITROS9_LEVEL:=2}"
+: "${NITROS9_RECIPES:=$HOME/Documents/NitrOS-9/nitros9/recipes/picothing}"
+
 # A Level 2 task can map seven 8K blocks ($E000-$FFFF stays the kernel's),
 # shared between the program, its data area and anything it links.  A module
 # that needs all seven leaves nowhere for the data area -- and NitrOS-9 does
@@ -265,16 +269,15 @@ if [ "$NITROS9_LEVEL" = 2 ]; then
 else
   : "${OS9_MAX_MODULE:=0}"
 fi
-module_size=$(wc -c < "$module" | tr -d ' ')
-if [ "$OS9_MAX_MODULE" -gt 0 ] && [ "$module_size" -gt "$OS9_MAX_MODULE" ]; then
-  echo "$(basename "$0"): $(basename "$module") is $module_size bytes -- more" >&2
-  echo "  than the $OS9_MAX_MODULE a task can map, so it cannot be given a data area" >&2
-  exit 207
+# A batch checks each of its programs against the same limit as it goes.
+if [ -n "$module" ]; then
+  module_size=$(wc -c < "$module" | tr -d ' ')
+  if [ "$OS9_MAX_MODULE" -gt 0 ] && [ "$module_size" -gt "$OS9_MAX_MODULE" ]; then
+    echo "$(basename "$0"): $(basename "$module") is $module_size bytes -- more" >&2
+    echo "  than the $OS9_MAX_MODULE a task can map, so it cannot be given a data area" >&2
+    exit 207
+  fi
 fi
-
-# A level is a boot image, not a build: the same module runs at either.
-: "${NITROS9_LEVEL:=2}"
-: "${NITROS9_RECIPES:=$HOME/Documents/NitrOS-9/nitros9/recipes/picothing}"
 
 # The processor is a boot image too.  A 6309 program needs a NitrOS-9 built
 # for the 6309 -- not because of the module's language byte, which stays $11
@@ -312,13 +315,6 @@ fi
 
 if [ -n "$batch_list" ]; then
   [ -r "$batch_list" ] || { echo "run-mc6809-os9: cannot read $batch_list" >&2; exit 99; }
-  # Level 2 gives a task seven 8K blocks; Level 1 shares one address space
-  # and says E$MemFul politely instead of wedging, so it needs no ceiling.
-  if [ "${NITROS9_LEVEL:-2}" = 2 ]; then
-    : "${OS9_MAX_MODULE:=57344}"
-  else
-    : "${OS9_MAX_MODULE:=0}"
-  fi
   run_batch
   exit $?
 fi

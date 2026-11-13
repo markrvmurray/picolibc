@@ -141,33 +141,16 @@ file_mtime() {
   stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo ""
 }
 
-# Bug #191: bench typically launches BEFORE the user commits the
-# changes that produced the binaries — so plain `git rev-parse HEAD`
-# records the previous commit, not the binary's actual provenance.
-# We can't synthesise a SHA for uncommitted edits, but we CAN flag
-# the discrepancy two ways:
-#   (1) tag the recorded SHA with "+dirty" if the source tree has
-#       uncommitted changes RIGHT NOW, or if the binary's mtime is
-#       later than HEAD's commit time (indicating a build-then-
-#       commit window we haven't crossed yet).
-#   (2) Capture the binary mtime separately so a future analyst can
-#       correlate to the actual commit (the one immediately AFTER
-#       the recorded SHA in chronological order).
+# The commit the binaries were built from.  It is marked "+dirty" only
+# when tracked files differ from HEAD right now: the binaries may then
+# hold changes no commit records.  A binary newer than HEAD is not a
+# sign of that -- any rebuild after a commit makes one -- so its mtime
+# is recorded on its own (get_llvm_binary_mtime) instead of changing
+# the commit.  run-mc6809-tests records the commit the same way.
 get_llvm_commit() {
   local sha
   sha=$(cd "$LLVM_REPO" && git rev-parse HEAD 2>/dev/null || echo unknown)
   local dirty=""
-  # (a) Compare binary mtime to HEAD commit time.
-  if [ -x "$LLVM_BIN/llc" ]; then
-    local bin_mtime head_ctime
-    bin_mtime=$(file_mtime "$LLVM_BIN/llc")
-    head_ctime=$(cd "$LLVM_REPO" && git log -n1 --format=%ct HEAD 2>/dev/null)
-    if [ -n "$bin_mtime" ] && [ -n "$head_ctime" ] && \
-       [ "$bin_mtime" -gt "$head_ctime" ]; then
-      dirty="+dirty"
-    fi
-  fi
-  # (b) Tree has uncommitted changes RIGHT NOW.
   if (cd "$LLVM_REPO" && ! git diff --quiet HEAD -- 2>/dev/null); then
     dirty="+dirty"
   fi

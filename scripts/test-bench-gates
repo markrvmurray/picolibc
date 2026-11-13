@@ -271,5 +271,39 @@ tally_case "an earlier bench's FAIL does not count" ""      0
 STUB_LIT_MODE=pass STUB_TALLY="" STUB_TALLY_RC=3 run_bench
 check "a harness that fails" 1 "the tally harness exited 3" $?
 
+# --- The commit a run records -------------------------------------------------
+
+# lit_commit: the commit the newest lit run recorded.
+lit_commit() {
+  sqlite3 "$work/ledger.sqlite" "SELECT llvm_commit FROM runs
+    WHERE run_id = (SELECT MAX(run_id) FROM runs WHERE opt_level = 'lit');"
+}
+
+# commit_case NAME WANTED: the newest lit run must have recorded WANTED.
+commit_case() {
+  local name=$1 want=$2 got
+  STUB_LIT_MODE=pass STUB_TALLY="" run_bench
+  local rc=$?
+  got=$(lit_commit)
+  if [ "$got" != "$want" ]; then
+    echo "FAIL $name: recorded '$got', wanted '$want'"; failed=$((failed + 1)); return
+  fi
+  check "$name" 0 "" "$rc"
+}
+
+# A clean tree, committed long before its binaries were built.
+git -C "$repo" init -q
+echo source > "$repo/tracked"
+git -C "$repo" add tracked
+GIT_AUTHOR_DATE=2020-01-01T00:00:00Z GIT_COMMITTER_DATE=2020-01-01T00:00:00Z \
+  git -C "$repo" -c user.name=t -c user.email=t@t commit -q -m tracked
+head=$(git -C "$repo" rev-parse HEAD)
+printf '#!/bin/sh\nexit 0\n' > "$bin/llc"
+chmod +x "$bin/llc"
+
+commit_case "a rebuild after the commit is not dirty" "$head"
+echo changed >> "$repo/tracked"
+commit_case "an uncommitted change is dirty" "$head+dirty"
+
 echo "passed=$passed failed=$failed"
 [ "$failed" -eq 0 ]

@@ -141,10 +141,9 @@ void __section(".text.init.enter") __used
 _start(void)
 {
     /* Initialise stack pointer to top-of-stack from the linker
-     * script, then long-branch to the C bring-up. The 6809 has
-     * no separate "interrupt vector" table loaded by hardware —
-     * the reset vector at 0xFFFE is injected into the hex file
-     * by the run-mc6809 wrapper before USim loads it. */
+     * script, then long-branch to the C bring-up. The processor
+     * arrives here through the reset vector, the last entry of
+     * __vector_table below. */
     __asm__ volatile("lds #__stack");
 #ifdef __6309__
     /*
@@ -206,3 +205,49 @@ __swi3_trap(void)
         : : : "a"
     );
 }
+
+/*
+ * An interrupt nobody claimed. Returning would resume a program whose
+ * interrupt source is still asserting, and it would spin without a sign of
+ * why; stop instead, the way the SWI3 trap does (exit status 99 under a
+ * simulator, a tight loop on hardware).
+ */
+void __used
+__unhandled_interrupt(void)
+{
+    __swi3_trap();
+}
+
+/*
+ * The processor's vector table, $FFF0-$FFFF, which the linker script places
+ * from the .vectors section. A program installs a handler by defining a
+ * function of the name below, as an interrupt handler:
+ *
+ *     __attribute__((interrupt)) void __irq_handler(void) { ... }
+ *     __attribute__((interrupt("firq"))) void __firq_handler(void) { ... }
+ *
+ * Any it leaves out goes to __unhandled_interrupt. SWI3 goes to __swi3_trap,
+ * which the compiler relies on. The first slot is the 6309's trap for an
+ * illegal instruction or a division by zero; a 6809 never takes it.
+ */
+#define MC6809_VECTOR(name, fallback) \
+    void name(void) __attribute__((weak, alias(#fallback)))
+
+MC6809_VECTOR(__trap_handler, __unhandled_interrupt);
+MC6809_VECTOR(__swi3_handler, __swi3_trap);
+MC6809_VECTOR(__swi2_handler, __unhandled_interrupt);
+MC6809_VECTOR(__firq_handler, __unhandled_interrupt);
+MC6809_VECTOR(__irq_handler, __unhandled_interrupt);
+MC6809_VECTOR(__swi_handler, __unhandled_interrupt);
+MC6809_VECTOR(__nmi_handler, __unhandled_interrupt);
+
+void (*const __vector_table[8])(void) __section(".vectors") __used = {
+    __trap_handler,             /* $FFF0  6309 trap */
+    __swi3_handler,             /* $FFF2  SWI3 */
+    __swi2_handler,             /* $FFF4  SWI2 */
+    __firq_handler,             /* $FFF6  FIRQ */
+    __irq_handler,              /* $FFF8  IRQ */
+    __swi_handler,              /* $FFFA  SWI */
+    __nmi_handler,              /* $FFFC  NMI */
+    _start,                     /* $FFFE  reset */
+};

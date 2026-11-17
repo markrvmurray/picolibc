@@ -55,7 +55,7 @@ skip_sanity_check = true
 #   ram    $0100-$FFC3  (~63.7 KB) — text + rodata + data + bss + heap + stack
 #   IO     $FFC4-$FFCC  (9 bytes)  — ACIA + TraceCtl + HaltDevice
 #   flash  $FFCD-$FFEF  (35 bytes) — .init only (reset entry stub)
-#   vrom   $FFF0-$FFFF              — vector ROM
+#   vectors $FFF0-$FFFF             — the vector table, from crt0's .vectors
 default_flash_addr = '0xFFCD'
 default_flash_size = '0x0023'
 default_ram_addr   = '0x0100'
@@ -85,6 +85,25 @@ directpage_memory = '''
 	directpage (rw!x) :
 		ORIGIN = @DIRECTPAGE_ORIGIN@,
 		LENGTH = 0x00DF'''
+
+# The processor's vector table. crt0 fills the .vectors section with the
+# eight vectors (reset, and a handler or the default trap for each
+# interrupt); these two strings give it a MEMORY region at $FFF0 and a place
+# in SECTIONS, through @VECTORS_MEMORY@ and @VECTORS_BLOCK@ in
+# picolibc.ld.in. It joins the `text` segment, straight after .init.
+# `-Wl,--defsym=__vectors=ADDR` moves the table for a machine that keeps its
+# vectors somewhere else.
+vectors_memory = '''
+	vectors (r!w) :
+		ORIGIN = DEFINED(__vectors) ? __vectors : 0xFFF0,
+		LENGTH = 0x0010'''
+
+vectors_block = '''
+	.vectors : {
+		KEEP (*(.vectors))
+	} >vectors AT>vectors :text
+	ASSERT(SIZEOF(.vectors) == 0 || SIZEOF(.vectors) == 16,
+	       "the vector table must be exactly eight vectors")'''
 
 directpage_block = '''
 	/* Bug #193: single-source-of-truth for the DP register value and

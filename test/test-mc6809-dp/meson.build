@@ -37,6 +37,13 @@ tests_mc6809_dp = [
   'test-saddo-overflow',
 ]
 
+# The vector table belongs to the bare-metal start-up code. An OS-9 module
+# or a DECB binary has no vectors of its own, and the compiler refuses
+# interrupt handlers there.
+if not get_option('os-os9') and not get_option('os-decb')
+  tests_mc6809_dp += ['test-mc6809-vectors']
+endif
+
 foreach params : targets
   target = params['name']
   target_dir = params['dir']

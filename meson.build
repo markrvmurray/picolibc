@@ -1057,6 +1057,15 @@ foreach params : [default_target] + targets
     picolibc_ld_data.set('DIRECTPAGE_MEMORY', dp_memory)
     picolibc_ld_data.set('DIRECTPAGE_BLOCK',  dp_block)
 
+    # Optional MEMORY region and SECTIONS entry for a processor vector
+    # table at a fixed address (the MC6809's $FFF0-$FFFF, filled from the
+    # .vectors section in crt0). Empty on targets whose cross file does not
+    # supply them.
+    picolibc_ld_data.set('VECTORS_MEMORY',
+                         meson.get_external_property('vectors_memory', ''))
+    picolibc_ld_data.set('VECTORS_BLOCK',
+                         meson.get_external_property('vectors_block', ''))
+
     # We need to use different alignment flags for .tdata/.tbss for ld.bfd
     # (ALIGN_WITH_INPUT, which is not supported by ld.lld) and ld.lld
     # (ALIGN(__tls_align), which is rejected as non-constant by ld.bfd), so we use

@@ -1071,10 +1071,15 @@ fi
 # then show absolute counts + parenthesised deltas. Emits REGRESSION
 # WARN when any |d_ok| >= 5 or d_fail > 0 — surfaces silent regressions
 # that the absolute-only summary masks (e.g. today's Og-fp 89→0).
-# Quote each level for embedding into a SQL IN(...) clause.
+# Quote each level for embedding into a SQL IN(...) clause -- under the
+# name the harness records it by, as the gates below do. A 6309 level asked
+# for as *-hd6309-mame is recorded as *-hd6309-usim unless the MAME backend
+# was chosen; selecting the requested name instead picked up the last rows
+# ever written under it (months old) and showed them as this run's.
 this_run_levels=""
 for lvl in "${LEVEL_LIST[@]}"; do
-  this_run_levels="${this_run_levels:+$this_run_levels,}'$lvl'"
+  rec="$(level_record_label "$lvl")$(level_bd_suffix "$lvl")"
+  this_run_levels="${this_run_levels:+$this_run_levels,}'$rec'"
 done
 sqlite3 -cmd ".timeout $SQLITE_BUSY_TIMEOUT_MS" -separator $'\t' "$DB" <<SQL > "${LOG%.log}-delta.tsv" 2>/dev/null
 WITH ranked AS (

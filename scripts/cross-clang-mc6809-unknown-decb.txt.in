@@ -29,3 +29,11 @@ endian = 'big'
 
 [properties]
 skip_sanity_check = true
+
+# picolibc options every MC6809 build wants, whoever runs meson: a command
+# line -D still overrides them.
+[project options]
+# strcmp compares a word at a time when this is on, and a word here is 32
+# bits that only a library call can compare: the -Os strcmp was 476 bytes
+# with five such calls per pass, and slower than the byte loop.
+fast-strcmp = false

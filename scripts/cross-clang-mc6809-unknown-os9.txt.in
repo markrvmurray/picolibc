@@ -44,3 +44,11 @@ default_flash_addr = '0x0000'
 default_flash_size = '0x8000'
 default_ram_addr   = '0x8000'
 default_ram_size   = '0x7000'
+
+# picolibc options every MC6809 build wants, whoever runs meson: a command
+# line -D still overrides them.
+[project options]
+# strcmp compares a word at a time when this is on, and a word here is 32
+# bits that only a library call can compare: the -Os strcmp was 476 bytes
+# with five such calls per pass, and slower than the byte loop.
+fast-strcmp = false

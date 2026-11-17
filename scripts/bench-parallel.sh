@@ -214,6 +214,9 @@ COMMON=(
   -Dio-long-long=false
   -Dtests=true
   -Dtests-enable-stack-protector=false
+  # The MC6809 cross files set this, but only a fresh build directory reads
+  # options from a cross file; this keeps the bench's existing ones in step.
+  -Dfast-strcmp=false
 )
 
 level_opts() {

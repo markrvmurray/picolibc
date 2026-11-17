@@ -424,6 +424,16 @@ native_c_args += c_flags
 test_c_args = c_args
 c_args += ['-D_LIBC', '-U_FORTIFY_SOURCE']
 
+# The library's floating point is IEEE whatever the build asks for. libm's
+# argument reductions carry their own rounding error -- fdlibm's
+# `y[1] = (z - y[0]) - pio2_1t` -- which -ffast-math lets the compiler
+# reassociate to 0, and its NaN and infinity checks are among the things
+# -ffast-math assumes away; printf and strtod depend on exact rounding too.
+# This comes after any -ffast-math in c_args, so it wins for the library;
+# the tests (test_c_args was copied above) and the programs linked against
+# the library still get whatever they are built with.
+c_args += cc.get_supported_arguments(['-fno-fast-math'])
+
 if have_cplusplus
   test_cpp_args = cpp_args
   cpp_args += ['-D_LIBC', '-U_FORTIFY_SOURCE']

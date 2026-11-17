@@ -51,6 +51,12 @@ if stdio_float
   tests_mc6809_fp += ['test-strtod-value']
 endif
 
+# tan() next to pi/2 checks the math library's argument reduction kept its
+# rounding-error term; it needs libm, which only the -fp levels build.
+if get_option('want-libm')
+  tests_mc6809_fp += ['tan-near-pole']
+endif
+
 foreach params : targets
   target = params['name']
   target_dir = params['dir']

@@ -514,7 +514,11 @@ _refresh_builtins() {
     fi
     echo "==[ $(ts) builtins $target older than clang -- rebuilding ]==" | tee -a "$LOG"
     find "$bins" \( -name '*.obj' -o -name '*.o' -o -name '*.a' \) -delete 2>/dev/null
-    if ! cmake --build "$llvm_build" --target "$target" >>"$LOG" 2>&1; then
+    # Build the builtins' own build directory, not the LLVM tree's
+    # "$target": that target depends on clang, so it would first rebuild
+    # clang from whatever the LLVM working tree holds -- benching
+    # uncommitted edits under the HEAD commit's name.
+    if ! cmake --build "$bins" >>"$LOG" 2>&1; then
       echo "==[ $(ts) builtins $target REBUILD FAILED -- refusing to bench with stale builtins (see $LOG) ]==" | tee -a "$LOG"
       return 1
     fi

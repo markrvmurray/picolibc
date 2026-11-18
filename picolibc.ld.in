@@ -487,3 +487,11 @@ SECTIONS
  */
 ASSERT( @PREFIX@__data_size == @PREFIX@__data_source_size,
     "ERROR: .data/.tdata flash size does not match RAM size");
+/*
+ * The .heap section only checks that a __heap_size_min reservation fits in
+ * RAM, which it can while the stack's reservation takes the room the heap
+ * needs. Check the heap the program actually gets: between the end of its
+ * data and the stack's reservation.
+ */
+ASSERT( @PREFIX@__heap_size >= (DEFINED(@PREFIX@__heap_size_min) ? @PREFIX@__heap_size_min : 0),
+    "ERROR: the heap is smaller than __heap_size_min");

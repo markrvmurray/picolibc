@@ -85,6 +85,10 @@ test_extra_c_args = {
 # Now fits in flash thanks to Bug #230's MC6839 engines.
 test_extra_link_args = {
   'test-vfscanf-percent-a' : ['-Wl,--defsym=vfscanf=__d_vfscanf'],
+  # fmemopen(NULL, BUFSIZ, ...) mallocs its buffer: a program that links
+  # with less heap than that cannot run, so make it fail to link instead
+  # (the linker script asserts __heap_size >= __heap_size_min).
+  'test-fmemopen' : ['-Wl,--defsym=__heap_size_min=1024'],
 }
 
 test_extra_libs = {}

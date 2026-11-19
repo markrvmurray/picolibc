@@ -31,13 +31,10 @@ tests_mc6809_fp = [
   'bug329_init_array_probe',  # Bug #329 .init_array runs C++ global ctors (here via __attribute__((constructor)))
   'bug289_fenv_probe',  # Bug #289 C99 <fenv.h> via MC6839 FPCBs (exception flags + rounding mode)
   'bug337_unord_probe',  # Bug #337 __unordsf2/__unorddf2 unordered-compare builtins (isunordered)
-  'infinity_probe',  # signed infinities: sqrt(+inf), -inf < +inf (affine closure)
   'narrow_probe',  # double to float below FLT_MIN, every rounding mode
-  'decimal_round_probe',  # printf rounding just below a power of ten
   'fixuns_probe',  # float and double to unsigned long and unsigned long long
   'compare_probe',  # every comparison, NaN and infinities included
   'trap_probe',  # traps and -ftrapv overflow call abort()
-  'minmax_probe',  # C23 fminimum/fmaximum and the _num forms
   'muld_neg60_probe',  # Bug #247 narrowed MULD #-60 probe
   'bug311_va_probe',  # Bug #311 vararg-printf u64 isolation probe
   'bug311_va_isolate',  # Bug #311 va_list ABI vs vfprintf isolation
@@ -56,12 +53,17 @@ tests_mc6809_fp = [
 # that makes the libc-testsuite strtod round-trip test overflow the 64K image.
 if stdio_float
   tests_mc6809_fp += ['test-strtod-value']
+  # decimal_round_probe prints through strfromf and strfromd, which only
+  # the float-printf levels build.
+  tests_mc6809_fp += ['decimal_round_probe']
 endif
 
 # tan() next to pi/2 checks the math library's argument reduction kept its
 # rounding-error term; it needs libm, which only the -fp levels build.
 if get_option('want-libm')
   tests_mc6809_fp += ['tan-near-pole']
+  # infinity_probe uses isinf, minmax_probe fminimum and the rest: libm.
+  tests_mc6809_fp += ['infinity_probe', 'minmax_probe']
 endif
 
 # Extra compile arguments for the probes that need them.

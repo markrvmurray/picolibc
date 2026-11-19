@@ -124,6 +124,12 @@ int main(void) {
     vol_f = vol_f + 3.0f;
     EXPECT(vol_f == 5.0f, "__mc6839_set_rom_base(default) preserves FP math");
 
+    /* Test 9: fesetexcept (C23) sets exactly the flags asked for. */
+    feclearexcept(FE_ALL_EXCEPT);
+    EXPECT(fesetexcept(FE_INEXACT | FE_UNDERFLOW) == 0 &&
+               fetestexcept(FE_ALL_EXCEPT) == (FE_INEXACT | FE_UNDERFLOW),
+           "fesetexcept sets exactly the flags asked for");
+
     printf("%d failures\n", failures);
     return failures != 0;
 }

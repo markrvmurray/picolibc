@@ -82,7 +82,7 @@ cosh64(__float64 x)
          * compiler may otherwise reassociate to half*(w*w), or fold the two
          * exp factors back into exp(x), and either overflows where the
          * result itself is finite. */
-        t = opt_barrier_float64(half * w);
+        t = barrier_float(half * w);
         return t * w;
     }
 

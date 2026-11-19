@@ -46,12 +46,15 @@ static volatile double vol_d;
 extern float __sqrtsf2(float);
 
 int main(void) {
-#if defined(__FAST_MATH__)
-    /* Bug #335: -Ofast implies -ffast-math, under which the compiler
-     * assumes no floating-point exceptions and no fenv access. It folds
+#if defined(__FAST_MATH__) || __FINITE_MATH_ONLY__
+    /* -ffast-math lets the compiler assume no floating-point exceptions
+     * and no fenv access, and reassociate or use reciprocals: it folds
      * away (or reorders around) the operations this probe relies on to
-     * set the sticky exception flags, so fenv behaviour is undefined and
-     * the test cannot meaningfully pass. Skip rather than fail. */
+     * set the sticky exception flags and to see the rounding mode, so
+     * fenv behaviour is undefined and the test cannot meaningfully pass.
+     * A later -ftrapping-math or -frounding-math cancels __FAST_MATH__
+     * but not the value-changing parts, whose only visible trace is
+     * __FINITE_MATH_ONLY__.  Skip rather than fail. */
     printf("skipping: fenv is not meaningful under -ffast-math\n");
     return 77;
 #endif

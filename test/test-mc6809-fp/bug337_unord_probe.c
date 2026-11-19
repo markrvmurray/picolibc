@@ -16,13 +16,16 @@ static volatile double dn, d1;
 
 int main(void) {
     int e = 0;
-#if defined(__FAST_MATH__)
-    /* Bug #335-style: -Ofast implies -ffast-math, which lets the
-     * compiler assume operands are never NaN — it folds away the 0/0
-     * NaN generation and the isunordered() checks, so the probe can't
-     * meaningfully run. Skip rather than fail (the builtins themselves
-     * are still verified at every IEEE-respecting opt level). */
-    printf("skipping: NaN tests not meaningful under -ffast-math\n");
+#if defined(__FAST_MATH__) || __FINITE_MATH_ONLY__
+    /* Under -ffinite-math-only (part of -ffast-math) the compiler may
+     * assume operands are never NaN: it folds away the 0/0 NaN
+     * generation and the isunordered() checks, so the probe can't
+     * meaningfully run.  Test the finite-math macro, not just
+     * __FAST_MATH__: a later -ftrapping-math or -frounding-math cancels
+     * __FAST_MATH__ but leaves finite-math in force.  Skip rather than
+     * fail (the builtins themselves are still verified at every
+     * IEEE-respecting opt level). */
+    printf("skipping: NaN tests not meaningful under -ffinite-math-only\n");
     return 77;
 #endif
     fn = 0.0f; fn = fn / fn;      /* NaN (0/0) */

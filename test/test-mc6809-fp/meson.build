@@ -35,6 +35,7 @@ tests_mc6809_fp = [
   'narrow_probe',  # double to float below FLT_MIN, every rounding mode
   'decimal_round_probe',  # printf rounding just below a power of ten
   'fixuns_probe',  # float and double to unsigned long and unsigned long long
+  'compare_probe',  # every comparison, NaN and infinities included
   'muld_neg60_probe',  # Bug #247 narrowed MULD #-60 probe
   'bug311_va_probe',  # Bug #311 vararg-printf u64 isolation probe
   'bug311_va_isolate',  # Bug #311 va_list ABI vs vfprintf isolation

@@ -19,6 +19,7 @@ src_semihost += files([
   src_semihost_fake_open,
   src_semihost_fake_read,
   src_semihost_fake_stat,
+  src_semihost_fake_times,
   src_semihost_fake_unlink,
   src_semihost_fake_write,
 ]

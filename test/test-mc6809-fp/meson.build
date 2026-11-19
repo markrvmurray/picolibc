@@ -37,6 +37,7 @@ tests_mc6809_fp = [
   'fixuns_probe',  # float and double to unsigned long and unsigned long long
   'compare_probe',  # every comparison, NaN and infinities included
   'trap_probe',  # traps and -ftrapv overflow call abort()
+  'minmax_probe',  # C23 fminimum/fmaximum and the _num forms
   'muld_neg60_probe',  # Bug #247 narrowed MULD #-60 probe
   'bug311_va_probe',  # Bug #311 vararg-printf u64 isolation probe
   'bug311_va_isolate',  # Bug #311 va_list ABI vs vfprintf isolation

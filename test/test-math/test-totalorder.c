@@ -36,7 +36,8 @@
 #define _ISOC23_SOURCE
 #define _GNU_SOURCE
 #define AMPER        &
-#define TEST_VECTORS "test-totalorder.h"
+#define TEST_VECTORS "test-math-values.h"
+#define TEST_VALUE_VECTORS "test-totalorder.h"
 #define TEST_FUNC    totalorder
 
 #include "test-real-real-int.h"

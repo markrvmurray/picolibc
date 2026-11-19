@@ -36,6 +36,7 @@ tests_mc6809_fp = [
   'decimal_round_probe',  # printf rounding just below a power of ten
   'fixuns_probe',  # float and double to unsigned long and unsigned long long
   'compare_probe',  # every comparison, NaN and infinities included
+  'trap_probe',  # traps and -ftrapv overflow call abort()
   'muld_neg60_probe',  # Bug #247 narrowed MULD #-60 probe
   'bug311_va_probe',  # Bug #311 vararg-printf u64 isolation probe
   'bug311_va_isolate',  # Bug #311 va_list ABI vs vfprintf isolation
@@ -61,6 +62,11 @@ endif
 if get_option('want-libm')
   tests_mc6809_fp += ['tan-near-pole']
 endif
+
+# Extra compile arguments for the probes that need them.
+tests_mc6809_fp_args = {
+  'trap_probe': ['-ftrapv'],
+}
 
 foreach params : targets
   target = params['name']
@@ -101,7 +107,7 @@ foreach params : targets
 
     test(t1 + target,
          executable(t1 + target, [t1_src] + test_lock_valid,
-                    c_args: printf_compile_args_d + test_file_name_arg + _c_args,
+                    c_args: printf_compile_args_d + test_file_name_arg + _c_args + tests_mc6809_fp_args.get(t1, []),
                     link_args: printf_link_args_d + _link_args,
                     objects: _objs,
                     link_depends: _link_depends,

@@ -213,6 +213,11 @@ FAKE_FS_TESTS = {
     # LTO whole-program DCE compresses it small enough to link, so the
     # test starts running and surfaces the same fake-FS limitation.
     "test-getdate",
+    # test-atexit-max opens a file for writing before it registers
+    # ATEXIT_MAX handlers, and fails at that fopen. Arrived with the
+    # upstream posix-io tests; it runs and passes on OS-9, which has a
+    # real file system.
+    "test-atexit-max",
 }
 
 # Tests that don't exercise picolibc's FP code paths AND don't even use

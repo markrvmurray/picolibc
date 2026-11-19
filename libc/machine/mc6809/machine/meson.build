@@ -35,6 +35,7 @@
 
 inc_machine_headers_machine = [
   '_types.h',
+  'opt-barrier.h',
 ]
 
 # Bug #289 (2026-05-24): fenv.h provides C99 <fenv.h> for mc6809 via

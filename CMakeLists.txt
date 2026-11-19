@@ -35,7 +35,7 @@
 
 cmake_minimum_required(VERSION 3.20.0)
 
-project(Picolibc VERSION 1.8.11 LANGUAGES C ASM)
+project(Picolibc VERSION 1.8.12 LANGUAGES C ASM)
 
 # Set a default build type if none was specified
 set(default_build_type "MinSizeRel")
@@ -44,6 +44,10 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES AND NOT DEFINED ZEPHYR
   message(STATUS "Setting build type to '${default_build_type}' as none was specified.")
   set(CMAKE_BUILD_TYPE "${default_build_type}" CACHE
       STRING "Choose the type of build." FORCE)
+endif()
+
+if(ZEPHYR_BASE AND DEFINED NATIVE_TARGET_ARCH)
+  set(CMAKE_SYSTEM_PROCESSOR ${NATIVE_TARGET_ARCH})
 endif()
 
 if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm64")
@@ -80,6 +84,16 @@ if(NOT DEFINED __FAST_STRCMP)
   option(__FAST_STRCMP "Always optimize strcmp for performance" ON)
 endif()
 
+# Always optimize memcpy, memmove and memset for performance
+if(NOT DEFINED __FAST_MEMFUNCS)
+  option(__FAST_MEMFUNCS "Always optimize memcpy, memmove and memset for performance" OFF)
+endif()
+
+# Use RISC-V paired-word strcmp (dual-issue / fused-load cores)
+if(NOT DEFINED __STRCMP_PAIR)
+  option(__STRCMP_PAIR "Use RISC-V paired-word strcmp" OFF)
+endif()
+
 # use global errno variable
 if(NOT DEFINED __GLOBAL_ERRNO)
   option(__GLOBAL_ERRNO "use global errno variable" OFF)
@@ -100,8 +114,12 @@ if(NOT DEFINED ENABLE_MALLOC)
   option(ENABLE_MALLOC "provide malloc family of functions based on sbrk" ON)
 endif()
 
-if(NOT DEFINED MALLOC_SMALL_BUCKET)
-  option(MALLOC_SMALL_BUCKET "use fixed bucket sizes for allocations no larger than this" 0)
+if(NOT DEFINED __MALLOC_SMALL_BUCKET)
+  set(__MALLOC_SMALL_BUCKET 0 CACHE STRING "use fixed bucket sizes for allocations no larger than this")
+endif()
+
+if(NOT DEFINED __PICOLIBC_EXPORT)
+  option(__PICOLIBC_EXPORT "Annotate public picolibc APIs with default (exported) visibility" OFF)
 endif()
 
 option(POSIX_CONSOLE "Use POSIX I/O for stdin/stdout/stderr" OFF)
@@ -137,6 +155,9 @@ picolibc_flag(__HAVE_CC_INHIBIT_LOOP_TO_LIBCALL)
 
 # Compiler supports _Complex
 picolibc_flag(__HAVE_COMPLEX)
+
+# Compiler supports __builtin_complex
+picolibc_flag(__HAVE_BUILTIN_COMPLEX)
 
 set(__HAVE_FCNTL 0)
 
@@ -231,7 +252,11 @@ if(NOT DEFINED __IO_PERCENT_N)
 endif()
 
 if(NOT DEFINED __IO_PERCENT_B)
-  option(__IO_PERCENT_B "Support %b/%B formats in printf/scanf" OFF)
+  option(__IO_PERCENT_B "Support %b/%B formats in printf/scanf" ON)
+endif()
+
+if(NOT DEFINED __IO_LENGTH_W)
+  option(__IO_LENGTH_W "Support wN and wfN lengths in printf" ON)
 endif()
 
 if(NOT DEFINED __IO_WCHAR)
@@ -242,6 +267,15 @@ if(NOT DEFINED __IO_DEFAULT)
   set(__IO_DEFAULT d)
 endif()
 
+# Directory prefix and buffer size for tmpnam()/tmpfile() names. tmpdir must be
+# empty or already end with a path separator (it is concatenated with the
+# template, no slash added); __L_tmpnam must hold tmpdir + "TXXXXXX" + NUL.
+if(DEFINED tmpdir)
+  set(__P_tmpdir ${tmpdir})
+  string(LENGTH ${tmpdir} tmpdir_len)
+  math(EXPR __L_tmpnam "${tmpdir_len} + 8")
+endif()
+
 # math library sets errno
 set(__MATH_ERRNO OFF)
 
@@ -249,15 +283,21 @@ set(_WANT_REGISTER_FINI OFF)
 
 set(__WIDE_ORIENT OFF)
 
-if(NOT DEFINED __ELIX_LEVEL)
-  set(__ELIX_LEVEL 4)
-endif()
+# Use old math code (auto chooses based on platform, as with meson)
+set(__OBSOLETE_MATH auto CACHE STRING "Use old math code (auto, true, false)")
+set(__OBSOLETE_MATH_FLOAT auto CACHE STRING "Use old math code for float funcs (auto, true, false)")
+set(__OBSOLETE_MATH_DOUBLE auto CACHE STRING "Use old math code for double funcs (auto, true, false)")
 
-# Use old math code for double funcs (0 no, 1 yes)
-set(__OBSOLETE_MATH_FLOAT ON)
-
-# Use old math code for double funcs (0 no, 1 yes)
-set(__OBSOLETE_MATH_DOUBLE ON)
+# Leave auto undefined so math_config.h chooses, otherwise define 0 or 1
+foreach(var __OBSOLETE_MATH __OBSOLETE_MATH_FLOAT __OBSOLETE_MATH_DOUBLE)
+  if("${${var}}" STREQUAL "auto")
+    set(${var}_DEFINE "/* #undef ${var} */")
+  elseif(${var})
+    set(${var}_DEFINE "#define ${var} 1")
+  else()
+    set(${var}_DEFINE "#define ${var} 0")
+  endif()
+endforeach()
 
 # Compute static memory area sizes at runtime instead of link time
 set(__PICOCRT_RUNTIME_SIZE OFF)
@@ -311,6 +351,8 @@ configure_file(picolibc.specs.in "${PROJECT_BINARY_DIR}/picolibc.specs" @ONLY)
 set(PICOLIBC_COMPILE_OPTIONS
   "-nostdlib"
   "-D_LIBC"
+  "-U_FORTIFY_SOURCE"
+  "-g"
   ${TLSMODEL}
   ${TARGET_COMPILE_OPTIONS}
   ${PICOLIBC_EXTRA_COMPILE_OPTIONS}
@@ -327,10 +369,11 @@ foreach(c_option "${PICOLIBC_COMPILE_OPTIONS}")
 endforeach()
 
 picolibc_supported_compile_options(
+  "-std=c18"
   "-fno-common"
   "-fno-stack-protector"
+  "-mstack-protector-guard=global"
   "-ffunction-sections"
-  "-fdata-sections"
   "-Wall"
   "-Wextra"
   "-Werror=implicit-function-declaration"
@@ -338,15 +381,31 @@ picolibc_supported_compile_options(
   "-Warray-bounds"
   "-Wold-style-definition"
   "-frounding-math"
+  "-ftrapping-math"
   "-fsignaling-nans"
+  "-fstrict-flex-arrays=3"
+  "-fno-builtin-copysignl"
   )
 
 add_library(c STATIC)
 
 target_compile_options(c PRIVATE ${PICOLIBC_COMPILE_OPTIONS})
 
-set(PICOLIBC_INCLUDE_DIRECTORIES
-  "${PICOLIBC_INCLUDE}")
+# Build using the source header directories, machine first so that
+# machine headers override generic ones, as with the installed headers.
+# The build directory holds the generated picolibc.h.
+set(PICOLIBC_INCLUDE_DIRECTORIES)
+set(PICOLIBC_MACHINE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libc/machine/${CMAKE_SYSTEM_PROCESSOR}")
+if(EXISTS "${PICOLIBC_MACHINE_DIR}/CMakeLists.txt")
+  list(APPEND PICOLIBC_INCLUDE_DIRECTORIES "${PICOLIBC_MACHINE_DIR}")
+  if(EXISTS "${PICOLIBC_MACHINE_DIR}/include")
+    list(APPEND PICOLIBC_INCLUDE_DIRECTORIES "${PICOLIBC_MACHINE_DIR}/include")
+  endif()
+endif()
+list(APPEND PICOLIBC_INCLUDE_DIRECTORIES
+  "${PICOLIBC_INCLUDE}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/libc/include"
+  "${CMAKE_CURRENT_SOURCE_DIR}/libos/semihost/common")
 
 target_include_directories(c SYSTEM PUBLIC ${PICOLIBC_INCLUDE_DIRECTORIES})
 

@@ -1,7 +1,7 @@
 /*
  * SPDX-License-Identifier: BSD-3-Clause
  *
- * Copyright © 2024, Synopsys Inc.
+ * Copyright © 2024-2026, MIPS Holding Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -66,7 +66,7 @@ sprintf_s(char * __restrict s, rsize_t bufsize, const char * __restrict fmt, ...
     return rc;
 
 handle_error:
-    if (__cur_handler != NULL) {
+    if (__cur_handler != 0) {
         __cur_handler(msg, NULL, -1);
     }
 

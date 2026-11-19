@@ -81,6 +81,9 @@ inc_headers = [
   'setjmp.h',
   'signal.h',
   'spawn.h',
+  'stdc-predef.h',
+  'stdbit.h',
+  'stdckdint.h',
   'stdint.h',
   'stdio.h',
   'stdio-bufio.h',
@@ -103,10 +106,14 @@ inc_headers = [
 ]
 
 if have_complex
-  inc_headers += ['complex.h']
+  inc_headers += ['complex.h', 'tgmath.h']
 endif
 
 inc_headers += ['picotls.h']
+
+if enable_libdl
+  inc_headers += ['dlfcn.h']
+endif
 
 if really_install
   install_headers(inc_headers,
@@ -121,7 +128,7 @@ endif
 
 if enable_cdefs_tests
 
-  ignore_headers = ['cpio.h', 'paths.h', 'termios.h', 'newlib.h', 'regdef.h', 'tar.h', 'utmp.h']
+  ignore_headers = ['cpio.h', 'paths.h', 'termios.h', 'newlib.h', 'regdef.h', 'tar.h', 'utmp.h', 'stdc-predef.h']
   foreach header : inc_headers
 
     if not (header in ignore_headers) and not (header.startswith('_'))

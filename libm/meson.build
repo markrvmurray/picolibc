@@ -33,7 +33,7 @@
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-libdirs = ['math', 'common', 'fenv', 'ld']
+libdirs = ['math', 'common', 'math_two', 'fenv', 'ld']
 
 if have_complex
   libdirs = libdirs + ['complex']
@@ -49,7 +49,7 @@ else
   srcs_libm_machine = []
 endif
 
-inc = [include_directories('common'), inc]
+inc = [include_directories('common'), include_directories('math_two'), inc]
 
 foreach libdir : libdirs
   subdir(libdir)
@@ -79,7 +79,7 @@ foreach params : targets
 
   if libobjs != []
     local_lib_mpart_target = static_library('mpart' + target,
-					    pic: false,
+					    pic: use_pic,
 					    objects : libobjs,
 					    include_directories: inc,
 					    c_args: target_c_args + c_args)

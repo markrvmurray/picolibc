@@ -35,6 +35,11 @@
 srcs_signal = [
     'psignal.c',
     'sig2str.c',
+    'sigaddset.c',
+    'sigdelset.c',
+    'sigemptyset.c',
+    'sigfillset.c',
+    'sigismember.c',
     'sigjmp_getsigs.c',
     'sigjmp_setsigs.c',
 ]
@@ -46,6 +51,8 @@ foreach file : srcs_signal
     message('libc/signal/' + file + ': machine overrides generic')
   elif s_file in srcs_machine
     message('libc/signal/' + s_file + ': machine overrides generic')
+  elif file in srcs_libos
+    message('libc/signal/' + file + ': libos overrides generic')
   else
     srcs_signal_use += file
   endif

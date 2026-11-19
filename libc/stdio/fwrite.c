@@ -58,19 +58,21 @@ fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
             /* Small writes go through the buffer. */
             while (bytes) {
                 int this_time = bf->size - bf->len;
-                if (this_time == 0) {
-                    int ret = __bufio_flush_locked(stream);
-                    if (ret) {
-                        stream->flags |= ret;
-                        break;
-                    }
-                }
                 if ((unsigned)this_time > bytes)
                     this_time = bytes;
                 memcpy(bf->buf + bf->len, cp, this_time);
                 bf->len += this_time;
                 cp += this_time;
                 bytes -= this_time;
+                if (bf->len >= bf->size) {
+                    int ret = __bufio_flush_locked(stream);
+                    if (ret) {
+                        /* Undo the write */
+                        cp -= this_time;
+                        stream->flags |= __SERR;
+                        break;
+                    }
+                }
             }
         } else {
             /* Large writes go direct. */
@@ -78,13 +80,15 @@ fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
                 while (bytes) {
                     ssize_t len = bufio_write(bf, cp, bytes);
                     if (len <= 0) {
-                        stream->flags |= _FDEV_ERR;
+                        stream->flags |= __SERR;
                         break;
                     }
                     bytes -= len;
                     cp += len;
                     bf->pos += len;
                 }
+            } else {
+                stream->flags |= __SERR;
             }
         }
         __bufio_unlock(stream);
@@ -93,8 +97,10 @@ fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
 #endif
     for (i = 0; i < nmemb; i++)
         for (j = 0; j < size; j++)
-            if (stream->put(*cp++, stream) < 0)
+            if (stream->put(*cp++, stream) < 0) {
+                stream->flags |= __SERR;
                 __funlock_return(stream, i);
+            }
 
     __funlock_return(stream, i);
 }

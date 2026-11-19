@@ -47,12 +47,9 @@ picolibc_sources(
   memccpy.c
   memchr.c
   memcmp.c
-  memcpy.c
   memmem.c
-  memmove.c
   mempcpy.c
   memrchr.c
-  memset.c
   memset_explicit.c
   rawmemchr.c
   rindex.c
@@ -66,7 +63,6 @@ picolibc_sources(
   strchrnul.c
   strcoll.c
   strcoll_l.c
-  strcmp.c
   strcpy.c
   strcspn.c
   strdup.c
@@ -147,3 +143,29 @@ picolibc_sources(
   strncpy_s.c
   strnlen_s.c
   )
+
+# Always optimize strcmp for performance when requested
+if(__FAST_STRCMP)
+  picolibc_sources_flags("-O3"
+    strcmp.c
+    )
+else()
+  picolibc_sources(
+    strcmp.c
+    )
+endif()
+
+# Always optimize memcpy, memmove and memset for performance when requested
+if(__FAST_MEMFUNCS)
+  picolibc_sources_flags("-O3"
+    memcpy.c
+    memmove.c
+    memset.c
+    )
+else()
+  picolibc_sources(
+    memcpy.c
+    memmove.c
+    memset.c
+    )
+endif()

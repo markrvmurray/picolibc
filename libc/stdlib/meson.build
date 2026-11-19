@@ -35,6 +35,8 @@
 malloc_srcs_stdlib = [
   'calloc.c',
   'free.c',
+  'free_aligned_sized.c',
+  'free_sized.c',
   'getpagesize.c',
   'mallinfo.c',
   'malloc.c',
@@ -59,6 +61,7 @@ srcs_stdlib = [
     'assert.c',
     'assert_func.c',
     'assert_no_arg.c',
+    'at-quick-exit.c',
     'atexit.c',
     'atof.c',
     'atoff.c',
@@ -66,7 +69,9 @@ srcs_stdlib = [
     'atol.c',
     'atoll.c',
     'btowc.c',
+    'call_once.c',
     'cxa-atexit.c',
+    'cxa-at-quick-exit.c',
     'div.c',
     'drand48.c',
     'ejtouc.c',
@@ -101,10 +106,12 @@ srcs_stdlib = [
     'mbstowcs.c',
     'mbtowc.c',
     'mbtowc_r.c',
+    'memalignment.c',
     'mrand48.c',
     'nrand48.c',
     'onexit.c',
     'putenv.c',
+    'quick-exit.c',
     'rand48.c',
     'rand.c',
     'random.c',
@@ -158,6 +165,8 @@ foreach file : srcs_stdlib
     message('libc/stdlib/' + file + ': machine overrides generic')
   elif s_file in srcs_machine
     message('libc/stdlib/' + s_file + ': machine overrides generic')
+  elif file in srcs_libos
+    message('libc/stdlib/' + file + ': libos overrides generic')
   else
     srcs_stdlib_use += file
   endif

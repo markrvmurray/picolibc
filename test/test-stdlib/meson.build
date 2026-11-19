@@ -35,10 +35,18 @@
 
 tests = [
   'test-atexit',
+  'test-bsearch',
+  'test-call-once',
   'test-double-free',
   'test-malloc',
   'test-malloc-stress',
+  'test-many-malloc',
+  'test-memalignment',
   'test-on_exit',
+  'test-quick-exit',
+  'test-qsort-r',
+  'test-qsort-r-posix',
+  'test-stdckdint',
   ]
 
 # Bug #340: test-efcvt exercises ecvt/fcvt (double->string); ecvt_r/fcvt_r
@@ -54,22 +62,41 @@ if get_option('want-libm')
   tests += ['test-rand', 'test-strtod']
 endif
 
+tests_cpp = [
+  'test-qsort-r-cplusplus'
+  ]
+
 tests_failure = [
   'test-abort',
   ]
 
 test_extra_libs = {}
 
+if enable_native_tests and oslib_test_variant == ''
+  tests += [
+    'test-call-once-threads',
+  ]
+  test_extra_libs = {
+    'test-call-once-threads' : native_lib,
+  }
+endif
+
 test_extra_c_args = {}
 
 test_args = {}
+
+# call_once holds the libc lock while running the user function, which
+# may itself use the libc lock; lock-valid.c rejects recursive locking.
+tests_no_lock_valid = [
+  'test-call-once',
+  ]
 
 foreach params : targets
   target = params['name']
   target_dir = params['dir']
   target_c_args = params['c_args']
 
-  _libs = [get_variable('lib_c' + target)]
+  _libs = [get_variable('lib_c_link' + target)]
   if is_variable(oslib_test + target)
     _libs += [get_variable(oslib_test + target)]
   endif
@@ -91,11 +118,15 @@ foreach params : targets
   _c_args = target_c_args + get_variable('test_c_args' + target, test_c_args)
   _link_args = target_c_args + _lib_files + get_variable('test_link_args' + target, test_link_args)
   _link_depends = get_variable('test_link_depends' + target, test_link_depends) + _libs
+  if have_cplusplus
+    _cpp_args = target_c_args + get_variable('test_cpp_args' + target, test_cpp_args)
+  endif
+
   foreach t1 : tests
     t1_src = t1 + '.c'
     test_file_name_arg=['-DTEST_FILE_NAME="' + t1.replace('-', '_') + target.replace('-', '_') + '.txt"']
 
-    if test_extra_libs.has_key(t1)
+    if test_extra_libs.has_key(t1) or t1 in tests_no_lock_valid
       lock_source = []
     else
       lock_source = test_lock_valid
@@ -111,7 +142,7 @@ foreach params : targets
 		    include_directories: inc),
          depends: bios_bin,
          args: test_args.get(t1, []),
-	 timeout: 60,
+	 timeout: 120,
          suite: 'test-stdlib',
 	 env: test_env)
   endforeach
@@ -143,11 +174,39 @@ foreach params : targets
          should_fail: true)
   endforeach
 
+  if have_cplusplus
+    foreach t1 : tests_cpp
+      t1_src = t1 + '.cpp'
+      test(t1 + target,
+           executable(t1 + target, t1_src,
+                      cpp_args: _cpp_args,
+                      link_args: _cpp_args + _link_args,
+                      objects: _objs,
+                      link_depends: _link_depends,
+                      include_directories: inc),
+           depends: bios_bin,
+           suite: 'test-stdlib',
+           env: test_env)
+    endforeach
+  endif
+
 endforeach
+
+# Host libc may not provide memalignment or call_once in stdlib.h yet.
+test_skip_native = [
+  'test-call-once',
+  'test-call-once-threads',
+  'test-memalignment',
+  'test-qsort-r',
+  'test-qsort-r-posix',
+]
 
 if enable_native_tests
 
   foreach t1 : tests
+    if t1 in test_skip_native
+      continue
+    endif
     t1_src = t1 + '.c'
     t1_name = t1 + '-native'
     test_file_name_arg=['-DTEST_FILE_NAME="' + t1_name.replace('-', '_') + '.txt"']

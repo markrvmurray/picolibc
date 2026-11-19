@@ -120,6 +120,10 @@ typedef __pid_t pid_t; /* process id */
 
 #endif
 
+#include <machine/_clockid.h>
+
+#ifndef __machine_clockid_values_defined
+
 #if __GNU_VISIBLE
 #define CLOCK_REALTIME_COARSE (0)
 #endif
@@ -148,7 +152,7 @@ typedef __pid_t pid_t; /* process id */
 
 #endif
 
-#if defined(_POSIX_MONOTONIC_CLOCK) || __GNU_VISIBLE
+#if defined(_POSIX_MONOTONIC_CLOCK) || __GNU_VISIBLE || __POSIX_VISIBLE >= 200112
 
 /*  The identifier for the system-wide monotonic clock, which is defined
  *  as a clock whose value cannot be set via clock_settime() and which
@@ -170,6 +174,8 @@ typedef __pid_t pid_t; /* process id */
 
 #endif
 
+#endif /* !__machine_clockid_values_defined */
+
 /* defines for the opengroup specifications Derived from Issue 1 of the SVID.  */
 #if __SVID_VISIBLE || __XSI_VISIBLE
 extern __picolibc_export long timezone;
@@ -177,16 +183,24 @@ extern __picolibc_export int  daylight;
 #endif
 
 #if __POSIX_VISIBLE
+/*
+ * The library defines tzname as const so that it stays in read-only
+ * storage; applications see the POSIX type.
+ */
+#ifdef _LIBC
 extern __picolibc_export char * const tzname[2];
+#else
+extern __picolibc_export char *tzname[2];
+#endif
 #endif /* __POSIX_VISIBLE */
 
-char *asctime(const struct tm *_tblock) __picolibc_export;
+char *asctime(const struct tm *_tblock) __deprecated_c23 __picolibc_export;
 
 #if __POSIX_VISIBLE
 #define __ASCTIME_SIZE 26
 
-char *asctime_r(const struct tm * __restrict,
-                char[__restrict_arr __min_size(__ASCTIME_SIZE)]) __picolibc_export;
+char *asctime_r(const struct tm * __restrict, char[__restrict_arr __min_size(__ASCTIME_SIZE)])
+    __picolibc_export;
 #endif
 
 clock_t clock(void) __picolibc_export;
@@ -206,7 +220,7 @@ int clock_nanosleep(clockid_t clock_id, int flags, const struct timespec *rqtp,
 int clock_settime(clockid_t clock_id, const struct timespec *tp) __picolibc_export;
 #endif
 
-char *ctime(const time_t *_time) __picolibc_export;
+char *ctime(const time_t *_time) __deprecated_c23 __picolibc_export;
 
 #if __POSIX_VISIBLE
 char *ctime_r(const time_t *, char[__restrict_arr __min_size(__ASCTIME_SIZE)]) __picolibc_export;
@@ -228,13 +242,13 @@ int getdate_r(const char *, struct tm *) __picolibc_export;
 
 struct tm *gmtime(const time_t *_timer) __picolibc_export;
 
-#if __POSIX_VISIBLE || __ZEPHYR_VISIBLE
+#if __POSIX_VISIBLE || __ZEPHYR_VISIBLE || __ISO_C_VISIBLE >= 2023
 struct tm *gmtime_r(const time_t * __restrict, struct tm * __restrict) __picolibc_export;
 #endif
 
 struct tm *localtime(const time_t *_timer) __picolibc_export;
 
-#if __POSIX_VISIBLE
+#if __POSIX_VISIBLE || __ISO_C_VISIBLE >= 2023
 struct tm *localtime_r(const time_t * __restrict, struct tm * __restrict) __picolibc_export;
 #endif
 
@@ -257,24 +271,24 @@ size_t strftime_l(char * __restrict _s, size_t              _maxsize, const char
 #endif
 
 #if __XSI_VISIBLE
-char *strptime(const char * __restrict, const char * __restrict,
-               struct tm * __restrict) __picolibc_export;
+char *strptime(const char * __restrict, const char * __restrict, struct tm * __restrict)
+    __picolibc_export;
 #endif
 #if __GNU_VISIBLE
-char *strptime_l(const char * __restrict, const char * __restrict, struct tm * __restrict,
-                 locale_t) __picolibc_export;
+char *strptime_l(const char * __restrict, const char * __restrict, struct tm * __restrict, locale_t)
+    __picolibc_export;
 #endif
 
 time_t time(time_t *_timer) __picolibc_export;
 
-#if __BSD_VISIBLE || __SVID_VISIBLE || __GNU_VISIBLE
+#if __BSD_VISIBLE || __SVID_VISIBLE || __GNU_VISIBLE || __ISO_C_VISIBLE >= 2023
 time_t timegm(struct tm *_timeptr) __picolibc_export;
 #endif
 
 #if __POSIX_VISIBLE
 struct sigevent;
-int timer_create(clockid_t clock_id, struct sigevent * __restrict evp,
-                 timer_t * __restrict timerid) __picolibc_export;
+int timer_create(clockid_t clock_id, struct sigevent * __restrict evp, timer_t * __restrict timerid)
+    __picolibc_export;
 
 int timer_delete(timer_t timerid) __picolibc_export;
 

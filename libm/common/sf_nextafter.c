@@ -16,22 +16,49 @@
 #include "fdlibm.h"
 
 float
+#if defined(NEXTUP)
+nextupf(float x)
+#elif defined(NEXTDOWN)
+nextdownf(float x)
+#else
 nextafterf(float x, float y)
+#endif
 {
-    __int32_t hx, hy, ix, iy;
+    __int32_t hx, ix;
 
     GET_FLOAT_WORD(hx, x);
-    GET_FLOAT_WORD(hy, y);
     ix = hx & 0x7fffffff; /* |x| */
+#if defined(NEXTUP)
+#define hy ((__int32_t)0x7f800000)
+#define iy ((__int32_t)0x7f800000)
+#define y  x
+#elif defined(NEXTDOWN)
+#define hy ((__int32_t)0xff800000)
+#define iy ((__int32_t)0x7f800000)
+#define y  x
+#else
+    __int32_t hy, iy;
+    GET_FLOAT_WORD(hy, y);
     iy = hy & 0x7fffffff; /* |y| */
+#define CHECK_EQUAL
+#define EXCEPT
+#endif
 
     if (FLT_UWORD_IS_NAN(ix) || FLT_UWORD_IS_NAN(iy))
-        return x + y;
+        return clang_barrier_float(x) + y;
+#ifdef CHECK_EQUAL
     if (x == y)
-        return y;                /* x=y, return y */
+        return y; /* x=y, return y */
+#else
+    /* Avoid FE_OVERFLOW when x is infinity */
+    if (hx == hy)
+        return x;
+#endif
     if (FLT_UWORD_IS_ZERO(ix)) { /* x == 0 */
         SET_FLOAT_WORD(x, (hy & 0x80000000) | FLT_UWORD_MIN);
-        force_eval_float(opt_barrier_float(x) * x);
+#ifdef EXCEPT
+        (void)opt_barrier_float(opt_barrier_float(x) * x);
+#endif
         return x;
     }
     if (hx >= 0) {     /* x > 0 */
@@ -47,13 +74,25 @@ nextafterf(float x, float y)
             hx += 1;
         }
     }
-    hy = hx & 0x7f800000;
-    if (hy > FLT_UWORD_MAX)
+#ifdef EXCEPT
+    ix = hx & 0x7f800000;
+    if (ix > FLT_UWORD_MAX)
         return check_oflowf(x + x); /* overflow  */
+#endif
     SET_FLOAT_WORD(x, hx);
-    if (hy < 0x00800000) /* underflow */
+#ifdef EXCEPT
+    if (ix < 0x00800000) /* underflow */
         return __math_denormf(x);
+#endif
     return x;
 }
 
+#undef y
+
+#if defined(NEXTUP)
+_MATH_ALIAS_f_f(nextup)
+#elif defined(NEXTDOWN)
+_MATH_ALIAS_f_f(nextdown)
+#else
 _MATH_ALIAS_f_ff(nextafter)
+#endif

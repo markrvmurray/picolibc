@@ -3,17 +3,33 @@ HERE=`dirname "$0"`
 TARGET=$1
 shift
 
-ANALYZER="-Danalyzer=true"
+if [ -d /opt/picolibc-ci ]; then
+    TOP=/opt/picolibc-ci
+else
+    TOP=/opt
+fi
 
-# Disable analyzer on m68k because the compiler gets very confused
-# about complex values
+# Use the picolibc-ci-tools meson
+if [ -d "$TOP"/meson-stable/bin ]; then
+    PATH="$TOP"/meson-stable/bin:$PATH
+fi
+
+OPTIONS=""
 
 case "$TARGET" in
     *m68k*)
-	ANALYZER=""
+	# Disable analyzer on m68k because the compiler gets very confused
+	# about complex values
+
+	OPTIONS="$OPTIONS -Danalyzer=false"
+	;;
+    *msp430*)
+
+	# Use traps with the sanitizer on msp430 as the handlers make many
+	# tests too large
+
+	OPTIONS="$OPTIONS -Dsanitize-trap-on-error=true"
 	;;
 esac
 
-OPTIONS="$ANALYZER"
-
-"$HERE"/do-run "$TARGET" $OPTIONS "$@"
+"$HERE"/do-run "$TARGET" "$@" $OPTIONS

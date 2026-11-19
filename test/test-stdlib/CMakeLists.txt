@@ -35,12 +35,19 @@
 
 set(tests
   test-atexit
+  test-bsearch
   test-efcvt
   test-malloc
   test-malloc-stress
   test-on_exit
+  test-quick-exit
+  test-qsort-r
+  test-qsort-r-posix
   test-rand
   test-strtod
+  test-memalignment
+  test-call-once
+  test-stdckdint
   )
 
 set(tests_fail

@@ -1,6 +1,7 @@
 build-essential
 cmake
 file
+git
 libgtk-3-0
 libjack0
 libpulse0
@@ -8,7 +9,7 @@ libsndio7.0
 librados2
 librbd1
 libvte-2.91-0
-meson
+python3
 ninja-build
 qemu-system-x86
 ca-certificates

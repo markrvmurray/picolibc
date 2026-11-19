@@ -35,6 +35,7 @@
 
 tests = [
   'test-argv',
+  'test-assert',
   'test-atomic',
   'test-environ',
   'test-except',
@@ -43,7 +44,9 @@ tests = [
   'test-hello',
   'test-hosted-exit',
   'test-llong',
+  'test-lseek64-linux',
   'test-lseek-overflow',
+  'test-ssize-max',
   'test-hosted-exit-fail',
   'test-ilp32',
   'test-raise',
@@ -129,10 +132,45 @@ test_extra_c_args = {
   'test-ubsan-no-flash': test_ubsan_cflags,
 }
 
+if oslib_test_variant == 'linux'
+  test_extra_c_args += {
+    'test-lseek-overflow': ['-DTESTS_LSEEK64'],
+  }
+else
+  test_extra_c_args += {
+    'test-lseek64-linux': ['-DTESTS_LSEEK64_SKIP'],
+  }
+endif
+
 test_args = {
   'test-argv': ['--args', 'hello world'],
   'test-argv-no-flash': ['--args', 'hello world'],
 }
+
+if host_cpu_family == 'aarch64' and test_machine == 'fvp'
+  check_aarch64_fvp_page_table = find_program('check-aarch64-fvp-page-table.py')
+endif
+
+# C23 deprecates asctime and ctime but earlier versions of C don't:
+# check that time.h only marks them deprecated when compiling as C23.
+# Each check needs a compiler that supports the language version.
+check_deprecated = find_program(meson.project_source_root() / 'scripts' / 'check-deprecated')
+time_deprecated_src = meson.current_source_dir() / 'test-time-deprecated.c'
+time_deprecated_cmd = cc.cmd_array() + c_args + inc_args
+
+if cc.has_argument('-std=c17')
+  test('test-time-deprecated-c17',
+       check_deprecated,
+       args: ['not-deprecated', time_deprecated_src] + time_deprecated_cmd + ['-std=c17'],
+       suite: 'headers')
+endif
+
+if cc.has_argument('-std=c23') and cc.has_function_attribute('deprecated')
+  test('test-time-deprecated-c23',
+       check_deprecated,
+       args: ['deprecated', time_deprecated_src] + time_deprecated_cmd + ['-std=c23'],
+       suite: 'headers')
+endif
 
 test_skip_native = [
   'test-stack-smash',
@@ -153,7 +191,7 @@ foreach params : targets
   target_dir = params['dir']
   target_c_args = params['c_args']
 
-  _libs = [get_variable('lib_c' + target)]
+  _libs = [get_variable('lib_c_link' + target)]
   if is_variable(oslib_test + target)
     _libs += [get_variable(oslib_test + target)]
   endif
@@ -177,6 +215,25 @@ foreach params : targets
   _link_depends = get_variable('test_link_depends' + target, test_link_depends) + _libs
   if have_cplusplus
     _cpp_args = target_c_args + get_variable('test_cpp_args' + target, test_cpp_args)
+  endif
+
+  target_arch_profile = ''
+  if host_cpu_family == 'aarch64' and test_machine == 'fvp' and crt0_test_variant == 'semihost'
+    target_arch_profile = cc.get_define('__ARM_ARCH_PROFILE', args: _c_args)
+  endif
+  if host_cpu_family == 'aarch64' and test_machine == 'fvp' and crt0_test_variant == 'semihost' and target_arch_profile == '\'A\''
+    t1 = 'test-crt0-page-table'
+    t1_exe = executable(t1 + target, t1 + '.c',
+                        c_args: _c_args,
+                        link_args: _link_args,
+                        objects: _objs,
+                        link_depends: _link_depends,
+                        include_directories: inc)
+    test(t1 + target,
+         check_aarch64_fvp_page_table,
+         args: ['--cc', cc.cmd_array()[0], t1_exe],
+         depends: t1_exe,
+         suite: 'test')
   endif
 
   if test_noflash
@@ -230,9 +287,9 @@ foreach params : targets
 
   if is_variable('lib_semihost_raw' + target) and test_machine == 'qemu'
 
-    _libs_raw = [get_variable('lib_c' + target)]
+    _libs_raw = [get_variable('lib_c_link' + target)]
     _libs_raw += [get_variable('lib_semihost_raw' + target)]
-    
+
     _lib_raw_files=[]
     foreach _lib_raw : _libs_raw
       _lib_raw_files += _lib_raw.full_path()
@@ -287,6 +344,19 @@ foreach params : targets
   endif
 
   if have_cplusplus
+    t1 = 'test-inttypes-cplusplus'
+    t1_src = t1 + '.cpp'
+    test(t1 + target,
+         executable(t1 + target, t1_src,
+                    cpp_args: _cpp_args,
+		    link_args: _cpp_args + _link_args,
+		    objects: _objs,
+		    link_depends: _link_depends,
+                    include_directories: inc),
+         depends: bios_bin,
+         suite: 'test',
+         env: test_env)
+
     t1 = 'test-cplusplus'
     t1_src = t1 + '.cpp'
     test(t1 + target,
@@ -427,11 +497,16 @@ subdir('test-posix')
 subdir('test-math')
 subdir('test-string')
 subdir('test-monetary')
+subdir('test-stdbit')
 subdir('test-stdio')
 subdir('test-stdlib')
 subdir('testsuite')
 subdir('test-mc6809-dp')
 subdir('test-mc6809-fp')
+
+if enable_libdl
+  subdir('test-libdl')
+endif
 
 if has_arm_semihost and oslib_test_variant == 'semihost'
   subdir('semihost')

@@ -1,15 +1,42 @@
 #!/bin/sh
+ME="$0"
 TARGET=$1
 DIR=build-"$TARGET"
+case "$ME" in
+    "$DIR"*)
+	;;
+    *)
+	if mkdir "$DIR"; then
+	    :
+	else
+	    echo '##################################'
+	    echo '############# mkdir' "$DIR" 'failed'
+	    echo '##################################'
+	    exit 1
+	fi
+	BASE="$(basename "$ME")"
+	cp "$ME" "$DIR"/"$BASE"
+	exec "$DIR"/"$BASE" "$@"
+	;;
+esac
 CONFIGURE=do-"$TARGET"-configure
 shift
+git config --global --add safe.directory /picolibc
 
-(mkdir "$DIR" || exit 1
- cd "$DIR" || exit 2
- echo '##################################################'
- echo '##########' ../scripts/"$CONFIGURE" -Dwerror=true -Ddebug=false "$@"
- echo '##################################################'
+INC_OK=""
+if [ -n "$BEFORE_SHA" -a -n "$AFTER_SHA" ]; then
+    echo '##########' git diff --quiet "$BEFORE_SHA".."$AFTER_SHA" -- .github scripts
+    if git diff --quiet "$BEFORE_SHA".."$AFTER_SHA" -- .github scripts; then
+	INC_OK="y"
+	echo 'No changes in .github or scripts. Enable incremental tests.'
+    else
+	echo 'Changes in .github or scripts. Running all tests.'
+    fi
+fi
+
+(cd "$DIR" || exit 2
  date
+ echo '##########' ../scripts/"$CONFIGURE" -Dwerror=true -Ddebug=false "$@"
  ../scripts/"$CONFIGURE" -Dwerror=true -Ddebug=false "$@" > config.log 2>&1
  case $? in
      0)
@@ -23,15 +50,67 @@ shift
 	 exit 3
 	 ;;
  esac
- echo '##########' "$TARGET" 'ninja'
+ INC_TESTS=""
+ if [ -n "$INC_OK" ]; then
+     date
+     echo '##########' git checkout $BEFORE_SHA
+     git checkout $BEFORE_SHA > checkout-before.log 2>&1
+     case $? in
+	 0)
+	     echo 'Checkout before succeeded'
+	     INC_TESTS=yes
+	     ;;
+	 *)
+	     cat checkout-before.log
+	     echo 'Checkout before failed'
+	     if git checkout "$AFTER_SHA" > checkout-restore.log 2>&1; then
+		 :
+	     else
+		 cat checkout-restore.log
+		 exit 2
+	     fi
+	     ;;
+     esac
+ fi
+ if [ -n "$INC_TESTS" ]; then
+     date
+     echo '########## incremental' "$TARGET" 'ninja'
+     ninja > incremental.log 2>&1
+     case $? in
+	 0)
+	     date
+	     echo '########## incremental' "$TARGET" "meson test --hash-record"
+	     meson test --hash-record > capture.log 2>&1 || exit 5
+	     ;;
+	 *)
+	     echo '##########' incremental build failed
+	     cat incremental.log
+	     INC_TESTS=""
+	     ;;
+     esac
+     date
+     echo '########## incremental' "$TARGET" "git checkout $AFTER_SHA"
+     if git checkout "$AFTER_SHA" > checkout-after.log 2>&1; then
+	 :
+     else
+	 cat checkout-after.log
+	 echo git checkout $AFTER_SHA failed
+	 exit 5
+     fi
+ fi
  date
- ninja > ninja.log 2>&1 || exit 4
- echo 'Build succeeded'
- echo '##########' "$TARGET" 'meson test -t 20'
+ echo '##########' "$TARGET" ninja
+ ninja > ninja.log 2>&1 || exit 6
+ TEST_ARGS="-t 20"
+ if [ -n "$INC_TESTS" ]; then
+     TEST_ARGS="--hash-changed $TEST_ARGS"
+ fi
  date
- meson test -t 20 > test.log 2>&1 || exit 5
+ echo '##########' "$TARGET" "meson test $TEST_ARGS"
+ meson test $TEST_ARGS > test.log 2>&1 || exit 7
+ date
  echo 'Test succeeded'
- date)
+)
 case $? in
     0)
 	rm -rf "$DIR"
@@ -44,7 +123,7 @@ case $? in
 	;;
     2)
 	echo '##################################'
-	echo '############# cd' "$DIR" 'failed'
+	echo '############# setup' "$DIR" 'failed'
 	echo '##################################'
 	exit 1
 	;;
@@ -63,6 +142,24 @@ case $? in
 	;;
     4)
 	echo '##################################'
+	echo '############# Incremental Build failed'
+	echo '##################################'
+	echo 'incremental.log'
+	echo '##################################'
+	cat "$DIR"/incremental.log
+	exit 1
+	;;
+    5)
+	echo '##################################'
+	echo '############# Incremental hash record failed'
+	echo '##################################'
+	echo 'capture.log'
+	echo '##################################'
+	cat "$DIR"/capture.log
+	exit 1
+	;;
+    6)
+	echo '##################################'
 	echo '############# Build failed'
 	echo '##################################'
 	echo 'ninja.log'
@@ -70,7 +167,7 @@ case $? in
 	cat "$DIR"/ninja.log
 	exit 1
 	;;
-    5)
+    7)
 	echo '##################################'
 	echo '############# Test failed'
 	echo '##################################'

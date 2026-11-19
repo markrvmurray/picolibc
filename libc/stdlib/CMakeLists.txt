@@ -48,6 +48,7 @@ picolibc_sources(
   atol.c
   atoll.c
   btowc.c
+  call_once.c
   div.c
   drand48.c
   ejtouc.c
@@ -80,6 +81,7 @@ picolibc_sources(
   mbstowcs.c
   mbtowc.c
   mbtowc_r.c
+  memalignment.c
   mrand48.c
   nrand48.c
   putenv.c
@@ -115,6 +117,9 @@ picolibc_sources(
   exitprocs.c
   onexit.c
   cxa-atexit.c
+  at-quick-exit.c
+  quick-exit.c
+  cxa-at-quick-exit.c
   set_constraint_handler_s.c
   ignore_handler_s.c
   )
@@ -123,9 +128,12 @@ if(ENABLE_MALLOC)
   picolibc_sources(
     calloc.c
     free.c
+    free_aligned_sized.c
+    free_sized.c
     getpagesize.c
     mallinfo.c
     malloc.c
+    malloc-error.c
     malloc-stats.c
     malloc-usable-size.c
     mallopt.c

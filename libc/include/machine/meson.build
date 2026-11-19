@@ -34,6 +34,7 @@
 #
 inc_machine_headers_all = [
   'ansi.h',
+  '_clockid.h',
   '_default_types.h',
   '_endian.h',
   'endian.h',
@@ -47,6 +48,7 @@ inc_machine_headers_all = [
   'setjmp.h',
   'stdlib.h',
   'termios.h',
+  '_sched.h',
   '_time.h',
   'time.h',
   '_types.h',

@@ -1,3 +1,4 @@
+/* Unicode Version 17.0.0 */
   {0x0041, 25, TOLO, 32},
   {0x0061, 25, TOUP, -32},
   {0x00B5, 0, TOUP, 743},
@@ -303,9 +304,7 @@
   {0xA7C6, 0, TOLO, -35384},
   {0xA7C7, 3, TO1, ODDCAP},
   {0xA7CB, 0, TOLO, -42343},
-  {0xA7CC, 1, TO1, EVENCAP},
-  {0xA7D0, 1, TO1, EVENCAP},
-  {0xA7D6, 5, TO1, EVENCAP},
+  {0xA7CC, 15, TO1, EVENCAP},
   {0xA7DC, 0, TOLO, -42561},
   {0xA7F5, 1, TO1, ODDCAP},
   {0xAB53, 0, TOUP, -928},
@@ -332,5 +331,7 @@
   {0x118C0, 31, TOUP, -32},
   {0x16E40, 31, TOLO, 32},
   {0x16E60, 31, TOUP, -32},
+  {0x16EA0, 24, TOLO, 27},
+  {0x16EBB, 24, TOUP, -27},
   {0x1E900, 33, TOLO, 34},
   {0x1E922, 33, TOUP, -34},

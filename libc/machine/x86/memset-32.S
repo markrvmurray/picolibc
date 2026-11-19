@@ -34,7 +34,7 @@ SYM (memset):
 	movl 16(ebp),ecx
 	cld
 
-#ifndef __OPTIMIZE_SIZE__
+#if !defined(__OPTIMIZE_SIZE__) || defined(__FAST_MEMFUNCS)
 /* Less than 16 bytes won't benefit from the 'rep stosl' loop.  */
 	cmpl $16,ecx
 	jbe .L19
@@ -110,6 +110,6 @@ SYM (memset):
 #endif
 	ret
 
-#if defined(__linux__) && defined(__ELF__)
+#if defined(__ELF__)
 .section .note.GNU-stack,"",%progbits
 #endif

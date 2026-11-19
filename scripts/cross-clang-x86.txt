@@ -20,6 +20,9 @@ endian='little'
 [properties]
 skip_sanity_check = true
 needs_exe_wrapper = true
+c_link_args = ['-L/usr/lib/llvm-21/lib/clang/21/lib/linux','-L/usr/lib/llvm-22/lib/clang/22/lib/linux','-L/usr/lib/llvm-23/lib/clang/23/lib/linux']
+cpp_link_args = ['-L/usr/lib/llvm-21/lib/clang/21/lib/linux','-L/usr/lib/llvm-22/lib/clang/22/lib/linux','-L/usr/lib/llvm-23/lib/clang/23/lib/linux']
+librt='-lclang_rt.builtins-i386'
 link_spec = '--build-id=none'
 default_flash_addr = '0x00100000'
 default_flash_size = '0x00400000'

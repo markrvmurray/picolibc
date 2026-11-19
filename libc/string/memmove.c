@@ -56,7 +56,7 @@ QUICKREF
 void * __no_builtin
 memmove(void *dst_void, const void *src_void, size_t length)
 {
-#if defined(__PREFER_SIZE_OVER_SPEED) || defined(__OPTIMIZE_SIZE__)
+#if (defined(__PREFER_SIZE_OVER_SPEED) || defined(__OPTIMIZE_SIZE__)) && !defined(__FAST_MEMFUNCS)
     char       *dst = dst_void;
     const char *src = src_void;
 
@@ -64,12 +64,16 @@ memmove(void *dst_void, const void *src_void, size_t length)
         /* Have to copy backwards */
         src += length;
         dst += length;
-        while (length--) {
-            *--dst = *--src;
+        if (length) {
+            do {
+                *--dst = *--src;
+            } while (--length);
         }
     } else {
-        while (length--) {
-            *dst++ = *src++;
+        if (length) {
+            do {
+                *dst++ = *src++;
+            } while (--length);
         }
     }
 
@@ -100,8 +104,10 @@ memmove(void *dst_void, const void *src_void, size_t length)
             src = (char *)aligned_src;
         }
 
-        while (length--) {
-            *--dst = *--src;
+        if (length) {
+            do {
+                *--dst = *--src;
+            } while (--length);
         }
     } else {
         /* Use optimizing algorithm for a non-destructive copy to closely
@@ -131,8 +137,10 @@ memmove(void *dst_void, const void *src_void, size_t length)
             src = (char *)aligned_src;
         }
 
-        while (length--) {
-            *dst++ = *src++;
+        if (length) {
+            do {
+                *dst++ = *src++;
+            } while (--length);
         }
     }
 

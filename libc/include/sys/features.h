@@ -25,6 +25,10 @@
 extern "C" {
 #endif
 
+#if __STDC_HOSTED__
+#include <stdc-predef.h>
+#endif
+
 #include <picolibc.h>
 
 /* Macro to test version of GCC.  Returns 0 for non-GCC or too old GCC. */
@@ -81,6 +85,9 @@ extern "C" {
  *
  * _XOPEN_SOURCE >= 700
  *	SUSv4 (POSIX.1-2008 plus XSI)
+ *
+ * _XOPEN_SOURCE >= 800
+ *	SUSv5 (POSIX.1-2024 plus XSI)
  *
  * _ISOC99_SOURCE or gcc -std=c99 or g++
  *	ISO C99
@@ -172,7 +179,9 @@ extern "C" {
 #if !defined(_POSIX_SOURCE) && !defined(_POSIX_C_SOURCE)                                     \
     && ((!defined(__STRICT_ANSI__) && !defined(_ANSI_SOURCE)) || (_XOPEN_SOURCE - 0) >= 500)
 #define _POSIX_SOURCE 1
-#if !defined(_XOPEN_SOURCE) || (_XOPEN_SOURCE - 0) >= 700
+#if (_XOPEN_SOURCE - 0) >= 800
+#define _POSIX_C_SOURCE 202405L
+#elif !defined(_XOPEN_SOURCE) || (_XOPEN_SOURCE - 0) >= 700
 #define _POSIX_C_SOURCE 200809L
 #elif (_XOPEN_SOURCE - 0) >= 600
 #define _POSIX_C_SOURCE 200112L
@@ -229,7 +238,7 @@ extern "C" {
  *
  * __POSIX_VISIBLE >= 202405
  *	POSIX.1-2024; enabled by default, with _POSIX_C_SOURCE >= 202405L,
- *	or _XOPEN_SOURCE >= 700.
+ *	or _XOPEN_SOURCE >= 800.
  *
  * __XSI_VISIBLE
  *	XPG4 XSI extensions; enabled with any version of _XOPEN_SOURCE.
@@ -247,6 +256,9 @@ extern "C" {
  * __XSI_VISIBLE >= 700
  *	SUSv4 XSI extensions; enabled with _XOPEN_SOURCE >= 700.
  *
+ * __XSI_VISIBLE >= 800
+ *	SUSv5 XSI extensions; enabled with _XOPEN_SOURCE >= 800.
+ *
  * __ISO_C_VISIBLE >= 1999
  *	ISO C99; enabled with gcc -std=c99 or newer (on by default since GCC 5),
  *	any version of C++, or with _ISOC99_SOURCE, _POSIX_C_SOURCE >= 200112L,
@@ -257,7 +269,7 @@ extern "C" {
  *	g++ -std=c++11 or newer (on by default since GCC 6), or with
  *	_ISOC11_SOURCE.
  *
- * __ISO_C_VISIBLE >= 2020
+ * __ISO_C_VISIBLE >= 2023
  *	ISO C23; enabled with gcc -std=c23 or newer,
  *	g++ -std=c++20 or newer, or with
  *	_ISOC23_SOURCE or _ISOC2x_SOURCE.
@@ -370,7 +382,9 @@ extern "C" {
 #define __SVID_VISIBLE 0
 #endif
 
-#if (_XOPEN_SOURCE - 0) >= 700
+#if (_XOPEN_SOURCE - 0) >= 800
+#define __XSI_VISIBLE 800
+#elif (_XOPEN_SOURCE - 0) >= 700
 #define __XSI_VISIBLE 700
 #elif (_XOPEN_SOURCE - 0) >= 600
 #define __XSI_VISIBLE 600

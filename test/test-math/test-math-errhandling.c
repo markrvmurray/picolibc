@@ -75,7 +75,7 @@ opt_barrier_double(double x)
     return y;
 }
 
-#if __SIZEOF_LONG_DOUBLE__ > 0
+#if __SIZEOF_LONG_DOUBLE__ > 0 && defined(_TEST_LONG_DOUBLE)
 static ALWAYS_INLINE long double
 opt_barrier_long_double(long double x)
 {
@@ -195,7 +195,12 @@ e_to_str(int e)
 #define SKIP_SNAN_CHECKS
 #endif
 
-#if defined(__m68k__) && !defined(__mcoldfire__) && !defined(__HAVE_M68881__)
+#ifdef __RX__
+/* GCC hangs when building these tests? */
+#undef _TEST_LONG_DOUBLE
+#endif
+
+#if defined(__m68k__) && !defined(__mcoldfire__) && !defined(__HAVE_68881__)
 #undef _TEST_LONG_DOUBLE
 #define NO_NEXTTOWARD
 #endif

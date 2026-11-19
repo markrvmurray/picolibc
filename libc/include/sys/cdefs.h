@@ -75,11 +75,17 @@
 #ifndef __has_attribute
 #define __has_attribute(x) 0
 #endif
+#ifndef __has_c_attribute
+#define __has_c_attribute(x) 0
+#endif
 #ifndef __has_feature
 #define __has_feature(x) 0
 #endif
 #ifndef __has_builtin
 #define __has_builtin(x) 0
+#endif
+#ifndef __has_extension
+#define __has_extension(x) 0
 #endif
 
 /*
@@ -89,7 +95,12 @@
  * can be safely replaced with nothing when not supported
  */
 
-#if __has_attribute(__visibility__)
+#if __has_attribute(__visibility__) && defined(__PICOLIBC_EXPORT)
+/* Define __PICOLIBC_EXPORT to force public picolibc symbols to have default (exported) visibility
+ * even when picolibc is built with a more limited default visibility.
+ * This is useful when building picolibc as part of a library while remaining callable
+ * from outside that library.
+ */
 #define __picolibc_export __attribute__((__visibility__("default")))
 #else
 #define __picolibc_export
@@ -253,6 +264,13 @@
 #define __deprecated
 #endif
 
+/* For interfaces that C23 deprecates but earlier versions of C don't */
+#if (__STDC_VERSION__ - 0) > 201710L
+#define __deprecated_c23 __deprecated
+#else
+#define __deprecated_c23
+#endif
+
 #if __has_attribute(__no_builtin__)
 #define __no_builtin __attribute__((__no_builtin__))
 #elif defined(__HAVE_CC_INHIBIT_LOOP_TO_LIBCALL)
@@ -376,36 +394,67 @@
 #if __has_builtin(__builtin_isnanl)
 #define __HAVE_BUILTIN_ISNANL 1
 #endif
-#if __has_builtin(__builtin_issignalingl)
-#define __HAVE_BUILTIN_ISSIGNALINGL 1
+#if __has_builtin(__builtin_issignaling)
+#define __HAVE_BUILTIN_ISSIGNALING 1
 #endif
 #if __has_builtin(__builtin_mul_overflow)
 #define __HAVE_BUILTIN_MUL_OVERFLOW 1
 #endif
+#if __has_builtin(__builtin_stdc_bit_width)
+#define __HAVE_BUILTIN_STDC_BIT_WIDTH 1
+#endif
+#if __has_builtin(__builtin_constant_p)
+#define __HAVE_BUILTIN_CONSTANT_P 1
+#endif
+#if __has_builtin(__builtin_align_up)
+#define __HAVE_BUILTIN_ALIGN_UP 1
+#endif
+#if __has_builtin(__builtin_align_down)
+#define __HAVE_BUILTIN_ALIGN_DOWN 1
+#endif
+#if __has_builtin(__builtin_is_aligned)
+#define __HAVE_BUILTIN_IS_ALIGNED 1
+#endif
+#if __has_builtin(__builtin_expect)
+#define __HAVE_BUILTIN_EXPECT 1
+#endif
+#if __has_builtin(__builtin_unreachable)
+#define __HAVE_BUILTIN_UNREACHABLE 1
+#endif
 
-#if !__has_builtin(__builtin_expect)
+/*
+ * Provide some optimizing builtins; these don't affect the sematics
+ * of the generated code, they just guide optimization.
+ */
+#if !__HAVE_BUILTIN_EXPECT
 #define __builtin_expect(cond, exp) (cond)
 #endif
-#if !__has_builtin(__builtin_unreachable)
+
+#if !__HAVE_BUILTIN_UNREACHABLE
 #define __builtin_unreachable()
 #endif
 
 /* Alignment builtins for better type checking and improved code generation. */
 /* Provide fallback versions for other compilers (GCC/Clang < 10): */
-#if !__has_builtin(__builtin_is_aligned)
-#define __builtin_is_aligned(x, align) (((__uintptr_t)x & ((align) - 1)) == 0)
-#endif
-#if !__has_builtin(__builtin_align_up)
-#define __builtin_align_up(x, align)                                         \
+
+#if __HAVE_BUILTIN_ALIGN_UP
+#define __align_up(x, y) __builtin_align_up(x, y)
+#else
+#define __align_up(x, align)                                                 \
     ((__typeof__(x))(((__uintptr_t)(x) + ((align) - 1)) & (~((align) - 1))))
 #endif
-#if !__has_builtin(__builtin_align_down)
-#define __builtin_align_down(x, align) ((__typeof__(x))((x) & (~((align) - 1))))
+
+#if __HAVE_BUILTIN_ALIGN_DOWN
+#define __align_down(x, y) __builtin_align_down(x, y)
+#else
+#define __align_down(x, align) ((__typeof__(x))((x) & (~((align) - 1))))
 #endif
 
-#define __align_up(x, y)   __builtin_align_up(x, y)
-#define __align_down(x, y) __builtin_align_down(x, y)
+#if __HAVE_BUILTIN_IS_ALIGNED
 #define __is_aligned(x, y) __builtin_is_aligned(x, y)
+#else
+#define __is_aligned(x, align) (((__uintptr_t)x & ((align) - 1)) == 0)
+#endif
 
 #ifdef __HAVE_BUILTIN_ADD_OVERFLOW
 #define __picolibc_add_overflow(a, b, c) __builtin_add_overflow(a, b, c)
@@ -605,6 +654,15 @@
 #define __rangeof(type, start, end) (__offsetof(type, end) - __offsetof(type, start))
 
 /*
+ * Construct const-qualifier preserving macros for various functions
+ */
+#if __STDC_VERSION__ >= 201112L                                           \
+    && (__ISO_C_VISIBLE >= 2023 || defined(_LIBC) || defined(_TEST_LIBC))
+#define __preserve_const(_t, _f, _s, _a)                                            \
+    _Generic(1 ? (_s) : (void *)1, const void *: (const _t)(_f)_a, default: (_f)_a)
+#endif
+
+/*
  * Given the pointer x to the member m of the struct s, return
  * a pointer to the containing structure.  When using GCC, we first
  * assign pointer x to a local variable, to check that its type is
@@ -682,6 +740,19 @@
 #define __fallthrough \
     do {              \
     } while (0)
+#endif
+
+/*
+ * Functions with no side effects whose results depend only on their
+ * arguments
+ */
+#if __STDC_VERSION__ > 201710L && __has_c_attribute(__unsequenced__)
+/* Standard C23 attribute */
+#define __unsequenced [[__unsequenced__]]
+#elif __has_attribute(__unsequenced__)
+#define __unsequenced __attribute__((__unsequenced__))
+#else
+#define __unsequenced
 #endif
 
 /*  The traditional meaning of 'extern inline' for GCC is not

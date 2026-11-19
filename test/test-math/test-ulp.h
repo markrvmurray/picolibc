@@ -39,125 +39,175 @@ static TEST_CONST math_ulps_t math_ulps[] = {
 #ifdef __PICOLIBC__
 
     /* Trig functions */
-    { .name = "acos",       .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "acos",          .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
     /* Same class as atan and the log family below: -Ofast contracts drift
      * the binary64 paths of acosh (1 vector) and asinh (4) by one ULP.
      * -Ofast is where the looser semantics were asked for, so allow it --
      * and keep measuring, rather than marking the tests expected to fail. */
 #ifdef __FAST_MATH__
-    { .name = "acosh",      .b32 = 2,       .b64 = 2,       .b80 = 2,       .b128 = 1       },
+    { .name = "acosh",         .b32 = 2,       .b64 = 2,       .b80 = 2,       .b128 = 1       },
 #else
-    { .name = "acosh",      .b32 = 2,       .b64 = 1,       .b80 = 2,       .b128 = 1       },
+    { .name = "acosh",         .b32 = 2,       .b64 = 1,       .b80 = 2,       .b128 = 1       },
 #endif
-    { .name = "asin",       .b32 = 1,       .b64 = 0,       .b80 = 0,       .b128 = 1       },
+    { .name = "acospi",        .b32 = 2,       .b64 = 2,       .b80 = 2,       .b128 = 2       },
+    { .name = "asin",          .b32 = 1,       .b64 = 0,       .b80 = 0,       .b128 = 1       },
 #ifdef __FAST_MATH__
-    { .name = "asinh",      .b32 = 2,       .b64 = 2,       .b80 = 1,       .b128 = 1       },
+    { .name = "asinh",         .b32 = 2,       .b64 = 2,       .b80 = 1,       .b128 = 1       },
 #else
-    { .name = "asinh",      .b32 = 2,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "asinh",         .b32 = 2,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
 #endif
+    { .name = "asinpi",        .b32 = 2,       .b64 = 2,       .b80 = 2,       .b128 = 2       },
     /* Bug #372 (same __FAST_MATH__ class as Bug #253): -Ofast contracts
      * cause +1 ULP drift in fdlibm atan's binary64 path (4 vectors). The
      * user opts into looser semantics with -Ofast, so allow the extra ULP. */
 #ifdef __FAST_MATH__
-    { .name = "atan",       .b32 = 1,       .b64 = 1,       .b80 = 0,       .b128 = 1       },
+    { .name = "atan",          .b32 = 1,       .b64 = 1,       .b80 = 0,       .b128 = 1       },
 #else
-    { .name = "atan",       .b32 = 1,       .b64 = 0,       .b80 = 0,       .b128 = 1       },
+    { .name = "atan",          .b32 = 1,       .b64 = 0,       .b80 = 0,       .b128 = 1       },
 #endif
-    { .name = "atan2",      .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
-    { .name = "atanh",      .b32 = 2,       .b64 = 1,       .b80 = 7,       .b128 = 1       },
-    { .name = "cos",        .b32 = 3,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
-    { .name = "sincos_cos", .b32 = 3,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
-    { .name = "cosh",       .b32 = 3,       .b64 = 0,       .b80 = 1,       .b128 = 1       },
-    { .name = "sin",        .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
-    { .name = "sincos_sin", .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
-    { .name = "sinh",       .b32 = 3,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
-    { .name = "tan",        .b32 = 3,       .b64 = 1,       .b80 = 0,       .b128 = 1       },
-    { .name = "tanh",       .b32 = 2,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "atan2",         .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "atanh",         .b32 = 2,       .b64 = 1,       .b80 = 7,       .b128 = 1       },
+    { .name = "atanpi",        .b32 = 2,       .b64 = 2,       .b80 = 2,       .b128 = 2       },
+    { .name = "atan2pi",       .b32 = 2,       .b64 = 2,       .b80 = 2,       .b128 = 2       },
+    { .name = "cos",           .b32 = 3,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "sincos_cos",    .b32 = 3,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "cosh",          .b32 = 3,       .b64 = 0,       .b80 = 1,       .b128 = 1       },
+    { .name = "cospi",         .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "sin",           .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "sincos_sin",    .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "sinh",          .b32 = 3,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "sinpi",         .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "tan",           .b32 = 3,       .b64 = 1,       .b80 = 0,       .b128 = 1       },
+    { .name = "tanh",          .b32 = 2,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "tanpi",         .b32 = 3,       .b64 = 1,       .b80 = 0,       .b128 = 1       },
 
     /* Exp/log functions */
-    { .name = "exp",        .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "compoundn",     .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "exp",           .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
 #if defined(__arm__) && (__ARM_FP & 0x8) == 0
-    { .name = "exp10",      .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "exp10",         .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
 #else
     { .name = "exp10", .b32 = 1, .b64 = 0, .b80 = 1, .b128 = 1 },
 #endif
-    { .name = "exp2",       .b32 = 1,       .b64 = 1,       .b80 = 2,       .b128 = 0       },
-    { .name = "expm1",      .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
-    { .name = "log10",      .b32 = 2,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "exp2",          .b32 = 1,       .b64 = 1,       .b80 = 2,       .b128 = 0       },
+    { .name = "expm1",         .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "exp10m1",       .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "exp2m1",        .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "log10",         .b32 = 2,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
     /* Bug #253: -Ofast (-ffast-math) enables fast-math contracts that
      * cause +1 ULP drift in the fdlibm log family. The user opts in to
      * looser semantics with -Ofast, so bump the tolerance accordingly
-     * for log / log1p / log2 (b32 + b64 each gain 1 ULP). */
+     * for log / logp1 / log2 (b32 + b64 each gain 1 ULP). */
 #ifdef __FAST_MATH__
-    { .name = "log1p",      .b32 = 2,       .b64 = 2,       .b80 = 2,       .b128 = 1       },
-    { .name = "log2",       .b32 = 3,       .b64 = 2,       .b80 = 1,       .b128 = 1       },
-    { .name = "log",        .b32 = 2,       .b64 = 1,       .b80 = 0,       .b128 = 1       },
+    { .name = "logp1",         .b32 = 2,       .b64 = 2,       .b80 = 2,       .b128 = 1       },
 #else
-    { .name = "log1p",      .b32 = 1,       .b64 = 1,       .b80 = 2,       .b128 = 1       },
-    { .name = "log2",       .b32 = 2,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
-    { .name = "log",        .b32 = 1,       .b64 = 0,       .b80 = 0,       .b128 = 1       },
+    { .name = "logp1",         .b32 = 1,       .b64 = 1,       .b80 = 2,       .b128 = 1       },
 #endif
-    { .name = "pow",        .b32 = 1,       .b64 = 1,       .b80 = 6107,    .b128 = 1       },
+    { .name = "log10p1",       .b32 = 2,       .b64 = 2,       .b80 = 2,       .b128 = 2       },
+    { .name = "log2p1",        .b32 = 2,       .b64 = 2,       .b80 = 2,       .b128 = 2       },
+#ifdef __FAST_MATH__
+    { .name = "log2",          .b32 = 3,       .b64 = 2,       .b80 = 1,       .b128 = 1       },
+#else
+    { .name = "log2",          .b32 = 2,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+#endif
+#ifdef __FAST_MATH__
+    { .name = "log",           .b32 = 2,       .b64 = 1,       .b80 = 0,       .b128 = 1       },
+#else
+    { .name = "log",           .b32 = 1,       .b64 = 0,       .b80 = 0,       .b128 = 1       },
+#endif
+    { .name = "pow",           .b32 = 1,       .b64 = 1,       .b80 = 6107,    .b128 = 1       },
+    { .name = "pown",          .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "powr",          .b32 = 1,       .b64 = 1,       .b80 = 6107,    .b128 = 1       },
+    { .name = "rootn",         .b32 = 1,       .b64 = 2,       .b80 = 3,       .b128 = 2       },
+
+    /* Narrowing functions */
+    { .name = "dadd",          .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "dsub",          .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "dmul",          .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "ddiv",          .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "dfma",          .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "dsqrt",         .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "fadd",          .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "fsub",          .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "fmul",          .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "fdiv",          .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "ffma",          .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "fsqrt",         .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
 
     /* Misc functions */
-    { .name = "cbrt",       .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
-    { .name = "ceil",       .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
-    { .name = "erf",        .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
-    { .name = "erfc",       .b32 = 3,       .b64 = 1,       .b80 = 2,       .b128 = 2       },
-    { .name = "floor",      .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
-    { .name = "hypot",      .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
-    { .name = "j0",         .b32 = MAX_ULP, .b64 = 42,      .b80 = 0,       .b128 = 0       },
-    { .name = "j1",         .b32 = MAX_ULP, .b64 = 1,       .b80 = 0,       .b128 = 0       },
-    { .name = "jn",         .b32 = 3,       .b64 = 3,       .b80 = 0,       .b128 = 0       },
-    { .name = "y0",         .b32 = MAX_ULP, .b64 = 0,       .b80 = 0,       .b128 = 0       },
-    { .name = "y1",         .b32 = MAX_ULP, .b64 = 0,       .b80 = 0,       .b128 = 0       },
-    { .name = "yn",         .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
-    { .name = "lgamma",     .b32 = MAX_ULP, .b64 = MAX_ULP, .b80 = MAX_ULP, .b128 = MAX_ULP },
-    { .name = "remainder",  .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
-    { .name = "remquo_quo", .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
-    { .name = "round",      .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "cbrt",          .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "ceil",          .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "erf",           .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "erfc",          .b32 = 3,       .b64 = 1,       .b80 = 2,       .b128 = 2       },
+    { .name = "floor",         .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "hypot",         .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 1       },
+    { .name = "j0",            .b32 = MAX_ULP, .b64 = 42,      .b80 = 0,       .b128 = 0       },
+    { .name = "j1",            .b32 = MAX_ULP, .b64 = 1,       .b80 = 0,       .b128 = 0       },
+    { .name = "jn",            .b32 = 3,       .b64 = 3,       .b80 = 0,       .b128 = 0       },
+    { .name = "nextafter",     .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "nextup",        .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "nextdown",      .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "scalbn",        .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "y0",            .b32 = MAX_ULP, .b64 = MAX_ULP, .b80 = 0,       .b128 = 0       },
+    { .name = "y1",            .b32 = MAX_ULP, .b64 = MAX_ULP, .b80 = 0,       .b128 = 0       },
+    { .name = "yn",            .b32 = 8,       .b64 = 4,       .b80 = 0,       .b128 = 0       },
+    { .name = "lgamma",        .b32 = MAX_ULP, .b64 = MAX_ULP, .b80 = MAX_ULP, .b128 = MAX_ULP },
+    { .name = "remainder",     .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "remquo_quo",    .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "round",         .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "roundeven",     .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "rsqrt",         .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 1       },
+#if defined(__RX__)
+    { .name = "rsqrt",         .b32 = 1,       .b64 = 1,       .b80 = 0,       .b128 = 0       },
+#else
+    { .name = "rsqrt", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+#endif
+    { .name = "setpayload",    .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "setpayloadsig", .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
 #if defined(__riscv_float_abi_soft) || defined(__clang__)
-    { .name = "sqrt",       .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 1       },
+    { .name = "sqrt",          .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 1       },
 #else
     { .name = "sqrt", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
 #endif
-    { .name = "tgamma",     .b32 = 238,     .b64 = 56,      .b80 = 4,       .b128 = 132     },
+    { .name = "tgamma",        .b32 = 238,     .b64 = 56,      .b80 = 4,       .b128 = 132     },
+    { .name = "totalorder",    .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
+    { .name = "totalordermag", .b32 = 0,       .b64 = 0,       .b80 = 0,       .b128 = 0       },
 
     /* Complex trig functions */
-    { .name = "cacos",      .b32 = 2,       .b64 = 3,       .b80 = 2,       .b128 = MAX_ULP },
-    { .name = "cacosh",     .b32 = 1,       .b64 = 2,       .b80 = 2,       .b128 = MAX_ULP },
-    { .name = "casin",      .b32 = MAX_ULP, .b64 = MAX_ULP, .b80 = MAX_ULP, .b128 = MAX_ULP },
-    { .name = "casinh",     .b32 = MAX_ULP, .b64 = MAX_ULP, .b80 = MAX_ULP, .b128 = MAX_ULP },
-    { .name = "catan",      .b32 = MAX_ULP, .b64 = MAX_ULP, .b80 = MAX_ULP, .b128 = MAX_ULP },
-    { .name = "catanh",     .b32 = MAX_ULP, .b64 = MAX_ULP, .b80 = MAX_ULP, .b128 = MAX_ULP },
-    { .name = "ccos",       .b32 = 2,       .b64 = 1,       .b80 = 1,       .b128 = INV_ULP },
-    { .name = "ccosh",      .b32 = 2,       .b64 = 1,       .b80 = 1,       .b128 = 2       },
-    { .name = "csin",       .b32 = 2,       .b64 = 1,       .b80 = 2,       .b128 = INV_ULP },
-    { .name = "csinh",      .b32 = 2,       .b64 = 2,       .b80 = 2,       .b128 = INV_ULP },
+    { .name = "cacos",         .b32 = 2,       .b64 = 3,       .b80 = 2,       .b128 = MAX_ULP },
+    { .name = "cacosh",        .b32 = 1,       .b64 = 2,       .b80 = 2,       .b128 = MAX_ULP },
+    { .name = "casin",         .b32 = MAX_ULP, .b64 = MAX_ULP, .b80 = MAX_ULP, .b128 = MAX_ULP },
+    { .name = "casinh",        .b32 = MAX_ULP, .b64 = MAX_ULP, .b80 = MAX_ULP, .b128 = MAX_ULP },
+    { .name = "catan",         .b32 = MAX_ULP, .b64 = MAX_ULP, .b80 = MAX_ULP, .b128 = MAX_ULP },
+    { .name = "catanh",        .b32 = MAX_ULP, .b64 = MAX_ULP, .b80 = MAX_ULP, .b128 = MAX_ULP },
+    { .name = "ccos",          .b32 = 2,       .b64 = 1,       .b80 = 1,       .b128 = INV_ULP },
+    { .name = "ccosh",         .b32 = 2,       .b64 = 1,       .b80 = 1,       .b128 = 2       },
+    { .name = "csin",          .b32 = 2,       .b64 = 1,       .b80 = 2,       .b128 = INV_ULP },
+    { .name = "csinh",         .b32 = 2,       .b64 = 2,       .b80 = 2,       .b128 = INV_ULP },
 
 #if defined(__clang__) && defined(__SOFTFP__)
-    { .name = "ctan",       .b32 = MAX_ULP, .b64 = 2,       .b80 = 3,       .b128 = 1       },
+    { .name = "ctan",          .b32 = MAX_ULP, .b64 = 2,       .b80 = 3,       .b128 = 1       },
 #else
     { .name = "ctan", .b32 = 1, .b64 = 2, .b80 = 3, .b128 = 1 },
 #endif
 #if defined(__clang__) && defined(__SOFTFP__)
-    { .name = "ctanh",      .b32 = MAX_ULP, .b64 = 2,       .b80 = 3,       .b128 = 1       },
+    { .name = "ctanh",         .b32 = MAX_ULP, .b64 = 2,       .b80 = 3,       .b128 = 1       },
 #else
     { .name = "ctanh", .b32 = 1, .b64 = 2, .b80 = 3, .b128 = 1 },
 #endif
 
     /* Complex exp/log functions */
-    { .name = "cexp",       .b32 = 1,       .b64 = 2,       .b80 = 2,       .b128 = INV_ULP },
+    { .name = "cexp",          .b32 = 1,       .b64 = 2,       .b80 = 2,       .b128 = INV_ULP },
 #if defined(__riscv_float_abi_soft) || defined(__clang__)
-    { .name = "clog",       .b32 = 4,       .b64 = 6,       .b80 = 5,       .b128 = 8       },
+    { .name = "clog",          .b32 = 4,       .b64 = 6,       .b80 = 5,       .b128 = 8       },
 #else
     { .name = "clog", .b32 = 4, .b64 = 6, .b80 = 5, .b128 = 6 },
 #endif
-    { .name = "cpow",       .b32 = INV_ULP, .b64 = INV_ULP, .b80 = INV_ULP, .b128 = INV_ULP },
+    { .name = "cpow",          .b32 = INV_ULP, .b64 = INV_ULP, .b80 = INV_ULP, .b128 = INV_ULP },
 
 /* Complex misc functions */
 #if defined(__riscv_float_abi_soft) || defined(__clang__)
-    { .name = "csqrt",      .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 2       },
+    { .name = "csqrt",         .b32 = 1,       .b64 = 1,       .b80 = 1,       .b128 = 2       },
 #else
     { .name = "csqrt", .b32 = 1, .b64 = 1, .b80 = 1, .b128 = 1 },
 #endif
@@ -167,30 +217,59 @@ static TEST_CONST math_ulps_t math_ulps[] = {
     /* Trig functions */
     { .name = "acos", .b32 = 1, .b64 = 0, .b80 = 1, .b128 = 1 },
     { .name = "acosh", .b32 = 1, .b64 = 1, .b80 = 2, .b128 = 1 },
+    { .name = "acospi", .b32 = 1, .b64 = 1, .b80 = 1, .b128 = 1 },
     { .name = "asin", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 1 },
     { .name = "asinh", .b32 = 1, .b64 = 1, .b80 = 1, .b128 = 1 },
+    { .name = "asinpi", .b32 = 1, .b64 = 1, .b80 = 1, .b128 = 1 },
     { .name = "atan", .b32 = 1, .b64 = 0, .b80 = 0, .b128 = 1 },
     { .name = "atan2", .b32 = 1, .b64 = 0, .b80 = 1, .b128 = 1 },
     { .name = "atanh", .b32 = 0, .b64 = 1, .b80 = 2, .b128 = 1 },
+    { .name = "atanpi", .b32 = 1, .b64 = 1, .b80 = 1, .b128 = 1 },
+    { .name = "atan2pi", .b32 = 1, .b64 = 1, .b80 = 1, .b128 = 1 },
     { .name = "cos", .b32 = 1, .b64 = 0, .b80 = 1, .b128 = 1 },
     { .name = "sincos_cos", .b32 = 1, .b64 = 0, .b80 = 1, .b128 = 1 },
     { .name = "cosh", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 1 },
+    { .name = "cospi", .b32 = 1, .b64 = 1, .b80 = 1, .b128 = 1 },
     { .name = "sin", .b32 = 1, .b64 = 0, .b80 = 1, .b128 = 1 },
+    { .name = "sinpi", .b32 = 1, .b64 = 1, .b80 = 1, .b128 = 1 },
     { .name = "sincos_sin", .b32 = 1, .b64 = 0, .b80 = 1, .b128 = 1 },
     { .name = "sinh", .b32 = 1, .b64 = 1, .b80 = 1, .b128 = 1 },
     { .name = "tan", .b32 = 0, .b64 = 0, .b80 = 1, .b128 = 1 },
     { .name = "tanh", .b32 = 0, .b64 = 1, .b80 = 1, .b128 = 1 },
+    { .name = "tanpi", .b32 = 1, .b64 = 2, .b80 = 1, .b128 = 2 },
 
     /* Exp/log functions */
+    { .name = "compoundn", .b32 = 1, .b64 = 1, .b80 = 2, .b128 = 1 },
     { .name = "exp", .b32 = 1, .b64 = 1, .b80 = 1, .b128 = 1 },
     { .name = "exp10", .b32 = 1, .b64 = 0, .b80 = 1, .b128 = 1 },
     { .name = "exp2", .b32 = 1, .b64 = 0, .b80 = 1, .b128 = 1 },
     { .name = "expm1", .b32 = 0, .b64 = 1, .b80 = 2, .b128 = 1 },
+    { .name = "exp10m1", .b32 = 2, .b64 = 2, .b80 = 2, .b128 = 2 },
+    { .name = "exp2m1", .b32 = 1, .b64 = 2, .b80 = 2, .b128 = 2 },
     { .name = "log", .b32 = 1, .b64 = 0, .b80 = 1, .b128 = 1 },
     { .name = "log10", .b32 = 1, .b64 = 1, .b80 = 1, .b128 = 1 },
-    { .name = "log1p", .b32 = 1, .b64 = 1, .b80 = 1, .b128 = 1 },
+    { .name = "logp1", .b32 = 1, .b64 = 1, .b80 = 1, .b128 = 1 },
+    { .name = "log10p1", .b32 = 1, .b64 = 1, .b80 = 2, .b128 = 2 },
+    { .name = "log2p1", .b32 = 1, .b64 = 1, .b80 = 2, .b128 = 2 },
     { .name = "log2", .b32 = 1, .b64 = 0, .b80 = 1, .b128 = 1 },
     { .name = "pow", .b32 = 0, .b64 = 1, .b80 = 1, .b128 = 1 },
+    { .name = "pown", .b32 = 1, .b64 = 1, .b80 = 3, .b128 = 2 },
+    { .name = "powr", .b32 = 0, .b64 = 1, .b80 = 1, .b128 = 1 },
+    { .name = "rootn", .b32 = 1, .b64 = 1, .b80 = 1, .b128 = 2 },
+
+    /* Narrowing functions */
+    { .name = "dadd", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "dsub", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "dmul", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "ddiv", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "dfma", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "dsqrt", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "fadd", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "fsub", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "fmul", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "fdiv", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "ffma", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "fsqrt", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
 
     /* Misc functions */
     { .name = "cbrt", .b32 = 0, .b64 = 2, .b80 = 1, .b128 = 1 },
@@ -202,15 +281,35 @@ static TEST_CONST math_ulps_t math_ulps[] = {
     { .name = "j0", .b32 = 9, .b64 = 32, .b80 = 13, .b128 = 25 },
     { .name = "j1", .b32 = 9, .b64 = 1, .b80 = 3, .b128 = 2 },
     { .name = "jn", .b32 = 2, .b64 = 2, .b80 = 3, .b128 = 3 },
-    { .name = "y0", .b32 = 9, .b64 = 0, .b80 = 0, .b128 = 1 },
-    { .name = "y1", .b32 = 9, .b64 = 0, .b80 = 0, .b128 = 1 },
-    { .name = "yn", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 1 },
+    { .name = "nextafter", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "nextup", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "nextdown", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "scalbn", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "y0", .b32 = 9, .b64 = MAX_ULP, .b80 = MAX_ULP, .b128 = MAX_ULP },
+    { .name = "y1", .b32 = 9, .b64 = MAX_ULP, .b80 = MAX_ULP, .b128 = MAX_ULP },
+    { .name = "yn", .b32 = 2, .b64 = 4, .b80 = 2, .b128 = 3 },
     { .name = "remainder", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
     { .name = "remquo_quo", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
     { .name = "round", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "roundeven", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "rsqrt", .b32 = 1, .b64 = 1, .b80 = 1, .b128 = 1 },
     { .name = "lgamma", .b32 = 1, .b64 = 2, .b80 = 2, .b128 = 3 },
+    { .name = "setpayload", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "setpayloadsig", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
     { .name = "sqrt", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 1 },
     { .name = "tgamma", .b32 = 1, .b64 = 4, .b80 = 2, .b128 = 2 },
+    { .name = "totalorder", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "totalordermag", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+
+    /* Narrowing functions */
+    { .name = "dadd", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "ddiv", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "dmul", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "dsub", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "fadd", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "fdiv", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "fmul", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
+    { .name = "fsub", .b32 = 0, .b64 = 0, .b80 = 0, .b128 = 0 },
 
     /* Complex trig functions */
     { .name = "cacos", .b32 = 1, .b64 = 1, .b80 = 1, .b128 = 1 },

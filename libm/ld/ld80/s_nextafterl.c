@@ -17,17 +17,42 @@
  *   Special cases:
  */
 
+#include <stdio.h>
+
 long double
+#if defined(NEXTUP)
+nextupl(long double x)
+#elif defined(NEXTDOWN)
+nextdownl(long double x)
+#else
 nextafterl(long double x, long double y)
+#endif
 {
-    u_int32_t hx, hy, ix, iy;
-    u_int32_t lx, ly;
-    int32_t   esx, esy;
+    u_int32_t hx, ix, lx;
+    int32_t   esx;
 
     GET_LDOUBLE_WORDS(esx, hx, lx, x);
-    GET_LDOUBLE_WORDS(esy, hy, ly, y);
     ix = esx & 0x7fff; /* |x| */
+
+#if defined(NEXTUP)
+#define esy LDBL_EXP_MASK
+#define iy  LDBL_EXP_MASK
+#define hy  ((u_int32_t)LDBL_NBIT_INF)
+#define ly  ((u_int32_t)0)
+#define y   ((long double)INFINITY)
+#elif defined(NEXTDOWN)
+#define esy ((int32_t)((int16_t)(LDBL_EXP_MASK | LDBL_EXP_SIGN)))
+#define iy  LDBL_EXP_MASK
+#define hy  ((u_int32_t)LDBL_NBIT_INF)
+#define ly  ((u_int32_t)0)
+#define y   ((long double)-INFINITY)
+#else
+    u_int32_t hy, iy, ly;
+    int32_t   esy;
+    GET_LDOUBLE_WORDS(esy, hy, ly, y);
     iy = esy & 0x7fff; /* |y| */
+#define EXCEPT
+#endif
 
     if (((ix == 0x7fff) && (((hx & 0x7fffffff) | lx) != 0)) || /* x is nan */
         ((iy == 0x7fff) && (((hy & 0x7fffffff) | ly) != 0)))   /* y is nan */
@@ -35,54 +60,76 @@ nextafterl(long double x, long double y)
     if (x == y)
         return y;              /* x=y, return y */
     if ((ix | hx | lx) == 0) { /* x == 0 */
-        SET_LDOUBLE_WORDS(x, esy & 0x8000, hx, 1);
-        force_eval_long_double(opt_barrier_long_double(x) * x);
+        SET_LDOUBLE_WORDS(x, (int16_t)(esy & 0x8000), hx, 1);
+#ifdef EXCEPT
+        (void)opt_barrier_float(opt_barrier_float(x) * x);
+#endif
         return x;
     }
-    if (esx >= 0) { /* x > 0 */
-        if (esy < 0 || (ix > iy || ((ix == iy) && (hx > hy || ((hx == hy) && (lx > ly)))))) {
-            /* x > y, x -= ulp */
-            if (lx == 0) {
-                if ((hx & 0x7fffffff) == 0)
-                    esx -= 1;
-                hx = (hx - 1) | (hx & 0x80000000);
-            }
-            lx -= 1;
-        } else { /* x < y, x += ulp */
-            lx += 1;
-            if (lx == 0) {
-                hx = (hx + 1) | (hx & 0x80000000);
-                if ((hx & 0x7fffffff) == 0)
-                    esx += 1;
+#if LDBL_NBIT_INF == 0
+    if (ix == 0x7fff)
+        hx |= LDBL_NBIT;
+#endif
+
+    if ((esx >= 0) == (x > y)) {
+        /* x >= 0 and x > y or x < 0 and x < y, x -= ulp */
+        if (lx == 0) {
+            hx--;
+            if (hx == 0x7fffffff) {
+                /*
+                 * Handle denorms. On x86, normal values always have a
+                 * non-zero exponent and the MSB of the significand
+                 * set, while on m68k, normal values can have a zero
+                 * exponent as long as the MSB of the significant is
+                 * set.
+                 */
+#ifdef __m68k__
+                if (ix > 0) {
+                    esx--;
+                    hx |= 0x80000000;
+                }
+#else
+                if (ix > 1) {
+                    esx--;
+                    hx |= 0x80000000;
+                } else {
+                    esx = esx & ~0x7fff;
+                }
+#endif
             }
         }
-    } else { /* x < 0 */
-        if (esy >= 0 || (ix > iy || ((ix == iy) && (hx > hy || ((hx == hy) && (lx > ly)))))) {
-            /* x < y, x -= ulp */
-            if (lx == 0) {
-                if ((hx & 0x7fffffff) == 0)
-                    esx -= 1;
-                hx = (hx - 1) | (hx & 0x80000000);
-            }
-            lx -= 1;
-        } else { /* x > y, x += ulp */
-            lx += 1;
-            if (lx == 0) {
-                hx = (hx + 1) | (hx & 0x80000000);
-                if ((hx & 0x7fffffff) == 0)
-                    esx += 1;
+        lx -= 1;
+    } else { /* x < 0 and x < y or x >= 0 and x > y, x += ulp */
+        lx += 1;
+        if (lx == 0) {
+            hx++;
+#ifndef __m68k__
+            /* overflow from denorm to norm means
+             * going from zero exponent to one exponent
+             */
+            if (ix == 0 && hx == 0x80000000)
+                esx++;
+#endif
+            if (hx == 0) {
+                hx = 0x80000000;
+                esx++;
             }
         }
     }
-    esy = esx & 0x7fff;
-    if (esy == 0x7fff)
-        return __math_oflowl(esx & 0x8000); /* overflow  */
+#ifdef EXCEPT
+    ix = esx & 0x7fff;
+    if (ix == 0x7fff)
+        return __math_oflowl(esx < 0); /* overflow  */
+#endif
     SET_LDOUBLE_WORDS(x, esx, hx, lx);
-    if (esy == 0)
+#ifdef EXCEPT
+    if (ix == 0)
         return __math_denorml(x);
+#endif
     return x;
 }
 
+#if !defined(NEXTUP) && !defined(NEXTDOWN)
 #ifdef __strong_reference
 __strong_reference(nextafterl, nexttowardl);
 #else
@@ -91,4 +138,5 @@ nexttowardl(long double x, long double y)
 {
     return nextafterl(x, y);
 }
+#endif
 #endif

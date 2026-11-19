@@ -33,6 +33,8 @@
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
+add_subdirectory(machine)
+
 picolibc_sources_flags("-fno-builtin"
   memchr.S
   memcmp.S
@@ -47,4 +49,5 @@ picolibc_sources_flags("-fno-builtin"
   strcmp.S
   strlen.S
   tls.c
+  vector_table.c
   )

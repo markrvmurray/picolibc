@@ -62,6 +62,7 @@ srcs_stdio = [
   'filestrputalloc.c',
   'filestrput.c',
   'filewstrget.c',
+  'filewstrput.c',
   'flockfile.c',
   'flockfile_init.c',
   'fmemopen.c',
@@ -353,6 +354,8 @@ foreach file : srcs_stdio
     message('libc/stdio/' + file + ': machine overrides generic')
   elif s_file in srcs_machine
     message('libc/stdio/' + s_file + ': machine overrides generic')
+  elif file in srcs_libos
+    message('libc/stdio/' + file + ': libos overrides generic')
   else
     srcs_stdio_use += file
   endif

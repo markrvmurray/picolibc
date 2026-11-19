@@ -35,13 +35,17 @@
 
 #include "test-math.h"
 
+#ifndef int_type
+#define int_type   int
+#define INT_FORMAT "%d"
+#endif
+
 #ifdef HAS_BINARY32
 
 static TEST_CONST struct {
     binary32 x1;
-    int      x2;
+    int_type x2;
     binary32 y;
-    ulp_t    ulp;
 } test_32_vec[] = {
 #define REAL(r32, r64, r80, r80m, r128)     r32
 #define REAL_ULP(r32, r64, r80, r80m, r128) r32
@@ -56,17 +60,23 @@ test_binary32(void)
     size_t i;
     int    ret = 1;
     ulp_t  max_ulp = 0;
+    ulp_t  math_ulp_binary32 = math_find_ulp_binary32();
 
     printf("test %s\n", MATH_STRING(TEST_FUNC_32));
     for (i = 0; i < count(test_32_vec); i++) {
+        if (SKIP_DENORM32(test_32_vec[i].x1)) {
+            printf("Skipping denorm value\n");
+            continue;
+        }
         volatile binary32 y = TEST_FUNC_32(test_32_vec[i].x1, test_32_vec[i].x2);
         ulp_t             ulp = ulp32(y, test_32_vec[i].y);
         if (ulp > max_ulp)
             max_ulp = ulp;
-        if (ulp > test_32_vec[i].ulp) {
+        if (ulp > math_ulp_binary32) {
             ret = 0;
-            printf("%5zu " FMT32 " %d got " FMT32 " want " FMT32 " ulp %" PRIdULP "\n", i + 1,
-                   P32(test_32_vec[i].x1), test_32_vec[i].x2, P32(y), P32(test_32_vec[i].y), ulp);
+            printf("%5zu " FMT32 " " INT_FORMAT " got " FMT32 " want " FMT32 " ulp %" PRIdULP "\n",
+                   i + 1, P32(test_32_vec[i].x1), test_32_vec[i].x2, P32(y), P32(test_32_vec[i].y),
+                   ulp);
         }
     }
     printf("  max ulp %" PRIdULP "\n", max_ulp);
@@ -79,9 +89,8 @@ test_binary32(void)
 #ifdef HAS_BINARY64
 static TEST_CONST struct {
     binary64 x1;
-    int      x2;
+    int_type x2;
     binary64 y;
-    ulp_t    ulp;
 } test_64_vec[] = {
 #define REAL(r32, r64, r80, r80m, r128)     r64
 #define REAL_ULP(r32, r64, r80, r80m, r128) r64
@@ -96,17 +105,23 @@ test_binary64(void)
     size_t i;
     int    ret = 1;
     ulp_t  max_ulp = 0;
+    ulp_t  math_ulp_binary64 = math_find_ulp_binary64();
 
     printf("test %s\n", MATH_STRING(TEST_FUNC_64));
     for (i = 0; i < count(test_64_vec); i++) {
+        if (SKIP_DENORM64(test_64_vec[i].x1)) {
+            printf("Skipping denorm value\n");
+            continue;
+        }
         volatile binary64 y = TEST_FUNC_64(test_64_vec[i].x1, test_64_vec[i].x2);
         ulp_t             ulp = ulp64(y, test_64_vec[i].y);
         if (ulp > max_ulp)
             max_ulp = ulp;
-        if (ulp > test_64_vec[i].ulp) {
+        if (ulp > math_ulp_binary64) {
             ret = 0;
-            printf("%5zu " FMT64 " %d got " FMT64 " want " FMT64 " ulp %" PRIdULP "\n", i + 1,
-                   P64(test_64_vec[i].x1), test_64_vec[i].x2, P64(y), P64(test_64_vec[i].y), ulp);
+            printf("%5zu " FMT64 " " INT_FORMAT " got " FMT64 " want " FMT64 " ulp %" PRIdULP "\n",
+                   i + 1, P64(test_64_vec[i].x1), test_64_vec[i].x2, P64(y), P64(test_64_vec[i].y),
+                   ulp);
         }
     }
     printf("  max ulp %" PRIdULP "\n", max_ulp);
@@ -120,9 +135,8 @@ test_binary64(void)
 #ifdef HAS_BINARY80
 static TEST_CONST struct {
     binary80 x1;
-    int      x2;
+    int_type x2;
     binary80 y;
-    ulp_t    ulp;
 } test_80_vec[] = {
 #define REAL(r32, r64, r80, r80m, r128)     REAL80(r80, r80m)
 #define REAL_ULP(r32, r64, r80, r80m, r128) REAL80(r80, r80m)
@@ -137,19 +151,25 @@ test_binary80(void)
     size_t i;
     int    ret = 1;
     ulp_t  max_ulp = 0;
+    ulp_t  math_ulp_binary80 = math_find_ulp_binary80();
 
     if (skip_binary80())
         return ret;
     printf("test %s\n", MATH_STRING(TEST_FUNC_80));
     for (i = 0; i < count(test_80_vec); i++) {
+        if (SKIP_DENORM80(test_80_vec[i].x1)) {
+            printf("Skipping denorm value\n");
+            continue;
+        }
         volatile binary80 y = TEST_FUNC_80(test_80_vec[i].x1, test_80_vec[i].x2);
         ulp_t             ulp = ulp80(y, test_80_vec[i].y);
         if (ulp > max_ulp)
             max_ulp = ulp;
-        if (ulp > test_80_vec[i].ulp) {
+        if (ulp > math_ulp_binary80) {
             ret = 0;
-            printf("%5zu " FMT80 " %d got " FMT80 " want " FMT80 " ulp %" PRIdULP "\n", i + 1,
-                   P80(test_80_vec[i].x1), test_80_vec[i].x2, P80(y), P80(test_80_vec[i].y), ulp);
+            printf("%5zu " FMT80 " " INT_FORMAT " got " FMT80 " want " FMT80 " ulp %" PRIdULP "\n",
+                   i + 1, P80(test_80_vec[i].x1), test_80_vec[i].x2, P80(y), P80(test_80_vec[i].y),
+                   ulp);
         }
     }
     printf("  max ulp %" PRIdULP "\n", max_ulp);
@@ -163,9 +183,8 @@ test_binary80(void)
 #ifdef HAS_BINARY128
 static TEST_CONST struct {
     binary128 x1;
-    int       x2;
+    int_type  x2;
     binary128 y;
-    ulp_t     ulp;
 } test_128_vec[] = {
 #define REAL(r32, r64, r80, r80m, r128)     r128
 #define REAL_ULP(r32, r64, r80, r80m, r128) r128
@@ -180,18 +199,24 @@ test_binary128(void)
     size_t i;
     int    ret = 1;
     ulp_t  max_ulp = 0;
+    ulp_t  math_ulp_binary128 = math_find_ulp_binary128();
 
     printf("test %s\n", MATH_STRING(TEST_FUNC_128));
     for (i = 0; i < count(test_128_vec); i++) {
+        if (SKIP_DENORM128(test_128_vec[i].x1)) {
+            printf("Skipping denorm value\n");
+            continue;
+        }
         volatile binary128 y = TEST_FUNC_128(test_128_vec[i].x1, test_128_vec[i].x2);
         ulp_t              ulp = ulp128(y, test_128_vec[i].y);
         if (ulp > max_ulp)
             max_ulp = ulp;
-        if (ulp > test_128_vec[i].ulp) {
+        if (ulp > math_ulp_binary128) {
             ret = 0;
-            printf("%5zu " FMT128 " %d got " FMT128 " want " FMT128 " ulp %" PRIdULP "\n", i + 1,
-                   P128(test_128_vec[i].x1), test_128_vec[i].x2, P128(y), P128(test_128_vec[i].y),
-                   ulp);
+            printf("%5zu " FMT128 " " INT_FORMAT " got " FMT128 " want " FMT128 " ulp %" PRIdULP
+                   "\n",
+                   i + 1, P128(test_128_vec[i].x1), test_128_vec[i].x2, P128(y),
+                   P128(test_128_vec[i].y), ulp);
         }
     }
     printf("  max ulp %" PRIdULP "\n", max_ulp);

@@ -67,7 +67,7 @@ SYM (memmove):
 	addl ecx,edi
 	std
 
-#ifndef __OPTIMIZE_SIZE__
+#if !defined(__OPTIMIZE_SIZE__) || defined(__FAST_MEMFUNCS)
 	
 	cmpl $8,ecx
 	jbe .L13
@@ -124,7 +124,7 @@ SYM (memmove):
 		
 .L2:
 
-#ifndef __OPTIMIZE_SIZE__
+#if !defined(__OPTIMIZE_SIZE__) || defined(__FAST_MEMFUNCS)
 		
 	cmpl $8,ecx
 	jbe .L3
@@ -174,6 +174,6 @@ SYM (memmove):
 #endif
 	ret
 
-#if defined(__linux__) && defined(__ELF__)
+#if defined(__ELF__)
 .section .note.GNU-stack,"",%progbits
 #endif

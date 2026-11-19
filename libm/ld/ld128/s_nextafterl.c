@@ -18,15 +18,37 @@
  */
 
 long double
+#if defined(NEXTUP)
+nextupl(long double x)
+#elif defined(NEXTDOWN)
+nextdownl(long double x)
+#else
 nextafterl(long double x, long double y)
+#endif
 {
-    int64_t   hx, hy, ix, iy;
-    u_int64_t lx, ly;
+    int64_t   hx, ix;
+    u_int64_t lx;
 
     GET_LDOUBLE_WORDS64(hx, lx, x);
-    GET_LDOUBLE_WORDS64(hy, ly, y);
     ix = hx & 0x7fffffffffffffffLL; /* |x| */
+
+#if defined(NEXTUP)
+#define hy ((int64_t)0x7fff000000000000LL)
+#define iy ((int64_t)0x7fff000000000000LL)
+#define ly ((u_int64_t)0)
+#define y  ((long double)INFINITY)
+#elif defined(NEXTDOWN)
+#define hy ((int64_t)0xffff000000000000LL)
+#define iy ((int64_t)0x7fff000000000000LL)
+#define ly ((u_int64_t)0)
+#define y  ((long double)-INFINITY)
+#else
+    int64_t   hy, iy;
+    u_int64_t ly;
+    GET_LDOUBLE_WORDS64(hy, ly, y);
     iy = hy & 0x7fffffffffffffffLL; /* |y| */
+#define EXCEPT
+#endif
 
     if (((ix >= 0x7fff000000000000LL) && ((ix - 0x7fff000000000000LL) | lx) != 0) || /* x is nan */
         ((iy >= 0x7fff000000000000LL) && ((iy - 0x7fff000000000000LL) | ly) != 0))   /* y is nan */
@@ -35,7 +57,9 @@ nextafterl(long double x, long double y)
         return y;                                              /* x=y, return y */
     if ((ix | lx) == 0) {                                      /* x == 0 */
         SET_LDOUBLE_WORDS64(x, hy & 0x8000000000000000ULL, 1); /* return +-minsubnormal */
-        force_eval_long_double(opt_barrier_long_double(x) * x);
+#ifdef EXCEPT
+        (void)opt_barrier_float(opt_barrier_float(x) * x);
+#endif
         return x;
     }
     if (hx >= 0) {                                  /* x > 0 */
@@ -59,15 +83,20 @@ nextafterl(long double x, long double y)
                 hx++;
         }
     }
+#ifdef EXCEPT
     ix = hx & 0x7fff000000000000LL;
     if (ix == 0x7fff000000000000LL)
         return __math_oflowl(hy < 0);
+#endif
     SET_LDOUBLE_WORDS64(x, hx, lx);
+#ifdef EXCEPT
     if (ix == 0)
         return __math_denorml(x);
+#endif
     return x;
 }
 
+#if !defined(NEXTUP) && !defined(NEXTDOWN)
 #ifdef __strong_reference
 __strong_reference(nextafterl, nexttowardl);
 #else
@@ -76,4 +105,5 @@ nexttowardl(long double x, long double y)
 {
     return nextafterl(x, y);
 }
+#endif
 #endif

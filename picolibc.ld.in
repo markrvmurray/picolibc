@@ -54,8 +54,8 @@ MEMORY
 PHDRS
 {@INIT_PHDRS@
 	text PT_LOAD;
-	rodata PT_LOAD;
-	ram_init PT_LOAD;
+@RODATA_PHDR_DECL@	rodata PT_LOAD;
+@DATA_INIT_PHDR_DECL@	ram_init PT_LOAD;
 	ram PT_LOAD;
 	@TLS_PHDRS@
 }
@@ -76,6 +76,9 @@ SECTIONS
 		*(.mc6839_rom)
 		*(.gnu.linkonce.t.*)
 		KEEP (*(.fini .fini.*))
+@CPP@	PROVIDE (__start___lcxx_override = .);
+@CPP@	*(__lcxx_override)
+@CPP@	PROVIDE (__stop___lcxx_override = .);
 		@PREFIX@__text_end = .;
 
 		PROVIDE (@PREFIX@__etext = @PREFIX@__text_end);
@@ -193,6 +196,14 @@ SECTIONS
 @BFD@	PROVIDE( @PREFIX@__plt_size = SIZEOF(.plt) );
 
 	/*
+	 * JLI (Jump and Link Indexed) table for ARC Classic
+	 */
+	.jlitab : {
+		PROVIDE( @PREFIX@__JLI_TABLE__ = .);
+		jlitab*.o:(.jlitab*) *(.jlitab*)
+	} >@RODATA_MEM@ AT>@RODATA_AT@ :@RODATA_PHDR@
+
+	/*
 	 * Needs to be in its own segment with the PLT entries first
 	 * so that the linker will compute the offsets to those
 	 * entries correctly.
@@ -251,6 +262,7 @@ SECTIONS
 		/* Need to pre-align so that the symbols come after padding */
 		. = ALIGN(@SDATA_ALIGNMENT@);
 
+		PROVIDE( @PREFIX@__SDATA_BEGIN__ = . + 0x100 );
 		PROVIDE( @PREFIX@__global_pointer$ = . + 0x800 );
 		PROVIDE( @PREFIX@_gp = . + 0x8000);
                 /* _SDA_BASE_ points the base of small data */
@@ -319,8 +331,7 @@ SECTIONS
 @DATATLS@ @BFD@	 */
 @DATATLS@ @BFD@
 @DATATLS@ @BFD@	.tbss_space (NOLOAD) : {
-@DATATLS@ @BFD@		. = ADDR(.tbss);
-@DATATLS@ @BFD@		. = . + SIZEOF(.tbss);
+@DATATLS@ @BFD@		. = ADDR(.tbss) + SIZEOF(.tbss);
 @DATATLS@ @BFD@	} >@BSS_MEM@ AT>@BSS_AT@ :@BSS_PHDR@
 @DATATLS@
 @DATATLS@	PROVIDE( @PREFIX@__tls_start = SIZEOF(.tdata) ? ADDR(.tdata) : ADDR(.tbss) );
@@ -480,6 +491,8 @@ SECTIONS
 	.debug_str_offsets 0 : { *(.debug_str_offsets) }
 	.debug_sup      0 : { *(.debug_sup) }
 	.gnu.attributes 0 : { KEEP (*(.gnu.attributes)) }
+	/* ARC extension sections */
+	.arcextmap      0 : { *(.arcextmap.*) }
 }
 /*
  * Check that sections that are copied from flash to RAM have matching

@@ -90,6 +90,20 @@ static inline unsigned long math_bits64_lo(double v)
 }
 #endif
 
+#ifndef __PICOLIBC__
+#ifdef __mips__
+#ifndef __mips_nan2008
+#define _IEEE_754_2008_SNAN 0
+#endif
+#endif
+#ifdef __sh__
+#define _IEEE_754_2008_SNAN 0
+#endif
+#ifndef _IEEE_754_2008_SNAN
+#define _IEEE_754_2008_SNAN 1
+#endif
+#endif
+
 #ifdef __RX__
 #define SKIP_DENORM
 #endif
@@ -106,12 +120,12 @@ static inline unsigned long math_bits64_lo(double v)
 #define _MATH_STRING(a)    #a
 #define MATH_STRING(a)     _MATH_STRING(a)
 
-#ifdef SKIP_DENORM
 #define MY_ABS(x)                         \
     ({                                    \
         __typeof(x) __tmp__ = (x);        \
         __tmp__ < 0 ? -__tmp__ : __tmp__; \
     })
+#ifdef SKIP_DENORM
 #define SKIP_DENORM32(x)  (MY_ABS(x) < MIN_BINARY32)
 #define SKIP_DENORM64(x)  (MY_ABS(x) < MIN_BINARY64)
 #define SKIP_DENORM80(x)  (MY_ABS(x) < MIN_BINARY80)
@@ -222,14 +236,53 @@ typedef struct {
 } cunary32;
 
 static inline ulp_t
+ulp32_r(const binary32 *ab, const binary32 *bb)
+{
+    if (memcmp(ab, bb, sizeof(binary32)) == 0)
+        return 0;
+    if (isnan(*ab) || isnan(*bb)) {
+        union {
+            binary32 b;
+            uint32_t u;
+        } au, bu;
+        memcpy(&au.b, ab, sizeof(binary32));
+        memcpy(&bu.b, bb, sizeof(binary32));
+        printf("a 0x%08lx b 0x%08lx\n", (unsigned long)au.u, (unsigned long)bu.u);
+    }
+    return MAX_ULP;
+}
+
+static inline ulp_t
 ulp32(binary32 ab, binary32 bb)
 {
+#ifdef ULP_BITWISE
+    if (memcmp(&ab, &bb, sizeof(ab)) == 0)
+        return 0;
+    if (isnan(ab) || isnan(bb)) {
+        union {
+            binary32 b;
+            uint32_t u;
+        } au, bu;
+        au.b = ab;
+        bu.b = bb;
+        printf("a 0x%08lx b 0x%08lx\n", (unsigned long)au.u, (unsigned long)bu.u);
+    }
+    return MAX_ULP;
+#else
     volatile binary32 a = ab;
     volatile binary32 b = bb;
     if (a == b)
         return 0;
+#ifdef SKIP_RESULT
+    if (SKIP_RESULT(ab))
+        return 0;
+#endif
     if (isnan(a) && isnan(b))
         return 0;
+#ifdef TEST_IGNORE_INF_SIGN
+    if (isinf(a) && isinf(b))
+        return 0;
+#endif
     if (isnan(a) || isnan(b)) {
 #ifdef __RX__
         printf("RX fails to generate NaN, ignoring\n");
@@ -246,6 +299,7 @@ ulp32(binary32 ab, binary32 bb)
             break;
     }
     return ulp;
+#endif
 }
 
 static inline ulp_t
@@ -253,8 +307,8 @@ culp32(cbinary32 a, cbinary32 b)
 {
     if (a == b)
         return 0;
-    binary32 a_r = cabs32(a);
-    binary32 d_r = cabs32(a - b);
+    volatile binary32 a_r = cabs32(a);
+    volatile binary32 d_r = cabs32(a - b);
     return ulp32(a_r + d_r, a_r);
 }
 
@@ -321,14 +375,53 @@ typedef struct {
 } cunary64;
 
 static inline ulp_t
+ulp64_r(const binary64 *ab, const binary64 *bb)
+{
+    if (memcmp(ab, bb, sizeof(binary64)) == 0)
+        return 0;
+    if (isnan(*ab) || isnan(*bb)) {
+        union {
+            binary64 b;
+            uint64_t u;
+        } au, bu;
+        memcpy(&au.b, ab, sizeof(binary64));
+        memcpy(&bu.b, bb, sizeof(binary64));
+        printf("a 0x%016llx b 0x%016llx\n", (unsigned long long)au.u, (unsigned long long)bu.u);
+    }
+    return MAX_ULP;
+}
+
+static inline ulp_t
 ulp64(binary64 ab, binary64 bb)
 {
+#ifdef ULP_BITWISE
+    if (memcmp(&ab, &bb, sizeof(ab)) == 0)
+        return 0;
+    if (isnan(ab) || isnan(bb)) {
+        union {
+            binary64 b;
+            uint64_t u;
+        } au, bu;
+        au.b = ab;
+        bu.b = bb;
+        printf("a 0x%016llx b 0x%016llx\n", (unsigned long long)au.u, (unsigned long long)bu.u);
+    }
+    return MAX_ULP;
+#else
     volatile binary64 a = ab;
     volatile binary64 b = bb;
     if (a == b)
         return 0;
     if (isnan(a) && isnan(b))
         return 0;
+#ifdef SKIP_RESULT
+    if (SKIP_RESULT(ab))
+        return 0;
+#endif
+#ifdef TEST_IGNORE_INF_SIGN
+    if (isinf(a) && isinf(b))
+        return 0;
+#endif
     /* sometimes inf != inf on m68k? */
     if (isinf(a) && isinf(b) && (a > 0) == (b > 0))
         return 0;
@@ -348,6 +441,7 @@ ulp64(binary64 ab, binary64 bb)
             break;
     }
     return ulp;
+#endif
 }
 
 static inline ulp_t
@@ -355,8 +449,8 @@ culp64(cbinary64 a, cbinary64 b)
 {
     if (a == b)
         return 0;
-    binary64 a_r = cabs64(a);
-    binary64 d_r = cabs64(a - b);
+    volatile binary64 a_r = cabs64(a);
+    volatile binary64 d_r = cabs64(a - b);
     return ulp64(a_r + d_r, a_r);
 }
 
@@ -421,13 +515,79 @@ typedef struct {
     cbinary80 x, y;
 } cunary80;
 
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+
+typedef union {
+    long double value;
+    struct {
+#ifdef __LP64__
+        int32_t padh;
+#endif
+        int16_t exp;
+        int16_t padl;
+        union {
+            struct {
+                u_int32_t msw;
+                u_int32_t lsw;
+            };
+            uint64_t sw;
+        };
+    } parts;
+} ieee_extended_shape_type;
+
+#endif
+
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+
+typedef union {
+    long double value;
+    struct {
+        union {
+            struct {
+                u_int32_t lsw;
+                u_int32_t msw;
+            };
+            uint64_t sw;
+        };
+        int16_t exp;
+        int16_t padl;
+#ifdef __LP64__
+        int32_t padh;
+#endif
+    } parts;
+} ieee_extended_shape_type;
+
+#endif
+
 static inline ulp_t
 ulp80(binary80 ab, binary80 bb)
 {
+#ifdef ULP_BITWISE
+    ieee_extended_shape_type au, bu;
+    au.value = ab;
+    bu.value = bb;
+    if (au.parts.exp == bu.parts.exp && au.parts.sw == bu.parts.sw)
+        return 0;
+    if (isnan(ab) || isnan(bb)) {
+        printf("a exp 0x%04x msw 0x%08lx lsw 0x%08lx\n", (int)au.parts.exp & 0xffff,
+               (long)au.parts.msw, (long)au.parts.lsw);
+        printf("b exp 0x%04x msw 0x%08lx lsw 0x%08lx\n", (int)bu.parts.exp & 0xffff,
+               (long)bu.parts.msw, (long)bu.parts.lsw);
+    }
+    return MAX_ULP;
+#else
     volatile binary80 a = ab;
     volatile binary80 b = bb;
     if (a == b)
         return 0;
+#ifdef SKIP_RESULT
+    if (SKIP_RESULT(ab))
+        return 0;
+#endif
+#ifdef TEST_IGNORE_INF_SIGN
+    if (isinf(a) && isinf(b))
+        return 0;
+#endif
     if (isnan(a) && isnan(b))
         return 0;
     if (isnan(a) || isnan(b))
@@ -441,6 +601,7 @@ ulp80(binary80 ab, binary80 bb)
             break;
     }
     return ulp;
+#endif
 }
 
 static inline ulp_t
@@ -448,8 +609,8 @@ culp80(cbinary80 a, cbinary80 b)
 {
     if (a == b)
         return 0;
-    binary80 a_r = cabs80(a);
-    binary80 d_r = cabs80(a - b);
+    volatile binary80 a_r = cabs80(a);
+    volatile binary80 d_r = cabs80(a - b);
     return ulp80(a_r + d_r, a_r);
 }
 
@@ -489,10 +650,23 @@ typedef struct {
 static inline ulp_t
 ulp128(binary128 ab, binary128 bb)
 {
+#ifdef ULP_BITWISE
+    if (memcmp(&ab, &bb, sizeof(ab)) == 0)
+        return 0;
+    return MAX_ULP;
+#else
     volatile binary128 a = ab;
     volatile binary128 b = bb;
     if (a == b)
         return 0;
+#ifdef TEST_IGNORE_INF_SIGN
+    if (isinf(a) && isinf(b))
+        return 0;
+#endif
+#ifdef SKIP_RESULT
+    if (SKIP_RESULT(ab))
+        return 0;
+#endif
     if (isnan(a) && isnan(b))
         return 0;
     if (isnan(a) || isnan(b))
@@ -506,6 +680,7 @@ ulp128(binary128 ab, binary128 bb)
             break;
     }
     return ulp;
+#endif
 }
 
 static inline ulp_t
@@ -513,8 +688,8 @@ culp128(cbinary128 a, cbinary128 b)
 {
     if (a == b)
         return 0;
-    binary128 a_r = cabs128(a);
-    binary128 d_r = cabs128(a - b);
+    volatile binary128 a_r = cabs128(a);
+    volatile binary128 d_r = cabs128(a - b);
     return ulp128(a_r + d_r, a_r);
 }
 

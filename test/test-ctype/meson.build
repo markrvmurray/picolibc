@@ -50,7 +50,7 @@ foreach params : targets
   target_dir = params['dir']
   target_c_args = params['c_args']
 
-  _libs = [get_variable('lib_c' + target)]
+  _libs = [get_variable('lib_c_link' + target)]
   if is_variable(oslib_test + target)
     _libs += [get_variable(oslib_test + target)]
   endif
@@ -170,6 +170,7 @@ if enable_native_tests
 		    c_args: native_c_args + test_file_name_arg + ctype_c_args,
 		    link_args: native_c_args),
          suite: 'test-ctype',
+         depends: locales,
          env: locale_env)
   endforeach
 
@@ -205,7 +206,11 @@ if enable_native_tests
                                   env: locale_env,
                                   command: [ne, '@OUTPUT@'])
 
-      test(test, diff, args: ['-u', out, native_out])
+      test(test,
+           diff,
+           args: ['-u', out, native_out],
+           suite: 'ctype-diff'
+          )
     endforeach
   endif
 

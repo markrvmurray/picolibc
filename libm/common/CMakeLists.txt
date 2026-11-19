@@ -45,19 +45,20 @@ picolibc_sources(
   s_expm1.c
   s_ilogb.c
   s_infinity.c
-  s_iseqsig.c
   s_isinf.c
   s_isnan.c
   s_issignaling.c
+  s_llogb.c
   s_log1p.c
   s_nan.c
   s_nextafter.c
+  s_nextup.c
+  s_nextdown.c
   s_pow10.c
   s_rint.c
   s_logb.c
   s_log2.c
   s_fdim.c
-  s_fma.c
   s_fmax.c
   s_fmin.c
   s_fpclassify.c
@@ -88,7 +89,6 @@ picolibc_sources(
   math_inexactf.c
   log_data.c
   log2_data.c
-  pow.c
   pow_log_data.c
   sf_finite.c
   sf_copysign.c
@@ -100,18 +100,19 @@ picolibc_sources(
   sf_getpayload.c
   sf_ilogb.c
   sf_infinity.c
-  sf_iseqsig.c
   sf_isinf.c
   sf_isnan.c
   sf_issignaling.c
+  sf_llogb.c
   sf_log1p.c
   sf_nan.c
   sf_nextafter.c
+  sf_nextdown.c
+  sf_nextup.c
   sf_pow10.c
   sf_rint.c
   sf_logb.c
   sf_fdim.c
-  sf_fma.c
   sf_fmax.c
   sf_fmin.c
   sf_fpclassify.c
@@ -129,8 +130,6 @@ picolibc_sources(
   sf_log_data.c
   sf_log2_data.c
   sf_pow_log2_data.c
-  sinf.c
-  sincosf.c
   sincosf_data.c
   math_errf_with_errnof.c
   math_errf_uflowf.c

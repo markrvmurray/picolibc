@@ -51,6 +51,7 @@ srcs_machine = [
 ]
 
 subdir('sys')
+subdir('machine')
 
 foreach params : targets
   target = params['name']
@@ -59,7 +60,7 @@ foreach params : targets
   set_variable('lib_machine' + target,
 	       static_library('machine' + target,
 			      srcs_machine,
-			      pic: false,
+			      pic: use_pic,
 			      include_directories: inc,
 			      c_args: target_c_args + c_args + arg_fnobuiltin))
 endforeach

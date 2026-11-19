@@ -33,8 +33,9 @@
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
+# posix is added below, only with posix-extensions (or for strfmon at -fp).
 libdirs = ['argz', 'ctype', 'errno', 'iconv', 'locale',
-           'misc', 'search', 'signal', 'ssp',
+           'misc', 'search', 'signal', 'ssp', 'stdbit',
            'stdio', 'stdlib', 'string', 'time', 'xdr',
            'uchar', 'ubsan']
 
@@ -103,7 +104,7 @@ foreach params : targets
 
   if libobjs != []
     local_lib_cpart_target = static_library('cpart' + target,
-				            pic: false,
+				            pic: use_pic,
 				            objects : libobjs,
 					    include_directories: inc,
 					    c_args: target_c_args + c_args)

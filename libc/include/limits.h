@@ -1,9 +1,12 @@
 /* Copyright (c) 2002 Jeff Johnston  <jjohnstn@redhat.com> */
 #ifndef _LIBC_LIMITS_H_
-#define _LIBC_LIMITS_H_ 1
+#define _LIBC_LIMITS_H_           1
+
+#define __STDC_VERSION_LIMITS_H__ 202311L
 
 #include <sys/cdefs.h>
 #include <sys/syslimits.h>
+#include <sys/_types.h>
 
 #ifndef __MB_LEN_MAX
 #ifdef __MB_CAPABLE
@@ -17,6 +20,12 @@
 /* Maximum number of positional arguments, if __IO_POS_ARGS.  */
 #ifndef NL_ARGMAX
 #define NL_ARGMAX 32
+#endif
+
+#if __POSIX_VISIBLE
+#ifndef SSIZE_MAX
+#define SSIZE_MAX __SSIZE_MAX__
+#endif
 #endif
 
 /* if do not have #include_next support, then we
@@ -140,5 +149,12 @@
 #define __GLIBC_USE(x) 1
 #endif
 #endif
+/* Workaround buggy toolchains that define __STDC_WANT_LIB_EXT1__ in limits.h */
+#ifndef __STDC_WANT_LIB_EXT1__
+#define __UNDEF__STDC_WANT_LIB_EXT1__
+#endif
 #include_next <limits.h>
+#ifdef __UNDEF__STDC_WANT_LIB_EXT1__
+#undef __STDC_WANT_LIB_EXT1__
+#endif
 #endif /* __GNUC__ && !_GCC_LIMITS_H_ */

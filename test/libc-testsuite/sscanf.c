@@ -124,9 +124,13 @@ test_sscanf(void)
     TEST(i, sscanf("", "%c", a), -1, "only %d fields, expected %d");
     TEST_S(a, "", "");
 
+#if defined(__PICOLIBC__) || (defined(__GNUC__) && __GNUC_PREREQ(2, 43))
     memset(a, 0, sizeof(a));
-    TEST(i, sscanf("a", "%2c", a), 1, "only %d fields, expected %d");
-    TEST_S(a, "a", "");
+    TEST(i, sscanf("a", "%2c", a), -1, "only %d fields, expected %d");
+#endif
+    memset(a, 0, sizeof(a));
+    TEST(i, sscanf("aa", "%2c", a), 1, "only %d fields, expected %d");
+    TEST_S(a, "aa", "");
 
 #ifndef NO_MULTI_BYTE
     /* sscanf with mb results */
@@ -219,9 +223,17 @@ test_sscanf(void)
     a[8] = 'X';
     a[9] = 0;
     memset(b, 0, sizeof(b));
-    TEST(i, sscanf("hello, world\n", "%8c%8c", a, b), 2, "%d fields, expected %d");
+    TEST(i, sscanf("hello, world\n", "%8c%5c", a, b), 2, "%d fields, expected %d");
     TEST_S(a, "hello, wX", "");
     TEST_S(b, "orld\n", "");
+
+#if defined(__PICOLIBC__) || (defined(__GNUC__) && __GNUC_PREREQ(2, 43))
+    a[8] = 'X';
+    a[9] = 0;
+    memset(b, 0, sizeof(b));
+    TEST(i, sscanf("hello, world\n", "%8c%8c", a, b), 1, "%d fields, expected %d");
+    TEST_S(a, "hello, wX", "");
+#endif
 
 #ifndef NO_NAN
     /* testing nan(n-seq-char) in the expected form */

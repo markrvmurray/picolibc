@@ -44,16 +44,51 @@
 #include <sys/lock.h>
 #include <sys/param.h>
 #include <stdint.h>
+#include <stdbit.h>
 
-#define _UP_POT(x, val, next) (((x) <= 1UL << (val)) ? (val) : (next))
-#define _UP_POT1024(x)        _UP_POT(x, 10, 0)
-#define _UP_POT512(x)         _UP_POT(x, 9, _UP_POT1024(x))
-#define _UP_POT256(x)         _UP_POT(x, 8, _UP_POT512(x))
-#define _UP_POT128(x)         _UP_POT(x, 7, _UP_POT256(x))
-#define _UP_POT64(x)          _UP_POT(x, 6, _UP_POT128(x))
-#define _UP_POT32(x)          _UP_POT(x, 5, _UP_POT64(x))
-#define _UP_POT16(x)          _UP_POT(x, 4, _UP_POT32(x))
-#define UP_POT(x)             _UP_POT16(x)
+#define _UP_POT(x, val, next)   (((x) <= 1UL << (val)) ? (val) : (next))
+#define _UP_POT4096(x)          _UP_POT(x, 12, 0UL)
+#define _UP_POT2048(x)          _UP_POT(x, 11, _UP_POT4096(x))
+#define _UP_POT1024(x)          _UP_POT(x, 10, _UP_POT2048(x))
+#define _UP_POT512(x)           _UP_POT(x, 9, _UP_POT1024(x))
+#define _UP_POT256(x)           _UP_POT(x, 8, _UP_POT512(x))
+#define _UP_POT128(x)           _UP_POT(x, 7, _UP_POT256(x))
+#define _UP_POT64(x)            _UP_POT(x, 6, _UP_POT128(x))
+#define _UP_POT32(x)            _UP_POT(x, 5, _UP_POT64(x))
+#define _UP_POT16(x)            _UP_POT(x, 4, _UP_POT32(x))
+#define _UP_POT8(x)             _UP_POT(x, 3, _UP_POT16(x))
+#define _UP_POT4(x)             _UP_POT(x, 2, _UP_POT8(x))
+#define UP_POT(x)               _UP_POT4(x)
+
+#define _DOWN_POT(x, val, next) (((x) < 1UL << (val)) ? ((val) - 1) : (next))
+#define _DOWN_POT4096(x)        _DOWN_POT(x, 12, 0UL)
+#define _DOWN_POT2048(x)        _DOWN_POT(x, 11, _DOWN_POT4096(x))
+#define _DOWN_POT1024(x)        _DOWN_POT(x, 10, _DOWN_POT2048(x))
+#define _DOWN_POT512(x)         _DOWN_POT(x, 9, _DOWN_POT1024(x))
+#define _DOWN_POT256(x)         _DOWN_POT(x, 8, _DOWN_POT512(x))
+#define _DOWN_POT128(x)         _DOWN_POT(x, 7, _DOWN_POT256(x))
+#define _DOWN_POT64(x)          _DOWN_POT(x, 6, _DOWN_POT128(x))
+#define _DOWN_POT32(x)          _DOWN_POT(x, 5, _DOWN_POT64(x))
+#define _DOWN_POT16(x)          _DOWN_POT(x, 4, _DOWN_POT32(x))
+#define _DOWN_POT8(x)           _DOWN_POT(x, 3, _DOWN_POT16(x))
+#define _DOWN_POT4(x)           _DOWN_POT(x, 2, _DOWN_POT8(x))
+#define DOWN_POT(x)             _DOWN_POT4(x)
+
+static inline unsigned int
+up_pot(size_t x)
+{
+#if __HAVE_BUILTIN_CONSTANT_P
+    if (__builtin_constant_p(x))
+        return UP_POT(x);
+#endif
+    return stdc_bit_width(x - 1);
+}
+
+static inline unsigned int
+down_pot(size_t x)
+{
+    return stdc_bit_width(x) - 1;
+}
 
 /*
  * Allocations smaller than this will get rounded up to the next power
@@ -109,21 +144,21 @@ typedef struct malloc_chunk {
     struct malloc_chunk *next;
 } chunk_t;
 
+#define MALLOC_HEAD_SIZE  sizeof(head_t)
+
+#define MALLOC_CHUNK_SIZE sizeof(chunk_t)
+
 /* Alignment of allocated chunk. Compute the alignment required from a
  * range of types */
-#define MALLOC_CHUNK_ALIGN _Alignof(align_chunk_t)
+#define MALLOC_CHUNK_ALIGN MAX(_Alignof(align_chunk_t), MALLOC_CHUNK_SIZE)
 
 /* Alignment of the header. Never larger than MALLOC_CHUNK_ALIGN, but
  * may be smaller on some targets when size_t is smaller than
  * align_chunk_t.
  */
-#define MALLOC_HEAD_ALIGN  _Alignof(head_t)
+#define MALLOC_HEAD_ALIGN  MAX(_Alignof(head_t), MALLOC_HEAD_SIZE)
 
 #define MALLOC_ALIGN_EXTRA (MALLOC_CHUNK_ALIGN - MALLOC_HEAD_ALIGN)
-
-#define MALLOC_HEAD_SIZE   sizeof(head_t)
-
-#define MALLOC_CHUNK_SIZE  sizeof(chunk_t)
 
 /* nominal "page size" */
 #define MALLOC_PAGE_ALIGN (0x1000)
@@ -132,7 +167,7 @@ typedef struct malloc_chunk {
 #define MALLOC_CHUNK_MIN __align_up(MALLOC_CHUNK_SIZE + MALLOC_HEAD_SIZE, MALLOC_CHUNK_ALIGN)
 
 /* Maximum chunk size */
-#define MALLOC_CHUNK_MAX (SIZE_MAX - 2 * MAX(MALLOC_CHUNK_SIZE, MALLOC_CHUNK_ALIGN))
+#define MALLOC_CHUNK_MAX __align_down(SIZE_MAX - MALLOC_HEAD_SIZE, MALLOC_CHUNK_ALIGN)
 
 /* Maximum allocation size */
 #define MALLOC_ALLOC_MAX (MALLOC_CHUNK_MAX - MALLOC_HEAD_SIZE)
@@ -162,9 +197,15 @@ _is_free(chunk_t *c)
 }
 
 static inline size_t
+_size_val(size_t size)
+{
+    return size & ~(size_t)1;
+}
+
+static inline size_t
 _size(chunk_t *chunk)
 {
-    return *_size_ref(chunk) & ~(size_t)1;
+    return _size_val(*_size_ref(chunk));
 }
 
 static inline void
@@ -187,13 +228,13 @@ void __malloc_validate(void);
 void __malloc_validate_chunk(chunk_t *c);
 #define MALLOC_LOCK          \
     do {                     \
-        __LIBC_LOCK();       \
         __malloc_validate(); \
+        __LIBC_LOCK();       \
     } while (0)
 #define MALLOC_UNLOCK        \
     do {                     \
-        __malloc_validate(); \
         __LIBC_UNLOCK();     \
+        __malloc_validate(); \
     } while (0)
 #else
 #define __malloc_validate()
@@ -209,18 +250,21 @@ extern char    *__malloc_sbrk_top;
 
 #ifdef MALLOC_MAX_BUCKET_POT
 
-/* Every power-of-two bucket gets padded by this amount */
-#define BUCKET_EXTRA        __align_up(MALLOC_HEAD_SIZE, MALLOC_CHUNK_ALIGN)
+#define MIN_BUCKET_POT (DOWN_POT(MAX(MALLOC_CHUNK_ALIGN - MALLOC_HEAD_SIZE, MALLOC_CHUNK_SIZE)))
+#define MAX_BUCKET_POT MALLOC_MAX_BUCKET_POT
+#define NUM_BUCKET_POT (MAX_BUCKET_POT - MIN_BUCKET_POT + 1)
 
-#define BUCKET_SIZE(bucket) (((size_t)1 << ((bucket) + MIN_BUCKET_POT)) + BUCKET_EXTRA)
+#define BUCKET_SIZE(bucket)                                                                       \
+    __align_up(((size_t)1 << ((bucket) + MIN_BUCKET_POT)) + MALLOC_HEAD_SIZE, MALLOC_CHUNK_ALIGN)
+#define MALLOC_MAX_BUCKET (BUCKET_SIZE(MALLOC_MAX_BUCKET_POT - MIN_BUCKET_POT))
+#define MALLOC_MIN_BUCKET (BUCKET_SIZE(0))
 
-#define MALLOC_MAX_BUCKET   (BUCKET_SIZE(MALLOC_MAX_BUCKET_POT - MIN_BUCKET_POT))
+_Static_assert(MALLOC_MIN_BUCKET == MALLOC_CHUNK_MIN, "Malloc bucket sizes mis-computed");
 
-#define MIN_BUCKET_POT      (UP_POT(MALLOC_CHUNK_MIN))
-#define MAX_BUCKET_POT      MALLOC_MAX_BUCKET_POT
-#define NUM_BUCKET_POT      (MAX_BUCKET_POT - MIN_BUCKET_POT + 1)
-
-#define BUCKET_NUM(s)       (UP_POT(s - BUCKET_EXTRA) - MIN_BUCKET_POT)
+#define BUCKET_NUM(s)                                                                     \
+    ((s) <= MALLOC_CHUNK_ALIGN ? 0 : (up_pot((s) - MALLOC_CHUNK_ALIGN) - MIN_BUCKET_POT))
+#define BUCKET_FLOOR(s)                                                                     \
+    ((s) <= MALLOC_CHUNK_ALIGN ? 0 : (down_pot((s) - MALLOC_CHUNK_ALIGN) - MIN_BUCKET_POT))
 
 extern chunk_t *__malloc_bucket_list[NUM_BUCKET_POT];
 #endif
@@ -271,7 +315,7 @@ static inline void * __disable_sanitizer
 chunk_end(chunk_t *c)
 {
     size_t *s = _size_ref(c);
-    return (char *)s + *s;
+    return (char *)s + _size_val(*s);
 }
 
 /* next chunk in memory -- address of chunk header past this chunk */

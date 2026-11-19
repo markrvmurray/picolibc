@@ -38,7 +38,7 @@ SYM (memcpy):
 	movl 12(ebp),esi
 	cld
 		
-#ifndef __OPTIMIZE_SIZE__
+#if !defined(__OPTIMIZE_SIZE__) || defined(__FAST_MEMFUNCS)
 		
 	cmpl $8,ecx
 	jbe .L3
@@ -87,6 +87,6 @@ SYM (memcpy):
 #endif
 	ret
 
-#if defined(__linux__) && defined(__ELF__)
+#if defined(__ELF__)
 .section .note.GNU-stack,"",%progbits
 #endif

@@ -35,6 +35,7 @@ These options control some general build configuration values.
 | multilib                    | true    | Build every multilib configuration supported by the compiler                         |
 | multilib-list               | <empty> | If non-empty, the set of multilib configurations to compile for                      |
 | multilib-exclude            | <empty> | Multilib configurations containing any of these strings will not be built            |
+| multilib-include            | <empty> | If non-empty, only build multilib configurations containing any of these strings     |
 | b_sanitize=_option list_    | false   | Build the library -fsanitize set to the provided list, e.g. -Db_sanitize=undefined   |
 | sanitize-trap-on-error      | false   | Build the library with -fsanitize-undefined-trap-on-error                            |
 | sanitize-allow-missing      | false   | Don't bail if the selected sanitize option is not supported by the compiler          |
@@ -42,6 +43,10 @@ These options control some general build configuration values.
 | analyzer                    | false   | Enable the analyzer while compiling with -fanalyzer                                  |
 | assert-verbose              | false   | Display file, line and expression in assert() messages                               |
 | fast-strcmp                 | true    | Always optimize strcmp for performance (to make Dhrystone happy)                     |
+| fast-memfuncs               | false   | Always optimize memcpy, memmove and memset for performance                           |
+| strcmp-pair                 | false   | Use RISC-V paired-word strcmp (dual-issue / fused-load cores)                        |
+| picolibc-export             | true    | Annotate public picolibc APIs with default (exported) visibility                     |
+| ndebug                      | auto    | Build the library with -DNDEBUG (auto: unless buildtype is debug)                    |
 
 ### Installation options
 
@@ -73,7 +78,7 @@ testing the library using the host compiler and host C library.
 | freestanding                | false   | Build entire library with -ffreestanding. Used to be useful for Zephyr testing       |
 | native-math-tests           | true    | Also build math tests against host libc when native-tests is enabled                 |
 | native-tests                | false   | Build tests against host libc (used to validate tests)                               |
-| semihost                    | true    | Build semihost libary. Disable when doing native testing.                            |
+| semihost                    | true    | Build semihost library. Disable when doing native testing.                            |
 | split-large-tests           | false   | For tests which generate large executables, split them apart for smaller targets     |
 | picolib                     | true    | Include 'picolib' bits. Disable when doing native testing.                           |
 | tests                       | false   | Enable tests                                                                         |
@@ -202,7 +207,7 @@ As a separate option, you can make `errno` not use TLS if necessary.
 There are two versions of many libm functions, old ones from SunPro
 and new ones from ARM. The new ones are generally faster for targets
 with hardware double support, except that the new float-valued
-functions use double-precision computations. On sytems without
+functions use double-precision computations. On systems without
 hardware double support, that's going to pull in soft double
 code. Measurements show the old routines are generally more accurate,
 which is why they are enabled by default.
@@ -221,7 +226,7 @@ require.
 
 newlib-obsolete-math provides the default value for the
 newlib-obsolete-math-float and newlib-obsolete-math-double parameters;
-those control the compilation of the individual fucntions.
+those control the compilation of the individual functions.
 
 ## Building for embedded RISC-V and ARM systems
 

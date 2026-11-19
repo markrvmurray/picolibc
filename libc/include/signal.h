@@ -245,17 +245,17 @@ int killpg(__pid_t pid, int sig) __picolibc_export;
 #if __POSIX_VISIBLE >= 200809L
 void psiginfo(const siginfo_t *, const char *) __picolibc_export;
 #endif
-#if __BSD_VISIBLE || __SVID_VISIBLE
+#if __BSD_VISIBLE || __SVID_VISIBLE || __POSIX_VISIBLE >= 200809
 void psignal(int, const char *) __picolibc_export;
 #endif
 int raise(int) __picolibc_export;
 int __fallback_raise(int) __picolibc_export;
-#if __MISC_VISIBLE
+#if __MISC_VISIBLE || __POSIX_VISIBLE >= 202405
 int sig2str(int, char *) __picolibc_export;
 #endif
 #if __POSIX_VISIBLE
-int sigaction(int, const struct sigaction * __restrict,
-              struct sigaction * __restrict) __picolibc_export;
+int sigaction(int, const struct sigaction * __restrict, struct sigaction * __restrict)
+    __picolibc_export;
 
 int sigaddset(sigset_t *, const int) __picolibc_export;
 
@@ -279,7 +279,7 @@ int sigdelset(sigset_t *, const int) __nonnull((1)) __picolibc_export;
 static __inline int
 __sigdelset(sigset_t *what, int sig)
 {
-    *what &= ~(sigset_t)1 << sig;
+    *what &= ~((sigset_t)1 << sig);
     return 0;
 }
 
@@ -340,14 +340,14 @@ int sigwait(const sigset_t *, int *) __picolibc_export;
 #if __POSIX_VISIBLE >= 199309L
 int sigwaitinfo(const sigset_t *, siginfo_t *) __picolibc_export;
 #endif
-#if __MISC_VISIBLE
+#if __MISC_VISIBLE || __POSIX_VISIBLE >= 202405
 int str2sig(const char * __restrict, int * __restrict) __picolibc_export;
 #endif
 
 #if __GNU_VISIBLE
 
-int sigandset(sigset_t *dest, const sigset_t *left, const sigset_t *right)
-    __nonnull((1, 2, 3)) __picolibc_export;
+int sigandset(sigset_t *dest, const sigset_t *left, const sigset_t *right) __nonnull((1, 2, 3))
+__picolibc_export;
 
 static __inline int
 __sigandset(sigset_t *dest, const sigset_t *left, const sigset_t *right)
@@ -358,8 +358,8 @@ __sigandset(sigset_t *dest, const sigset_t *left, const sigset_t *right)
 
 #define sigandset(d, l, r) __sigandset(d, l, r)
 
-int sigorset(sigset_t *dest, const sigset_t *left, const sigset_t *right)
-    __nonnull((1, 2, 3)) __picolibc_export;
+int sigorset(sigset_t *dest, const sigset_t *left, const sigset_t *right) __nonnull((1, 2, 3))
+__picolibc_export;
 
 static __inline int
 __sigorset(sigset_t *dest, const sigset_t *left, const sigset_t *right)

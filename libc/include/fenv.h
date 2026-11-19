@@ -77,8 +77,10 @@ int fegetexcept(void) __picolibc_export;
  *       fenv_t with the default fenv_t. The format of fenv_t and where
  *       FE_DFL_ENV is are implementation specific.
  */
+#ifndef FE_DFL_ENV
 extern __picolibc_export fenv_t _fe_dfl_env;
 #define FE_DFL_ENV ((const fenv_t *)&_fe_dfl_env)
+#endif
 
 #if __ISO_C_VISIBLE >= 2023 || defined(__STDC_WANT_IEC_60559_BFP_EXT__)
 

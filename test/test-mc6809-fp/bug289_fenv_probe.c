@@ -130,6 +130,15 @@ int main(void) {
                fetestexcept(FE_ALL_EXCEPT) == (FE_INEXACT | FE_UNDERFLOW),
            "fesetexcept sets exactly the flags asked for");
 
+    /* Test 10: FE_DFL_ENV restores the default environment.  It is the
+     * machine header's, in compiler-rt's fenv, so it links at the levels
+     * built without libm too. */
+    fesetround(FE_UPWARD);
+    fesetexcept(FE_INEXACT);
+    EXPECT(fesetenv(FE_DFL_ENV) == 0 && fegetround() == FE_TONEAREST &&
+               fetestexcept(FE_ALL_EXCEPT) == 0,
+           "fesetenv(FE_DFL_ENV) restores round-to-nearest and no flags");
+
     printf("%d failures\n", failures);
     return failures != 0;
 }

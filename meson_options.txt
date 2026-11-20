@@ -251,6 +251,8 @@ option('internal-heap', type: 'integer', value: 0,
        description: 'provide internal static heap')
 option('malloc-clear-freed', type: 'boolean', value: false,
        description: 'Erase memory on free/realloc')
+option('malloc-clear-allocated', type: 'boolean', value: true,
+       description: 'Zero memory returned by malloc and realloc (calloc always zeroes)')
 option('malloc-error-abort', type: 'boolean', value: false,
        description: 'Abort when malloc usage errors are detected')
 option('malloc-small-bucket', type: 'integer', value: 0,

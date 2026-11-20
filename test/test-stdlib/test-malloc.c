@@ -285,7 +285,7 @@ main(void)
             char *med = realloc(small, 1024);
             if (med) {
 //                                printf("med %p\n", med);
-#ifdef __PICOLIBC__
+#if defined(__PICOLIBC__) && defined(__MALLOC_CLEAR_ALLOCATED)
                 int i;
                 for (i = 128; i < 1024; i++)
                     if (med[i] != 0) {
@@ -297,6 +297,25 @@ main(void)
                 small = NULL;
             }
             free(small);
+        }
+    }
+
+    /* calloc must clear memory that was used before, whether or not
+     * malloc clears what it returns */
+    char *dirty = malloc(100);
+    if (dirty) {
+        memset(dirty, 0xa5, 100);
+        free(dirty);
+        char *clean = calloc(100, 1);
+        if (clean) {
+            for (pow = 0; pow < 100; pow++)
+                if (clean[pow] != 0) {
+                    printf("calloc: byte %d not cleared (saw 0x%02x)\n", pow,
+                           (unsigned char)clean[pow]);
+                    result = 1;
+                    break;
+                }
+            free(clean);
         }
     }
 

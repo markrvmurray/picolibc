@@ -1661,6 +1661,7 @@ conf_data.set('__ASSERT_VERBOSE', get_option('assert-verbose'), description: 'as
 conf_data.set('__SINGLE_THREAD', get_option('single-thread'), description: 'Disable multi-thread support')
 conf_data.set('__HAVE_FCNTL', get_option('have-fcntl'), description: 'System provides fcntl function')
 conf_data.set('__MALLOC_CLEAR_FREED', get_option('malloc-clear-freed'))
+conf_data.set('__MALLOC_CLEAR_ALLOCATED', get_option('malloc-clear-allocated'))
 conf_data.set('__MALLOC_SMALL_BUCKET', get_option('malloc-small-bucket'))
 conf_data.set('__MALLOC_ERROR_ABORT', get_option('malloc-error-abort'))
 if internal_heap != 0

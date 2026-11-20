@@ -43,5 +43,13 @@ calloc(size_t n, size_t elem)
         errno = ENOMEM;
         return NULL;
     }
+#ifdef __MALLOC_CLEAR_ALLOCATED
+    /* malloc already returns zeroed memory */
     return malloc(bytes);
+#else
+    void *ptr = malloc(bytes);
+    if (ptr)
+        memset(ptr, 0, bytes);
+    return ptr;
+#endif
 }

@@ -258,7 +258,9 @@ malloc(size_t s)
 
     ptr = chunk_to_ptr(c);
 
+#ifdef __MALLOC_CLEAR_ALLOCATED
     memset(ptr, '\0', alloc_size - MALLOC_HEAD_SIZE);
+#endif
 
     return ptr;
 }

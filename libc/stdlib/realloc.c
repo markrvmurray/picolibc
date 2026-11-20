@@ -106,8 +106,10 @@ realloc(void *ptr, size_t size)
 
         if (__malloc_grow_chunk(p_to_realloc, new_size)
             || __realloc_grow_adjacent(p_to_realloc, old_size, new_size)) {
+#ifdef __MALLOC_CLEAR_ALLOCATED
             /* clear new memory */
             memset((char *)chunk_to_blob(p_to_realloc) + old_size, '\0', new_size - old_size);
+#endif
 
             /* Reset chunk_t size */
             old_size = _size(p_to_realloc);

@@ -168,6 +168,7 @@ constant time instead.
 | enable-malloc               | true    | Include the malloc family of functions in the library                                |
 | internal-heap               | 0       | When non-zero, sets the size of a fixed block of memory for sbrk to use              |
 | malloc-clear-freed          | false   | Set contents of freed memory to zero                                                 |
+| malloc-clear-allocated      | true    | Zero memory returned by malloc and realloc (calloc always zeroes)                    |
 | malloc-error-abort          | false   | Calls abort when the allocation subsystem detects errors                             |
 | malloc-small-bucket         | 0       | Allocations no larger than this are placed in power-of-two buckets for constant-time malloc/free |
 

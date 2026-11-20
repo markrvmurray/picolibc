@@ -2,7 +2,7 @@
 # bench-parallel.sh — MC6809 parallel-build + parallel-tally driver.
 #
 # Build phase, per -O level (parallel via xargs -P):
-#   1. meson setup builddir-mc6809-<O>  (once, reuses on re-run)
+#   1. meson setup [--wipe] builddir-mc6809-<O>  (from scratch every run)
 #   2. ninja -t clean                    (ninja is blind to compiler mtime)
 #   3. ninja -k 0 -C ...                (parallel across waves)
 #
@@ -387,20 +387,18 @@ _setup_wave() {
   esac
 
   echo "==[ $(ts) $label setup ]== bd=$bd cross=$cross opts=$opts" >>"$wl"
-  if [ ! -f "$bd/build.ninja" ]; then
-    # shellcheck disable=SC2086
-    ( cd "$PICO" && meson setup "$bd" "${COMMON[@]}" --cross-file="$cross" $opts ) >>"$wl" 2>&1
-  else
-    # `meson setup --reconfigure` re-reads the cross-file (so any
-    # edits to scripts/cross-clang-mc6809-unknown-elf*.txt — e.g. a
-    # MEMORY-layout change — propagate). `meson configure` after
-    # then applies the per-level options. Both are idempotent and
-    # cheap when nothing has changed.
-    # shellcheck disable=SC2086
-    ( cd "$PICO" \
-      && meson setup --reconfigure --cross-file="$cross" "$bd" \
-      && meson configure "$bd" "${COMMON[@]}" $opts ) >>"$wl" 2>&1
-  fi
+  # Configure from scratch every time, exactly as a new build directory
+  # would be. Reconfiguring keeps every option the directory already
+  # had, so one this bench does not set stayed at whatever default was
+  # current when the directory was made: picolibc's io-percent-b became
+  # true upstream, and directories older than that went on measuring a
+  # printf and scanf without %b while new ones (and the release) had it.
+  # --wipe also re-reads the cross file. It costs meson's configure, about
+  # 20 seconds a level; the build that follows is from clean anyway.
+  local wipe=""
+  [ -f "$bd/build.ninja" ] && wipe="--wipe"
+  # shellcheck disable=SC2086
+  ( cd "$PICO" && meson setup $wipe "$bd" "${COMMON[@]}" --cross-file="$cross" $opts ) >>"$wl" 2>&1
 
   # Bug #269: apply c_args / cpp_args separately so the verifier flag's
   # space survives. The empty-default branch (full_c unset) skips.
@@ -422,8 +420,9 @@ _scrub_wave() {
   # libc.a or test ELF that survived kept stale members / stale links),
   # so scrub every output ninja knows about -- objects, archives, ELFs,
   # generated headers -- and then re-run the file scan for anything
-  # outside ninja's graph. `ninja -t clean` is fast (seconds) and, unlike
-  # `meson setup --wipe`, keeps the configured build dir intact.
+  # outside ninja's graph. Setup now wipes the directory before it
+  # configures, so this is a second line of defence, kept because a stale
+  # object costs a wrong ledger row and the check costs seconds.
   [ -f "$bd/build.ninja" ] && ninja -C "$bd" -t clean >>"$wl" 2>&1
   find "$bd" \( -name '*.c.o' -o -name '*.cpp.o' -o -name '*.S.o' \
                 -o -name 'libc.a' -o -name 'libm.a' \) -delete 2>/dev/null

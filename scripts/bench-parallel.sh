@@ -212,6 +212,9 @@ COMMON=(
   -Dwant-libm=false
   -Dmb-capable=false
   -Dio-long-long=false
+  # malloc and realloc return memory uncleared, as C allows; calloc
+  # clears.  Clearing every block cost about 14 cycles a byte.
+  -Dmalloc-clear-allocated=false
   -Dtests=true
   -Dtests-enable-stack-protector=false
   # The MC6809 cross files set this, but only a fresh build directory reads

@@ -227,7 +227,8 @@ meson setup builddir-mc6809-os9-Os \
     -Dtests=true -Doptimization=s \
     -Dformat-default=integer -Dprintf-aliases=false -Dstdio-float=false \
     -Dposix-extensions=false -Dsearch-extensions=true -Dwant-libm=false \
-    -Dmb-capable=false -Dio-long-long=false -Dtests-enable-stack-protector=false
+    -Dmb-capable=false -Dio-long-long=false -Dmalloc-clear-allocated=false \
+    -Dtests-enable-stack-protector=false
 ```
 
 For floating point, add `-Dstdio-float=true -Dwant-libm=true` and call the
@@ -241,7 +242,8 @@ meson setup builddir-mc6809-os9-Os-fp \
     -Dtests=true -Doptimization=s \
     -Dformat-default=integer -Dprintf-aliases=false -Dstdio-float=true \
     -Dposix-extensions=false -Dsearch-extensions=true -Dwant-libm=true \
-    -Dmb-capable=false -Dio-long-long=false -Dtests-enable-stack-protector=false
+    -Dmb-capable=false -Dio-long-long=false -Dmalloc-clear-allocated=false \
+    -Dtests-enable-stack-protector=false
 ```
 
 A program that does floating point does not carry the MC6839 ROM: it links

@@ -347,6 +347,13 @@ level_record_label() {
   esac
 }
 
+# The opt_level this run's results for a level are recorded under: its
+# record label, plus the harness's "-quick" when --tests filtered the pool.
+level_recorded_as() {
+  if [ -n "${tests_filter:-}" ]; then echo "$(level_record_label "$1")-quick"
+  else level_record_label "$1"; fi
+}
+
 _setup_wave() {
   local label="$1"
   local bd wl opts cross
@@ -998,7 +1005,7 @@ zero_levels=""
 for lvl in "${LEVEL_LIST[@]}"; do
   count=$(sqlite_bench "
     SELECT COUNT(*) FROM results
-     WHERE run_id = (SELECT MAX(run_id) FROM runs WHERE opt_level='$lvl');
+     WHERE run_id = (SELECT MAX(run_id) FROM runs WHERE opt_level='$(level_recorded_as "$lvl")');
   " 2>/dev/null)
   if [ "${count:-0}" = "0" ]; then
     zero_levels="${zero_levels:+$zero_levels }$lvl"
@@ -1025,7 +1032,7 @@ fi
 # and show them as this run's.
 this_run_levels=""
 for lvl in "${LEVEL_LIST[@]}"; do
-  rec="$(level_record_label "$lvl")"
+  rec="$(level_recorded_as "$lvl")"
   this_run_levels="${this_run_levels:+$this_run_levels,}'$rec'"
 done
 sqlite3 -cmd ".timeout $SQLITE_BUSY_TIMEOUT_MS" -separator $'\t' "$DB" <<SQL > "${LOG%.log}-delta.tsv" 2>/dev/null
@@ -1119,7 +1126,7 @@ rm -f "${LOG%.log}-delta.tsv"
 # full previous run is not comparable.
 if [ $skip_tally -eq 0 ] && [ -z "$tests_filter" ]; then
   for lvl in "${LEVEL_LIST[@]}"; do
-    rec="$(level_record_label "$lvl")"
+    rec="$(level_recorded_as "$lvl")"
     read -r ok_now ok_prev tot_now <<<"$(sqlite_bench "
       WITH r AS (SELECT run_id, ROW_NUMBER() OVER (ORDER BY run_id DESC) rn
                    FROM runs WHERE opt_level='$rec')

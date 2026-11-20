@@ -47,6 +47,7 @@ srcs_machine = [
   'setjmp.S',  # Bug #338: mc6809 setjmp/longjmp (no generic fallback existed)
   'memcpy.S',
   'memmove.S',
+  'memset.S',
 ]
 
 foreach params : targets

@@ -135,7 +135,7 @@ SLOW_TESTS = {
 }
 
 # Tests with long MAME wall times under HD6309 — gated by --slow at
-# MAME-backed levels only.
+# levels whose tests actually run on MAME (not merely named -mame).
 #
 # Pre-Bug-#248 (history): these tests ran 27+ min under MAME because
 # their inputs assumed a much faster simulator. After the Bug #248
@@ -253,6 +253,27 @@ NON_FP_EXCLUSIVE_TESTS = {
 # tally invocations. Override via USIM_TIMEOUT env if callers really
 # need a different baseline for all tests.
 DEFAULT_USIM_TIMEOUT = 2_000_000_000
+
+
+def _builddir_runs_on_mame(bd):
+    """True if the builddir's tests execute on MAME.
+
+    The -hd6309-mame builddirs keep their name whichever emulator runs
+    them: gen-mc6809-cross.sh points their cross file's exe_wrapper at
+    run-mc6809-usim6309 (the default) or, with BENCH_HD6309_BACKEND=mame,
+    at run-mc6809-mame.  Ask the cross file, not the name."""
+    try:
+        with open(os.path.join(bd, "meson-private", "cmd_line.txt")) as f:
+            for line in f:
+                if line.startswith("cross_file"):
+                    for cf in re.findall(r"'([^']+)'", line):
+                        with open(cf) as c:
+                            for l in c:
+                                if l.lstrip().startswith("exe_wrapper"):
+                                    return "run-mc6809-mame" in l
+    except OSError:
+        pass
+    return False
 
 
 def _is_fp_level(lvl):
@@ -1069,7 +1090,7 @@ def run_multi(args):
         if not args.slow:
             level_buildfail = [t for t in level_buildfail
                                if t["name"] not in SLOW_TESTS]
-        if not args.slow and lvl.endswith("-mame"):
+        if not args.slow and _builddir_runs_on_mame(bd):
             level_buildfail = [t for t in level_buildfail
                                if t["name"] not in MAME_SLOW_TESTS]
         if not args.include_fake_fs:
@@ -1094,10 +1115,10 @@ def run_multi(args):
             for t in skipped:
                 print(f"[{lvl}] skipping {t['name']} (SLOW_TESTS; "
                       f"pass --slow to include)", flush=True)
-        # Bug #204: under MAME, additional tests are too slow to run
-        # routinely (~tens of minutes wall each). Skip them only when
-        # the level is a -mame variant; --slow opts back in.
-        if not args.slow and lvl.endswith("-mame"):
+        # Under MAME, additional tests are too slow to run routinely
+        # (~tens of minutes wall each). Skip them only when the level
+        # actually runs on MAME; --slow opts back in.
+        if not args.slow and _builddir_runs_on_mame(bd):
             skipped = [t for t in tests if t["name"] in MAME_SLOW_TESTS]
             tests = [t for t in tests if t["name"] not in MAME_SLOW_TESTS]
             for t in skipped:
@@ -1462,7 +1483,7 @@ def main():
     def _apply_filters(items):
         if not args.slow:
             items = [t for t in items if t["name"] not in SLOW_TESTS]
-        if not args.slow and args.opt_level and args.opt_level.endswith("-mame"):
+        if not args.slow and _builddir_runs_on_mame(BUILDDIR):
             items = [t for t in items if t["name"] not in MAME_SLOW_TESTS]
         if not args.include_fake_fs:
             items = [t for t in items if t["name"] not in FAKE_FS_TESTS]
@@ -1479,7 +1500,7 @@ def main():
             print(f"skipping {t['name']} (SLOW_TESTS; pass --slow to include)",
                   flush=True)
     # Bug #204: MAME-only slow-test skip (mirrors the --multi path).
-    if not args.slow and args.opt_level and args.opt_level.endswith("-mame"):
+    if not args.slow and _builddir_runs_on_mame(BUILDDIR):
         skipped = [t for t in tests if t["name"] in MAME_SLOW_TESTS]
         tests = [t for t in tests if t["name"] not in MAME_SLOW_TESTS]
         for t in skipped:

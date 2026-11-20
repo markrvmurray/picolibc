@@ -7,8 +7,8 @@
 # parsing, USIM_CYCLES, USIM_TIMEOUT, the rc-124 cap-hit relay) to
 # run-mc6809. Single source of truth, no duplicated logic.
 #
-# Used as the MAME cross-file's exe_wrapper when the bench is run with
-# BENCH_HD6309_BACKEND=usim, so the -hd6309-mame levels execute on USim
-# instead of MAME (same -mcpu=hd6309 codegen, different backend).
+# The HD6309 cross file's exe_wrapper unless the bench is run with
+# BENCH_HD6309_BACKEND=mame: the -hd6309 levels execute on USim rather
+# than MAME (same -mcpu=hd6309 codegen, different backend).
 #
 exec env USIM_HD6309=1 "$(dirname "$0")/run-mc6809" "$@"

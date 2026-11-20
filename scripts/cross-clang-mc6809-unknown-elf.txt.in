@@ -2,7 +2,7 @@
 #
 # This is not consumed directly by meson. The concrete cross files
 #   cross-clang-mc6809-unknown-elf.txt        (usim, DP=$00)
-#   cross-clang-mc6809-unknown-elf-mame.txt   (MAME llvm6309, DP=$00)
+#   cross-clang-mc6809-unknown-elf-hd6309.txt (HD6309: usim or MAME, DP=$00)
 #   cross-clang-mc6809-unknown-elf-dp7F.txt   (usim, DP=$7F smoke test)
 # are GENERATED from this template by scripts/gen-mc6809-cross.sh, which
 # substitutes the toolchain location from the environment (LLVM_BIN) and

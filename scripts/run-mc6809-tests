@@ -135,7 +135,7 @@ SLOW_TESTS = {
 }
 
 # Tests with long MAME wall times under HD6309 — gated by --slow at
-# levels whose tests actually run on MAME (not merely named -mame).
+# levels whose tests actually run on MAME (BENCH_HD6309_BACKEND=mame).
 #
 # Pre-Bug-#248 (history): these tests ran 27+ min under MAME because
 # their inputs assumed a much faster simulator. After the Bug #248
@@ -149,7 +149,7 @@ SLOW_TESTS = {
 # loops where ~7 min wall savings matter.
 #
 # Last measured (run_id 1241-1248, 2026-05-12 PM bench):
-#   test-iconv     253 s @ Os-hd6309-mame
+#   test-iconv     253 s @ Os-hd6309 on MAME
 #   test-memchr    216 s
 #   test-memset    284 s
 #   test-timegm    161 s
@@ -258,10 +258,10 @@ DEFAULT_USIM_TIMEOUT = 2_000_000_000
 def _builddir_runs_on_mame(bd):
     """True if the builddir's tests execute on MAME.
 
-    The -hd6309-mame builddirs keep their name whichever emulator runs
-    them: gen-mc6809-cross.sh points their cross file's exe_wrapper at
+    An HD6309 builddir runs on whichever emulator its cross file's
+    exe_wrapper names: gen-mc6809-cross.sh points it at
     run-mc6809-usim6309 (the default) or, with BENCH_HD6309_BACKEND=mame,
-    at run-mc6809-mame.  Ask the cross file, not the name."""
+    at run-mc6809-mame.  Ask the cross file."""
     try:
         with open(os.path.join(bd, "meson-private", "cmd_line.txt")) as f:
             for line in f:
@@ -279,7 +279,7 @@ def _builddir_runs_on_mame(bd):
 def _is_fp_level(lvl):
     """True if `lvl` is a picolibc opt-level with FP-enabled stdio.
     Matches `-fp` suffix or `-fp-` substring (e.g. `O2-fp`, `Os-fp`,
-    `Os-lto-hd6309-mame-fp`, `Og-lto-hd6309-mame-fp`).
+    `Os-lto-hd6309-fp`, `Og-lto-hd6309-fp`).
 
     Used to gate NON_FP_EXCLUSIVE_TESTS — tests whose behaviour is
     identical between -fp and non-fp picolibc builds because they

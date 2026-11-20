@@ -71,7 +71,7 @@ git-ignored:
 scripts/cross-clang-mc6809-unknown-elf.txt.in   ← committed template
 scripts/gen-mc6809-cross.sh                      ← generator
 scripts/cross-clang-mc6809-unknown-elf.txt       ← generated (usim, DP=$00)
-scripts/cross-clang-mc6809-unknown-elf-mame.txt  ← generated (HD6309: usim, or MAME with BENCH_HD6309_BACKEND=mame; DP=$00)
+scripts/cross-clang-mc6809-unknown-elf-hd6309.txt ← generated (HD6309: usim, or MAME with BENCH_HD6309_BACKEND=mame; DP=$00)
 scripts/cross-clang-mc6809-unknown-elf-dp7F.txt  ← generated (usim, DP=$7F)
 ```
 
@@ -101,10 +101,10 @@ run needs no manual step.
 ## Build layout
 
 One meson builddir per configuration: `builddir-mc6809-<LEVEL>`. Suffixes
-stack: `-fp` (libm + stdio-float), `-lto`, `-hd6309` (6309 ISA), `-mame`
-(historical: the HD6309 cross file; tests run on usim unless
-`BENCH_HD6309_BACKEND=mame`, and the ledger records `-hd6309-usim` or
-`-hd6309-mame` to match), e.g. `builddir-mc6809-Os-lto-hd6309-mame-fp`.
+stack: `-fp` (libm + stdio-float), `-lto` and `-hd6309` (6309 ISA), e.g.
+`builddir-mc6809-Os-lto-hd6309-fp`. The 6309 levels run on usim unless
+`BENCH_HD6309_BACKEND=mame`, and the ledger records them as `-hd6309-usim`
+or `-hd6309-mame` to match.
 
 ## Quick start
 
@@ -129,7 +129,7 @@ With the default sibling layout no environment setup is needed:
 
 ```sh
 ./scripts/bench-parallel.sh \
-  --levels O0,O0-fp,O1,O1-fp,O2,O2-fp,O2-lto,O2-hd6309-mame,O2-hd6309-mame-fp,O3,O3-fp,O3-lto,Og,Og-fp,Og-hd6309-mame,Og-lto-hd6309-mame-fp,Os,Os-fp,Os-lto,Os-lto-fp,Os-hd6309-mame,Os-hd6309-mame-fp,Os-lto-hd6309-mame,Os-lto-hd6309-mame-fp,Oz,Oz-fp,Ofast,Ofast-fp,os9-Os,os9-Os-fp,os9-Os-hd6309 \
+  --levels O0,O0-fp,O1,O1-fp,O2,O2-fp,O2-lto,O2-hd6309,O2-hd6309-fp,O3,O3-fp,O3-lto,Og,Og-fp,Og-hd6309,Og-lto-hd6309-fp,Os,Os-fp,Os-lto,Os-lto-fp,Os-hd6309,Os-hd6309-fp,Os-lto-hd6309,Os-lto-hd6309-fp,Oz,Oz-fp,Ofast,Ofast-fp,os9-Os,os9-Os-fp,os9-Os-hd6309 \
   --build-jobs 5 --test-jobs 16
 ```
 

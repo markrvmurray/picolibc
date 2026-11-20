@@ -67,7 +67,7 @@ fi
 echo "gen-mc6809-cross: HD6309 backend = ${BENCH_HD6309_BACKEND:-usim} ($hd6309_wrapper)"
 
 emit "$SCRIPT_DIR/cross-clang-mc6809-unknown-elf.txt"      "$PICO/scripts/run-mc6809"       0
-emit "$SCRIPT_DIR/cross-clang-mc6809-unknown-elf-mame.txt" "$hd6309_wrapper"                0
+emit "$SCRIPT_DIR/cross-clang-mc6809-unknown-elf-hd6309.txt" "$hd6309_wrapper"              0
 emit "$SCRIPT_DIR/cross-clang-mc6809-unknown-elf-dp7F.txt" "$PICO/scripts/run-mc6809"     127
 
 # OS-9 / NitrOS-9: its own template (no flash/RAM/direct-page model); the

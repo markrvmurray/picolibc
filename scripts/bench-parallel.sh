@@ -260,8 +260,11 @@ level_opts() {
     # compiler-rt), and a console that is the shell's.  os9-Os runs at
     # Level 1 and os9-Os-fp at Level 2 -- floating point needs the FPO9
     # module beside the program, which only Level 2 has room for.
+    # os9-Os-hd6309 is the 6309 build on the 6309 NitrOS-9 Level 2: the
+    # HD6309 code generator and the HD6309 build of the OS-9 builtins.
     os9-Os) echo "-Doptimization=s -Dpicocrt=false -Dsemihost=false -Dos-os9=true -Dposix-console=true" ;;
     os9-Os-fp) echo "-Doptimization=s -Dpicocrt=false -Dsemihost=false -Dos-os9=true -Dposix-console=true -Dstdio-float=true -Dwant-libm=true" ;;
+    os9-Os-hd6309) echo "-Doptimization=s -Dpicocrt=false -Dsemihost=false -Dos-os9=true -Dposix-console=true -Dc_args=-mcpu=hd6309 -Dcpp_args=-mcpu=hd6309 -Dc_link_args=-mcpu=hd6309 -Dcpp_link_args=-mcpu=hd6309" ;;
 
     # ---- plain MC6809, LTO ----
     O2-lto) echo "-Doptimization=2 -Db_lto=true" ;;
@@ -714,7 +717,7 @@ O0-fp,O1-fp,O2-fp,O3-fp,Og-fp,Os-fp,Oz-fp,Ofast-fp,\
 Os-lto-fp,\
 O2-hd6309-mame,Og-hd6309-mame,Os-hd6309-mame,Os-lto-hd6309-mame,\
 O2-hd6309-mame-fp,Og-lto-hd6309-mame-fp,Os-hd6309-mame-fp,Os-lto-hd6309-mame-fp,\
-os9-Os,os9-Os-fp"
+os9-Os,os9-Os-fp,os9-Os-hd6309"
 # 2026-05-09 expansion: previously 12 levels.  Now 28 levels:
 #   - plain non-LTO:       O0..Ofast                       (8, unchanged)
 #   - plain LTO:           O2-lto, O3-lto, Os-lto          (3, +2 new)
@@ -1038,10 +1041,14 @@ if [ $skip_tally -eq 0 ]; then
       os9-Os) n9level=1 ;;
       *)      n9level=2 ;;
     esac
+    case "$lvl" in
+      *-hd6309*) n9cpu=6309 ;;
+      *)         n9cpu=6809 ;;
+    esac
     tests_arg="";  [ -n "$tests_filter" ] && tests_arg="--tests $tests_filter"
-    echo "==[ $(ts) tally $lvl (NitrOS-9 Level $n9level, --jobs $test_jobs) ]==" \
+    echo "==[ $(ts) tally $lvl (NitrOS-9 Level $n9level on the $n9cpu, --jobs $test_jobs) ]==" \
       | tee -a "$LOG"
-    MC6809_BENCH_DB="$DB" NITROS9_LEVEL="$n9level" PICOLIBC_BUILDDIR="$bd" \
+    MC6809_BENCH_DB="$DB" NITROS9_LEVEL="$n9level" NITROS9_CPU="$n9cpu" PICOLIBC_BUILDDIR="$bd" \
       "$PICO/scripts/run-mc6809-tests" \
         --record --jobs "$test_jobs" --opt-level "$lvl" --include-fake-fs \
         $tests_arg 2>&1 | tee -a "$LOG"

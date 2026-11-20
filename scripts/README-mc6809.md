@@ -129,7 +129,7 @@ With the default sibling layout no environment setup is needed:
 
 ```sh
 ./scripts/bench-parallel.sh \
-  --levels O0,O0-fp,O1,O1-fp,O2,O2-fp,O2-lto,O2-hd6309-mame,O2-hd6309-mame-fp,O3,O3-fp,O3-lto,Og,Og-fp,Og-hd6309-mame,Og-lto-hd6309-mame-fp,Os,Os-fp,Os-lto,Os-lto-fp,Os-hd6309-mame,Os-hd6309-mame-fp,Os-lto-hd6309-mame,Os-lto-hd6309-mame-fp,Oz,Oz-fp,Ofast,Ofast-fp,os9-Os,os9-Os-fp \
+  --levels O0,O0-fp,O1,O1-fp,O2,O2-fp,O2-lto,O2-hd6309-mame,O2-hd6309-mame-fp,O3,O3-fp,O3-lto,Og,Og-fp,Og-hd6309-mame,Og-lto-hd6309-mame-fp,Os,Os-fp,Os-lto,Os-lto-fp,Os-hd6309-mame,Os-hd6309-mame-fp,Os-lto-hd6309-mame,Os-lto-hd6309-mame-fp,Oz,Oz-fp,Ofast,Ofast-fp,os9-Os,os9-Os-fp,os9-Os-hd6309 \
   --build-jobs 5 --test-jobs 16
 ```
 
@@ -137,10 +137,11 @@ With the default sibling layout no environment setup is needed:
   on-usim `test/MC/MC6809/Execution/` suite) ≈ 29 ledger rows.  With
   `BENCH_HD6309_BACKEND=mame` the 8 HD6309 levels run on MAME instead,
   about 11x slower.
-- Two OS-9 levels are in the default set as well: `os9-Os` (NitrOS-9 Level 1)
-  and `os9-Os-fp` (Level 2), each booted on usim09pt. They are tallied one at
-  a time rather than in the shared pool -- a level is a NitrOS-9 level, which
-  is an environment variable, and one pool cannot hold two. They record no
+- Three OS-9 levels are in the default set as well: `os9-Os` (NitrOS-9
+  Level 1), `os9-Os-fp` (Level 2) and `os9-Os-hd6309` (the 6309 build on the
+  6309 NitrOS-9 Level 2), each booted on usim09pt. They are tallied one at
+  a time rather than in the shared pool -- a level is a NitrOS-9 level and
+  CPU, which are environment variables, and one pool cannot hold two. They record no
   cycles: a boot is most of what a run costs, so a cycle count would be
   measuring the operating system. Their size column holds the OS-9 module's
   own size, the thing that has to fit in a task's blocks.

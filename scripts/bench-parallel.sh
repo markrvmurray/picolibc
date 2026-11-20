@@ -594,11 +594,14 @@ _lit_tally() {
     os9_runtime_ran=1
   fi
 
-  # USIM09BATCH + MAMELLVM6309 must be in the environment or the
-  # Execution suite self-skips every test as UNSUPPORTED.
+  # USIM09BATCH must be in the environment or the Execution suite
+  # self-skips every test as UNSUPPORTED.  HD6309 execution tests run on
+  # the same backend as the -hd6309 levels: usim unless
+  # BENCH_HD6309_BACKEND=mame.
   # shellcheck disable=SC2086
   USIM09BATCH="$USIM/usim09batch" \
   MAMELLVM6309="$MAME_RUNNER" \
+  MC6809_HD6309_SIM="$HD6309_BACKEND" \
   MC6809_OS9_RUNTIME_TESTS=1 \
   NITROS9_USIM09PT="$USIM/usim09pt" \
     "$lit" -v --no-progress-bar $testpaths > "$outfile" 2>&1

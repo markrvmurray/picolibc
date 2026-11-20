@@ -1,8 +1,9 @@
 # Building, testing and benchmarking picolibc for the MC6809 / HD6309
 
 This fork adds an MC6809 (and HD6309) port of picolibc, built with the
-`llvm-mc6809` Clang/LLVM backend and exercised on the `usim` simulator
-(and optionally MAME's `llvm6309` machine for HD6309 coverage). The
+`llvm-mc6809` Clang/LLVM backend and exercised on the `usim` simulator,
+6809 and HD6309 alike (MAME's `llvm6309` machine is an optional, slower
+alternative for HD6309). The
 harness cross-builds picolibc, runs the test suite on the emulators, and
 records per-test cycle counts and pass/fail status to a SQLite ledger so
 codegen trends are visible across commits and optimisation levels.
@@ -21,7 +22,7 @@ other repositories are expected to sit next to this picolibc checkout.
 │                       llvm/cmake-build-debug-system/
 ├── usim/            ← the MC6809 simulator (usim09batch)
 └── mame/            ← optional: MAME llvm6309 wrapper (run-mc6809-mame),
-                        only needed for HD6309 (`-mame`) bench levels
+                        only needed with BENCH_HD6309_BACKEND=mame
 ```
 
 If your checkouts live elsewhere, set the environment variables below —
@@ -35,8 +36,10 @@ nothing assumes a home-directory path.
    cd ../llvm-mc6809/llvm/cmake-build-debug-system
    cmake --build . --target all -j 8     # --target all: LTO needs a fresh ld.lld
    ```
-2. **Emulators** (the test runners): `usim09batch` (6809) and, for
-   HD6309 coverage, the MAME-based `run-mc6809-mame`. With the default
+2. **Emulators** (the test runners): `usim09batch` runs everything,
+   HD6309 included (`--hd6309`); the MAME-based `run-mc6809-mame` is an
+   optional alternative for HD6309, selected with
+   `BENCH_HD6309_BACKEND=mame`. With the default
    sibling layout these are found automatically; otherwise point the
    harness at them with the environment variables below.
 
@@ -53,9 +56,10 @@ nothing assumes a home-directory path.
 | `MAME_RUNNER`       | `$PICO/../mame/run-mc6809-mame`                 | MAME llvm6309 wrapper (HD6309 only) |
 | `MC6809_BENCH_DB`   | `~/Documents/mc6809-bench/results.sqlite`       | bench results ledger |
 
-`bench-parallel.sh` exports `MAMELLVM6309=$MAME_RUNNER` for the lit
-Execution gate, so you only ever set `MAME_RUNNER` (or rely on the
-sibling default).
+`bench-parallel.sh` exports `MAMELLVM6309=$MAME_RUNNER` and
+`MC6809_HD6309_SIM=$BENCH_HD6309_BACKEND` for the lit Execution gate, so
+its HD6309 tests run on the same emulator as the `-hd6309` levels (usim
+unless you ask for MAME).
 
 ## Meson cross files are generated, not committed
 
@@ -67,7 +71,7 @@ git-ignored:
 scripts/cross-clang-mc6809-unknown-elf.txt.in   ← committed template
 scripts/gen-mc6809-cross.sh                      ← generator
 scripts/cross-clang-mc6809-unknown-elf.txt       ← generated (usim, DP=$00)
-scripts/cross-clang-mc6809-unknown-elf-mame.txt  ← generated (MAME, DP=$00)
+scripts/cross-clang-mc6809-unknown-elf-mame.txt  ← generated (HD6309: usim, or MAME with BENCH_HD6309_BACKEND=mame; DP=$00)
 scripts/cross-clang-mc6809-unknown-elf-dp7F.txt  ← generated (usim, DP=$7F)
 ```
 
@@ -98,7 +102,9 @@ run needs no manual step.
 
 One meson builddir per configuration: `builddir-mc6809-<LEVEL>`. Suffixes
 stack: `-fp` (libm + stdio-float), `-lto`, `-hd6309` (6309 ISA), `-mame`
-(runs under MAME), e.g. `builddir-mc6809-Os-lto-hd6309-mame-fp`.
+(historical: the HD6309 cross file; tests run on usim unless
+`BENCH_HD6309_BACKEND=mame`, and the ledger records `-hd6309-usim` or
+`-hd6309-mame` to match), e.g. `builddir-mc6809-Os-lto-hd6309-mame-fp`.
 
 ## Quick start
 
@@ -127,9 +133,10 @@ With the default sibling layout no environment setup is needed:
   --build-jobs 5 --test-jobs 16
 ```
 
-- 20 USim levels + 8 MAME-HD6309 levels + a lit gate (incl. the on-usim
-  `test/MC/MC6809/Execution/` suite) ≈ 29 ledger rows. ~30–40 min wall,
-  MAME-dominated.
+- 20 6809 levels + 8 HD6309 levels, all on usim, + a lit gate (incl. the
+  on-usim `test/MC/MC6809/Execution/` suite) ≈ 29 ledger rows.  With
+  `BENCH_HD6309_BACKEND=mame` the 8 HD6309 levels run on MAME instead,
+  about 11x slower.
 - Two OS-9 levels are in the default set as well: `os9-Os` (NitrOS-9 Level 1)
   and `os9-Os-fp` (Level 2), each booted on usim09pt. They are tallied one at
   a time rather than in the shared pool -- a level is a NitrOS-9 level, which

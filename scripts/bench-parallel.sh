@@ -201,6 +201,9 @@ COMMON=(
   -Dwant-libm=false
   -Dmb-capable=false
   -Dio-long-long=false
+  # %b (binary) in printf and scanf, as C23 has it.  Set here rather than
+  # left to picolibc's default, which has changed under us before.
+  -Dio-percent-b=true
   # malloc and realloc return memory uncleared, as C allows; calloc
   # clears.  Clearing every block cost about 14 cycles a byte.
   -Dmalloc-clear-allocated=false

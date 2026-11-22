@@ -576,8 +576,18 @@ check_names
 #     linker script the driver cannot find, no libc at all -- is a real
 #     failure and is reported as one, because that is what a broken bundle
 #     looks like.
+#
+# Whichever Python there is: Windows has `python`, and its `python3` may be
+# no more than a stub that offers to install one.  What the last attempt said
+# is kept, because "said nothing" with no reason is no help.
 corpus_skips() {
-  python3 "$SCRIPT_DIR/run-mc6809-tests" --list-skip 2>/dev/null | cut -f2
+  for py in python3 python; do
+    if out=$("$py" "$SCRIPT_DIR/run-mc6809-tests" --list-skip \
+               2>"$work/list-skip.err") && [ -n "$out" ]; then
+      printf '%s\n' "$out" | cut -f2
+      return
+    fi
+  done
 }
 
 # A handful of the suite's programs are not plain programs: they want a
@@ -611,6 +621,7 @@ run_corpus() {
   skips=$(corpus_skips)
   [ -n "$skips" ] || { echo "FAIL corpus: run-mc6809-tests --list-skip said \
 nothing; without it the run would report failures that are not failures"; \
+                       sed 's/^/    /' "$work/list-skip.err" 2>/dev/null | tail -4
                        fail=$((fail + 1)); return; }
   # Sources that other sources include are not programs of their own.
   included=$(cat "$CORPUS"/*.c 2>/dev/null \

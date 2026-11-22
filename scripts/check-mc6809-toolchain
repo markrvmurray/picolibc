@@ -202,10 +202,17 @@ variant() {
   # program still runs because a 6809 libc runs on a 6309.  That is the
   # exact substitution this case exists to catch.
   vlib=$PREFIX/lib/clang-runtimes/$vtriple/$vdir/libc.a
+  # The driver joins the directory with the host's separator, and -###
+  # quotes a backslash by doubling it, so on Windows the path reads
+  # clang-runtimes\\mc6809-unknown-unknown\\hd6309.  Compare in one spelling.
   # shellcheck disable=SC2086
-  if ! "$CLANG" --target="$vtriple" $vflags -### -x c - -o "$work/v.bin" \
-        < /dev/null 2>&1 | grep -q "clang-runtimes/$vtriple/$vdir\"" ; then
+  "$CLANG" --target="$vtriple" $vflags -### -x c - -o "$work/v.bin" \
+    < /dev/null 2>&1 | tr '\\' / | sed 's|//*|/|g' > "$work/v.link"
+  if ! grep -q "clang-runtimes/$vtriple/$vdir\"" "$work/v.link"; then
     echo "FAIL $vdir library ($vtriple): the link does not use $vdir/"
+    # What it used instead, which is the half worth reading.
+    tr ' ' '\n' < "$work/v.link" | grep "clang-runtimes" | sort -u \
+      | sed 's/^/    /' | head -6
     fail=$((fail + 1))
   elif [ ! -f "$vlib" ]; then
     echo "FAIL $vdir library ($vtriple): the link uses $vdir/ but there is \

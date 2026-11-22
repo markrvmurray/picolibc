@@ -137,36 +137,54 @@ _cstart(void)
     __start();
 }
 
-void __section(".text.init.enter") __used
-_start(void)
-{
-    /* Initialise stack pointer to top-of-stack from the linker
-     * script, then long-branch to the C bring-up. The processor
-     * arrives here through the reset vector, the last entry of
-     * __vector_table below. */
-    __asm__ volatile("lds #__stack");
-#ifdef __6309__
-    /*
-     * HD6309 Native mode (MD bit 0). It is cycle-for-cycle identical
-     * to the 6809 until this runs; native mode drops the dead cycles
-     * from most instructions and is the whole reason to target the
-     * part, so a -mcpu=hd6309 build that never sets MD is benchmarking
-     * a 6809 with extra registers.
-     *
-     * The only semantic change is that an entire-state interrupt frame
-     * grows from 12 bytes to 14 (E and F are stacked between B and DP).
-     * Nothing here reads that frame -- __swi3_trap below is a sentinel
-     * that halts -- so it is safe.
-     *
-     * Define PICOLIBC_MC6809_EMULATION_MODE to leave MD alone, which
-     * is what a like-for-like emulation-vs-native comparison wants.
-     */
-#ifndef PICOLIBC_MC6809_EMULATION_MODE
-    __asm__ volatile("ldmd #1");
+/*
+ * HD6309 Native mode (MD bit 0). It is cycle-for-cycle identical to the
+ * 6809 until this runs; native mode drops the dead cycles from most
+ * instructions and is the whole reason to target the part, so a
+ * -mcpu=hd6309 build that never sets MD is benchmarking a 6809 with extra
+ * registers.
+ *
+ * The only semantic change is that an entire-state interrupt frame grows
+ * from 12 bytes to 14 (E and F are stacked between B and DP). Nothing here
+ * reads that frame -- __swi3_trap below is a sentinel that halts -- so it
+ * is safe.
+ *
+ * Define PICOLIBC_MC6809_EMULATION_MODE to leave MD alone, which is what a
+ * like-for-like emulation-vs-native comparison wants.
+ */
+#if defined(__6309__) && !defined(PICOLIBC_MC6809_EMULATION_MODE)
+#define MC6809_SET_NATIVE_MODE "\tldmd #1\n"
+#else
+#define MC6809_SET_NATIVE_MODE ""
 #endif
-#endif
-    __asm__ volatile("lbra _cstart");
-}
+
+/*
+ * The entry point. Initialise the stack pointer to top-of-stack from the
+ * linker script, then call the C bring-up. The processor arrives here
+ * through the reset vector, the last entry of __vector_table below.
+ *
+ * Nothing called _start, so it is where a debugger's backtrace must end:
+ * its CFI leaves the return address undefined. And it calls _cstart rather
+ * than branching there, so that the program's frames chain up to this one
+ * instead of to whatever lies past the top of the stack. It is written in
+ * assembly, CFI frame and all, because a C function only has a CFI frame
+ * to add to when it is compiled with debug or unwind information.
+ */
+void _start(void);
+__asm__(".pushsection .text.init.enter,\"ax\",@progbits\n"
+        "\t.cfi_sections .debug_frame\n"
+        "\t.globl _start\n"
+        "\t.type _start,@function\n"
+        "_start:\n"
+        "\t.cfi_startproc\n"
+        "\t.cfi_def_cfa s, 0\n"
+        "\t.cfi_undefined pc\n"
+        "\tlds #__stack\n"
+        MC6809_SET_NATIVE_MODE
+        "\tjsr _cstart\n"
+        "\t.cfi_endproc\n"
+        "\t.size _start, .-_start\n"
+        "\t.popsection\n");
 
 /*
  * Bug #273: diagnostic SWI3 handler.

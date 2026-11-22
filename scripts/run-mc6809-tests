@@ -44,7 +44,6 @@ see scripts/README-mc6809.md):
 
 import argparse
 import errno
-import fcntl
 import json
 import os
 import re
@@ -1335,6 +1334,11 @@ def hold_bench_lock():
     Under the bench this process inherits the locked descriptor, so it already
     holds the lock.  Standalone, it takes the lock until it exits.
     """
+    # Imported here, not at the top: fcntl is POSIX-only, and the rest of
+    # this script -- --list-skip, which the bundle check asks for on every
+    # host, Windows included -- must load without it.
+    import fcntl
+
     path = os.environ.get("MC6809_BENCH_LOCK", "/tmp/mc6809-bench.lock")
     inherited = os.environ.get("MC6809_BENCH_LOCK_FD")
     if inherited:

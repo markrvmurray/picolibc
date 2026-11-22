@@ -37,17 +37,21 @@ LLVM_BIN=${LLVM_BIN:-$LLVM_REPO/$LLVM_BUILD_SUBDIR/bin}
 TEMPLATE=$SCRIPT_DIR/cross-clang-mc6809-unknown-elf.txt.in
 [ -f "$TEMPLATE" ] || { echo "gen-mc6809-cross: missing template $TEMPLATE" >&2; exit 1; }
 
+# rep VALUE -- VALUE made safe as the replacement of a `s|...|...|` below:
+# a backslash, an ampersand or the | delimiter in it would otherwise mean
+# something to sed.  A Windows path is full of backslashes (and `\2` in
+# `clang\24` is a back-reference sed refuses).
+rep() { printf '%s' "$1" | sed -e 's/[\\&|]/\\&/g'; }
+
 # emit OUTFILE EXE_WRAPPER DP_BASE
 emit() {
 	out=$1; wrapper=$2; dp=$3
 	# Substitute the %%...%% generator placeholders only; meson's @...@
-	# tokens in directpage_block/_memory are left intact. Paths are fed
-	# via the shell environment to sed's `r`-free `s` with a control-char
-	# delimiter so slashes in paths need no escaping.
-	sed -e "s|%%LLVM_BIN%%|$LLVM_BIN|g" \
-	    -e "s|%%EXE_WRAPPER%%|$wrapper|g" \
-	    -e "s|%%TOOLCHAIN_REF%%|$LLVM_BIN/clang|g" \
-	    -e "s|%%DP_BASE%%|$dp|g" \
+	# tokens in directpage_block/_memory are left intact.
+	sed -e "s|%%LLVM_BIN%%|$(rep "$LLVM_BIN")|g" \
+	    -e "s|%%EXE_WRAPPER%%|$(rep "$wrapper")|g" \
+	    -e "s|%%TOOLCHAIN_REF%%|$(rep "$LLVM_BIN/clang")|g" \
+	    -e "s|%%DP_BASE%%|$(rep "$dp")|g" \
 	    "$TEMPLATE" > "$out"
 	echo "  wrote $out"
 }
@@ -75,25 +79,27 @@ emit "$SCRIPT_DIR/cross-clang-mc6809-unknown-elf-dp7F.txt" "$PICO/scripts/run-mc
 # cross file names neither.  No exe_wrapper: nothing here can run one.
 DECB_TEMPLATE=$SCRIPT_DIR/cross-clang-mc6809-unknown-decb.txt.in
 if [ -f "$DECB_TEMPLATE" ]; then
-	sed -e "s|%%LLVM_BIN%%|$LLVM_BIN|g" \
+	sed -e "s|%%LLVM_BIN%%|$(rep "$LLVM_BIN")|g" \
 	    "$DECB_TEMPLATE" > "$SCRIPT_DIR/cross-clang-mc6809-unknown-decb.txt"
 	echo "  wrote $SCRIPT_DIR/cross-clang-mc6809-unknown-decb.txt"
 fi
 
 # linker script lives in the compiler's resource directory.
 OS9_TEMPLATE=$SCRIPT_DIR/cross-clang-mc6809-unknown-os9.txt.in
-OS9_RESDIR=$("$LLVM_BIN/clang" --target=mc6809-unknown-os9 -print-resource-dir 2>/dev/null)/lib/mc6809-unknown-os9
+# clang names its directory the host's way -- with backslashes on Windows --
+# and meson wants forward slashes, which Windows takes too.
+OS9_RESDIR=$("$LLVM_BIN/clang" --target=mc6809-unknown-os9 -print-resource-dir 2>/dev/null | tr '\\' /)/lib/mc6809-unknown-os9
 OS9_LDS=$OS9_RESDIR/mc6809-os9.lds
 OS9_FP=$OS9_RESDIR/FPO9
 if [ -f "$OS9_TEMPLATE" ]; then
 	if [ ! -f "$OS9_LDS" ]; then
 		echo "gen-mc6809-cross: warning: $OS9_LDS not found (build the OS-9 runtime: runtimes/builtins-mc6809-unknown-os9-build)" >&2
 	fi
-	sed -e "s|%%LLVM_BIN%%|$LLVM_BIN|g" \
-	    -e "s|%%EXE_WRAPPER%%|$PICO/scripts/run-mc6809-os9|g" \
-	    -e "s|%%OS9_FP%%|$OS9_FP|g" \
-	    -e "s|%%TOOLCHAIN_REF%%|$LLVM_BIN/clang|g" \
-	    -e "s|%%OS9_LDS%%|$OS9_LDS|g" \
+	sed -e "s|%%LLVM_BIN%%|$(rep "$LLVM_BIN")|g" \
+	    -e "s|%%EXE_WRAPPER%%|$(rep "$PICO/scripts/run-mc6809-os9")|g" \
+	    -e "s|%%OS9_FP%%|$(rep "$OS9_FP")|g" \
+	    -e "s|%%TOOLCHAIN_REF%%|$(rep "$LLVM_BIN/clang")|g" \
+	    -e "s|%%OS9_LDS%%|$(rep "$OS9_LDS")|g" \
 	    "$OS9_TEMPLATE" > "$SCRIPT_DIR/cross-clang-mc6809-unknown-os9.txt"
 	echo "  wrote $SCRIPT_DIR/cross-clang-mc6809-unknown-os9.txt"
 fi

@@ -1,0 +1,41 @@
+#!/bin/sh
+# test-gen-mc6809-cross -- check gen-mc6809-cross.sh against awkward paths.
+#
+# The generator writes its cross files beside itself, so this runs a copy in
+# a temporary directory, with a stand-in clang that reports its resource
+# directory the way clang does on Windows (backslashes, and `\2` in
+# `clang\24`, which sed reads as a back-reference) from a directory whose
+# name holds an `&` (which sed reads as "the match").  The generated files
+# must carry both paths through intact.  Exit status 0 means they did.
+set -eu
+here=$(cd "$(dirname "$0")" && pwd)
+work=$(mktemp -d "${TMPDIR:-/tmp}/test-gen-mc6809-cross.XXXXXX")
+trap 'rm -rf "$work"' EXIT
+
+mkdir -p "$work/scripts" "$work/tools&more/bin"
+cp "$here/gen-mc6809-cross.sh" "$here"/cross-clang-mc6809-unknown-*.txt.in \
+   "$work/scripts/"
+cat > "$work/tools&more/bin/clang" <<'EOF'
+#!/bin/sh
+printf '%s\n' 'D:\a\_temp\mc6809\lib\clang\24'
+EOF
+chmod +x "$work/tools&more/bin/clang"
+
+fail=0
+check() { # FILE STRING -- FILE contains STRING literally
+  if grep -qF -- "$2" "$work/scripts/$1"; then echo "ok   $1: $2"
+  else echo "FAIL $1: $2 not found"; fail=1; fi
+}
+
+if ! PICO=$work LLVM_BIN="$work/tools&more/bin" \
+     sh "$work/scripts/gen-mc6809-cross.sh" > "$work/gen.log" 2>&1; then
+  echo "FAIL gen-mc6809-cross.sh exited non-zero:"; cat "$work/gen.log"; exit 1
+fi
+
+check cross-clang-mc6809-unknown-elf.txt "$work/tools&more/bin/clang"
+check cross-clang-mc6809-unknown-decb.txt "$work/tools&more/bin"
+check cross-clang-mc6809-unknown-os9.txt \
+  "os9_lds = 'D:/a/_temp/mc6809/lib/clang/24/lib/mc6809-unknown-os9/mc6809-os9.lds'"
+check cross-clang-mc6809-unknown-os9.txt \
+  "'D:/a/_temp/mc6809/lib/clang/24/lib/mc6809-unknown-os9/FPO9'"
+exit $fail

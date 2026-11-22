@@ -25,7 +25,10 @@
 #   USIM09BATCH     the bare-metal simulator (default: usim09batch on PATH)
 #   MC6809_CHECK_ALLOW_UNRUNNABLE
 #                   accept a run in which some cases could not be attempted
-#                   at all -- the OS-9 ones with no NitrOS-9 image to boot.
+#                   at all -- the OS-9 ones with no NitrOS-9 image to boot,
+#                   or every run where there is no simulator (a Windows
+#                   runner has no USim): those cases are still built and
+#                   linked, and only the run is counted as not done.
 #                   Without it such a run exits 2, which is the right
 #                   default: a check that did not run must not read green.
 #                   Set it only where the machines cannot exist, and read
@@ -66,17 +69,40 @@ fi
 # bundle, and must not be reported as one: without it nothing here can be
 # checked at all, so say which piece is absent and stop.  The same rule as
 # the bench's OS-9 gate -- a check that did not run must never read as green.
-missing=
-command -v "$USIM09BATCH" >/dev/null 2>&1 \
-  || missing="$missing\n  $USIM09BATCH (USim's batch simulator; ~/GitHub/usim,\
- or set USIM09BATCH)"
-command -v "${NITROS9_USIM09PT:-usim09pt}" >/dev/null 2>&1 \
-  || missing="$missing\n  usim09pt (the Pico-Thing simulator, for the OS-9 cases)"
+#
+# Where the caller has said the machines cannot exist
+# (MC6809_CHECK_ALLOW_UNRUNNABLE), carry on without them: every case is still
+# built and linked against the bundle, which is most of what goes wrong on a
+# new host, and each run that needed the missing simulator is named and
+# counted as not run.
+#
+# The messages print paths as data, never as part of a printf format: a
+# Windows path is full of backslashes, and `D:\a` read as a format is a bell.
+nl='
+'
+have_usim=1; have_usim09pt=1; missing=
+command -v "$USIM09BATCH" >/dev/null 2>&1 || {
+  have_usim=
+  missing="$missing$nl  $USIM09BATCH (USim's batch simulator; ~/GitHub/usim, or set USIM09BATCH)"
+}
+command -v "${NITROS9_USIM09PT:-usim09pt}" >/dev/null 2>&1 || {
+  have_usim09pt=
+  missing="$missing$nl  usim09pt (the Pico-Thing simulator, for the OS-9 cases)"
+}
 if [ -n "$missing" ]; then
-  # shellcheck disable=SC2059
-  printf "$0: cannot check a toolchain without:$missing\n" >&2
-  exit 2
+  if [ -z "${MC6809_CHECK_ALLOW_UNRUNNABLE:-}" ]; then
+    printf '%s: cannot check a toolchain without:%s\n' "$0" "$missing" >&2
+    exit 2
+  fi
+  printf '%s: building every case, but not running the ones that need:%s\n' \
+    "$0" "$missing" >&2
 fi
+
+# not_run LABEL WHY -- a case that was built but could not be run.
+not_run() {
+  echo "----  $1: not checked -- $2"
+  env_error=1; notrun=$((notrun + 1))
+}
 
 # Floating point on OS-9 is a module loaded at start-up, and this toolchain
 # ships it.  A program that does no floating point neither looks for it nor
@@ -115,6 +141,10 @@ run_case() {
   # Closed stdin and a cap on the clock: a simulator that inherits this
   # script's input waits for it, and a program that never finishes must fail
   # the check rather than hang it.
+  case "$triple" in
+    *os9) [ -z "$have_usim09pt" ] && { not_run "$name ($triple)" "no usim09pt"; return; } ;;
+    *)    [ -z "$have_usim" ] && { not_run "$name ($triple)" "no usim09batch"; return; } ;;
+  esac
   case "$triple" in
     *os9) got=$(NITROS9_LEVEL=${NITROS9_LEVEL:-2} NITROS9_CPU=$os9_cpu \
                 $TIMEOUT "$SCRIPT_DIR/run-mc6809-os9" "$work/$name.bin" \
@@ -260,6 +290,10 @@ PROG
       sed 's/^/    /' "$work/cxx.build" | head -4
       fail=$((fail + 1)); continue
     fi
+    case "$triple" in
+      *os9) [ -z "$have_usim09pt" ] && { not_run "c++ ($triple)" "no usim09pt"; continue; } ;;
+      *)    [ -z "$have_usim" ] && { not_run "c++ ($triple)" "no usim09batch"; continue; } ;;
+    esac
     case "$triple" in
       *os9) got=$(NITROS9_LEVEL=${NITROS9_LEVEL:-2} $TIMEOUT \
                   "$SCRIPT_DIR/run-mc6809-os9" "$work/cxx.bin" \
@@ -574,7 +608,7 @@ nothing; without it the run would report failures that are not failures"; \
   # Sources that other sources include are not programs of their own.
   included=$(cat "$CORPUS"/*.c 2>/dev/null \
              | sed -n 's/^#include "\(.*\.c\)"/\1/p' | sort -u)
-  cok=0; cskip=0; cunsup=0; cfail=0; unsup_names=
+  cok=0; cskip=0; cunsup=0; cfail=0; cnotrun=0; unsup_names=
   for src in "$CORPUS"/*.c; do
     [ -f "$src" ] || continue
     base=$(basename "$src"); name=${base%.c}
@@ -605,6 +639,8 @@ nothing; without it the run would report failures that are not failures"; \
       sed 's/^/    /' "$work/c.build" | head -3
       cfail=$((cfail + 1)); continue
     fi
+    # Built and linked; with no simulator that is as far as it goes.
+    if [ -z "$have_usim" ]; then cnotrun=$((cnotrun + 1)); continue; fi
     $TIMEOUT "$USIM09BATCH" "$work/c.bin" >"$work/c.out" 2>&1 </dev/null
     rc=$?
     # A test that is supposed to fail has passed when it did.
@@ -621,7 +657,12 @@ nothing; without it the run would report failures that are not failures"; \
            cfail=$((cfail + 1)) ;;
     esac
   done
-  echo "corpus $CORPUS: ok=$cok skip=$cskip fail=$cfail unsupported=$cunsup"
+  cnr=; [ "$cnotrun" -gt 0 ] && cnr=" built-not-run=$cnotrun"
+  echo "corpus $CORPUS: ok=$cok skip=$cskip fail=$cfail unsupported=$cunsup$cnr"
+  if [ "$cnotrun" -gt 0 ]; then
+    echo "----  corpus: $cnotrun program(s) built and linked but not run -- no usim09batch"
+    env_error=1; notrun=$((notrun + cnotrun))
+  fi
   # Named with the symbol that was missing, not just counted.  The bundled
   # libc is built integer-only, without the POSIX extensions and without wide
   # characters, so some of the suite cannot link against it -- but which, and

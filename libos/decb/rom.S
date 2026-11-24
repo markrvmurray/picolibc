@@ -30,25 +30,38 @@
 ; void __decb_putc(char c) -- the character arrives in B.
         .globl  __decb_putc
         .type   __decb_putc,@function
+	.cfi_sections .debug_frame
 __decb_putc:
+	.cfi_startproc
         pshs    u,dp,a          ; A is ours to clobber; save it anyway, so
+	.cfi_adjust_cfa_offset 4
+	.cfi_offset u, -4
         tfr     b,a             ; that D is intact for the caller
         clrb
         tfr     b,dp            ; the ROM's page
         jsr     [$A002]
         puls    a,dp,u
+	.cfi_adjust_cfa_offset -4
+	.cfi_restore u
         rts
+	.cfi_endproc
         .size   __decb_putc, .-__decb_putc
 
 ; char __decb_getc(void) -- the key, or 0, returned in B.
         .globl  __decb_getc
         .type   __decb_getc,@function
 __decb_getc:
+	.cfi_startproc
         pshs    u,dp,a
+	.cfi_adjust_cfa_offset 4
+	.cfi_offset u, -4
         clrb
         tfr     b,dp
         jsr     [$A000]
         tfr     a,b             ; the key, into the return register
         puls    a,dp,u
+	.cfi_adjust_cfa_offset -4
+	.cfi_restore u
         rts
+	.cfi_endproc
         .size   __decb_getc, .-__decb_getc

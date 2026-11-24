@@ -106,6 +106,14 @@ sabotage "start-up object removed" \
   "mv '$RT/lib/crt0-semihost.o' '$work/away'" \
   "mv '$work/away' '$RT/lib/crt0-semihost.o'"
 
+# Start-up code that reaches code by an absolute address, as a jsr does: the
+# program would still run, but only where it was linked.
+printf '\t.text\n\t.globl _start\n_start:\n\tjsr go\ngo:\n\trts\n' > "$work/abs.s"
+sabotage "start-up code made absolute" \
+  "FAIL crt0-pie:clang-runtimes/$TRIPLE/lib" \
+  "'$copy/bin/clang' --target=$TRIPLE -c '$work/abs.s' -o '$RT/lib/crt0-absolute.o'" \
+  "rm -f '$RT/lib/crt0-absolute.o'"
+
 sabotage "target-named tool removed" \
   "mc6809-os9-clang" \
   "mv '$copy/bin/mc6809-os9-clang' '$work/away'" \

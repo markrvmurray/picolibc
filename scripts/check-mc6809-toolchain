@@ -558,6 +558,66 @@ check_version_banner() {
 
 check_version_banner
 
+# Start-up code is position-independent, as everything the compiler emits is:
+# it reaches its own code and data PC-relative, so a program runs wherever it
+# is loaded.  A relocation in a crt0's code that writes the absolute address
+# of something the crt0 itself defines breaks that silently -- the program
+# still runs where it was linked, which is everywhere this check runs it.
+# What a crt0's code may name absolutely is what the linker script defines:
+# the stack, sizes, the direct page, OS-9's data offsets -- values, not
+# places in the program.  The vector table is data, and absolute by nature,
+# so only relocations into executable sections count.
+check_crt0_pie() {
+  readelf=
+  for t in "$PREFIX/bin/llvm-readelf" "$PREFIX/bin/llvm-readelf.exe"; do
+    [ -f "$t" ] && { readelf=$t; break; }
+  done
+  if [ -z "$readelf" ]; then
+    echo "FAIL crt0 position independence: no llvm-readelf in the toolchain"
+    fail=$((fail + 1)); return
+  fi
+  # Every directory that holds one: each library variant has its own, and
+  # the OS-9 and DECB ones live in the compiler's resource directory.
+  dirs=$(find "$PREFIX/lib" -name 'crt0*.o' -type f | sed 's|/[^/]*$||' | sort -u)
+  if [ -z "$dirs" ]; then
+    echo "FAIL crt0 position independence: no start-up objects in the toolchain"
+    fail=$((fail + 1)); return
+  fi
+  # Read from a file, not a pipe: a loop on the right of a pipe runs in a
+  # subshell, and its pass and fail counts would be thrown away.
+  printf '%s\n' "$dirs" > "$work/crt0-dirs"
+  while read -r dir; do
+    set -- "$dir"/crt0*.o
+    label=crt0-pie:${dir#"$PREFIX"/lib/}
+    bad=
+    for o in "$@"; do
+      # Which sections are code, then every relocation that patches one.
+      code=$("$readelf" -S -W "$o" |
+             awk '/^ *\[ *[0-9]+\]/ { sub(/^ *\[ *[0-9]+\] */, ""); if ($7 ~ /X/) print $1 }')
+      # What the object defines itself: its symbols in a real section, and
+      # its sections, which a relocation names by their own names.
+      own=$("$readelf" -s -W "$o" |
+            awk '$1 ~ /^[0-9]+:$/ && $7 != "UND" && $7 != "ABS" && $8 != "" { print $8 }')
+      hits=$("$readelf" -r -W "$o" | CODE=$code OWN=$own awk '
+        BEGIN {
+          n = split(ENVIRON["CODE"], c, "\n"); for (i = 1; i <= n; i++) isx[".rela" c[i]] = 1
+          n = split(ENVIRON["OWN"], d, "\n");  for (i = 1; i <= n; i++) mine[d[i]] = 1
+        }
+        /^Relocation section/ { sec = $3; gsub(/'\''/, "", sec); next }
+        isx[sec] && $3 == "R_MC6809_ADDR_16" && (mine[$5] || $5 ~ /^\./) { print sec ": " $5 }')
+      [ -n "$hits" ] && bad="$bad$nl    ${o##*/}: $(printf '%s' "$hits" | tr '\n' ' ')"
+    done
+    if [ -z "$bad" ]; then
+      echo "ok   $label"; pass=$((pass + 1))
+    else
+      echo "FAIL $label: an absolute address in start-up code$bad"
+      fail=$((fail + 1))
+    fi
+  done < "$work/crt0-dirs"
+}
+
+check_crt0_pie
+
 check_names
 
 # ------------------------------------------------------------------ corpus

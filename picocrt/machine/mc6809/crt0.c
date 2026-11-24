@@ -166,9 +166,12 @@ _cstart(void)
  * Nothing called _start, so it is where a debugger's backtrace must end:
  * its CFI leaves the return address undefined. And it calls _cstart rather
  * than branching there, so that the program's frames chain up to this one
- * instead of to whatever lies past the top of the stack. It is written in
- * assembly, CFI frame and all, because a C function only has a CFI frame
- * to add to when it is compiled with debug or unwind information.
+ * instead of to whatever lies past the top of the stack. The call is an
+ * lbsr, PC-relative like the branch it replaced: a jsr to _cstart would
+ * name its absolute address, and the program could then only start where
+ * it was linked. It is written in assembly, CFI frame and all, because a
+ * C function only has a CFI frame to add to when it is compiled with debug
+ * or unwind information.
  */
 void _start(void);
 __asm__(".pushsection .text.init.enter,\"ax\",@progbits\n"
@@ -181,7 +184,7 @@ __asm__(".pushsection .text.init.enter,\"ax\",@progbits\n"
         "\t.cfi_undefined pc\n"
         "\tlds #__stack\n"
         MC6809_SET_NATIVE_MODE
-        "\tjsr _cstart\n"
+        "\tlbsr _cstart\n"
         "\t.cfi_endproc\n"
         "\t.size _start, .-_start\n"
         "\t.popsection\n");

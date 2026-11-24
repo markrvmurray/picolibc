@@ -25,8 +25,12 @@
 	.section .text.memset,"ax",@progbits
 	.globl	memset
 	.type	memset,@function
+	.cfi_sections .debug_frame
 memset:
+	.cfi_startproc
 	pshs	x,y		// save dst (for return) & Y
+	.cfi_adjust_cfa_offset 4
+	.cfi_offset y, -4
 	// Stack: 0=X, 2=Y, 4=ret, 6=c, 8=n
 #ifdef __6309__
 	ldw	8,s		// W = n
@@ -58,3 +62,4 @@ memset:
 #endif
 .Lmemset_done:
 	puls	x,y,pc
+	.cfi_endproc

@@ -25,9 +25,11 @@
 
 	.section .text,"ax",@progbits
 
+	.cfi_sections .debug_frame
 	.globl	setjmp
 	.type	setjmp,@function
 setjmp:
+	.cfi_startproc
 	stu	,x		; jb[0] = U  (callee-saved frame pointer)
 	sty	2,x		; jb[1] = Y  (callee-saved)
 	tfr	s,d		; D = S
@@ -37,10 +39,12 @@ setjmp:
 	std	6,x		; jb[3] = return PC
 	ldx	#0		; first return: 0
 	rts
+	.cfi_endproc
 
 	.globl	longjmp
 	.type	longjmp,@function
 longjmp:
+	.cfi_startproc
 	ldd	2,s		; D = val (read before S is restored)
 	bne	.Llj_val
 	ldd	#1		; longjmp(jb, 0) must make setjmp return 1
@@ -48,7 +52,14 @@ longjmp:
 	ldu	,x		; restore U  = jb[0]
 	ldy	6,x		; Y = jb[3] = saved return PC (temporary)
 	lds	4,x		; restore S  = jb[2] (continuation SP)
+	; From here this is setjmp's frame returning: S is its caller's, and
+	; the return address is in Y until it is pushed.
+	.cfi_def_cfa_offset 0
+	.cfi_register pc, y
 	pshs	y		; push saved PC onto the restored stack
+	.cfi_def_cfa_offset 2
+	.cfi_offset pc, -2
 	ldy	2,x		; restore Y  = jb[1]  (X still = &jmp_buf)
 	tfr	d,x		; X = result value (setjmp's second return)
 	rts			; pop PC = jb[3]; resume setjmp's caller
+	.cfi_endproc

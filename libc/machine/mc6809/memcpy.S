@@ -27,9 +27,13 @@
 
 	.globl	memcpy
 	.type	memcpy,@function
+	.cfi_sections .debug_frame
 memcpy:
+	.cfi_startproc
 #ifdef __6309__
 	pshs	x,y		// save dst (for return) & Y
+	.cfi_adjust_cfa_offset 4
+	.cfi_offset y, -4
 	// Stack: 0=X, 2=Y, 4=ret, 6=src, 8=n
 	ldy	6,s		// Y = src
 	ldw	8,s		// W = n
@@ -37,8 +41,12 @@ memcpy:
 	tfm	y+,x+
 .Lmemcpy_done:
 	puls	x,y,pc
+	.cfi_endproc
 #else
 	pshs	x,y,u		// save dst (return), Y (callee), U (we use it)
+	.cfi_adjust_cfa_offset 6
+	.cfi_offset u, -4
+	.cfi_offset y, -6
 	// Stack: 0=X, 2=Y, 4=U, 6=ret, 8=src, 10=n
 	ldu	8,s		// U = src
 	ldy	10,s		// Y = n  (LEAY -1,Y sets Z, ideal counter)
@@ -50,4 +58,5 @@ memcpy:
 	bne	.Lmemcpy_loop
 .Lmemcpy_done:
 	puls	x,y,u,pc
+	.cfi_endproc
 #endif

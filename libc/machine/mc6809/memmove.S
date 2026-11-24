@@ -24,9 +24,13 @@
 
 	.globl	memmove
 	.type	memmove,@function
+	.cfi_sections .debug_frame
 memmove:
+	.cfi_startproc
 #ifdef __6309__
 	pshs	x,y		// save dst & Y
+	.cfi_adjust_cfa_offset 4
+	.cfi_offset y, -4
 	// Stack: 0=X, 2=Y, 4=ret, 6=src, 8=n
 	ldd	6,s		// D = src
 	cmpd	,s		// CC ← src - dst (unsigned)
@@ -49,8 +53,12 @@ memmove:
 	tfm	y+,x+
 .Lmove_done:
 	puls	x,y,pc
+	.cfi_endproc
 #else
 	pshs	x,y,u		// save dst, Y, U
+	.cfi_adjust_cfa_offset 6
+	.cfi_offset u, -4
+	.cfi_offset y, -6
 	// Stack: 0=X, 2=Y, 4=U, 6=ret, 8=src, 10=n
 	ldd	8,s		// D = src
 	cmpd	,s		// CC ← src - dst (unsigned, vs saved-X = dst)
@@ -86,4 +94,5 @@ memmove:
 	bne	.Lmove_loop_f
 .Lmove_done:
 	puls	x,y,u,pc
+	.cfi_endproc
 #endif

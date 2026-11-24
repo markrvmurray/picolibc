@@ -507,22 +507,19 @@ _refresh_builtins() {
 # self-reinvoke needed.
 
 _lit_tally() {
-  # Run llvm-lit against all MC6809 codegen + Sema tests and record one runs
-  # row (opt_level='lit') + one results row per test. Cheap (~1s) and
-  # independent of the picolibc build dirs.
+  # Run every MC6809 lit test through llvm-mc6809's scripts/check-mc6809-lit.sh
+  # -- the one list CI and every release host run too -- with the simulators
+  # asked for, plus the OS-9 runtime suite, and record one runs row
+  # (opt_level='lit') + one results row per test.
   #
-  # Test directories:
-  #   llvm/test/CodeGen/MC6809/          -- backend codegen sentinels
-  #   llvm/test/MC/MC6809/Execution/     -- end-to-end on-usim execution
-  #                                         tests (Bug #358; needs
-  #                                         USIM09BATCH + MAMELLVM6309)
-  #   clang/test/CodeGen/MC6809/         -- clang CodeGen tests (builtins)
-  #   clang/test/Sema/asm-mc6809-*.c     -- inline asm constraint Sema tests
-  #   clang/test/Sema/mc6809-*.c         -- target builtin Sema tests
-  #   clang/test/Sema/mc6809-directpage.c
+  # The script holds the list (llvm, clang and lld; the simulator tests run
+  # only because USIM09BATCH and MAMELLVM6309 are set below) and the verdict:
+  # nonzero on any FAIL, UNRESOLVED, TIMEOUT or XPASS, on a lit that died, or
+  # on fewer passes than its floor.
   local lit="$LLVM_BIN/llvm-lit"
   local llvm_root="$(cd "$LLVM_BIN/../.." && pwd)"
-  local clang_root="$(cd "$llvm_root/../clang" && pwd)"
+  local build_dir="$(cd "$LLVM_BIN/.." && pwd)"
+  local check_lit="$llvm_root/../scripts/check-mc6809-lit.sh"
   local outfile="${LOG%.log}-lit.log"
 
   echo "==[ $(ts) lit tally start ]==" | tee -a "$LOG"
@@ -534,53 +531,39 @@ _lit_tally() {
     [ -n "${MC6809_TOOLCHAIN:-}" ] || _gate_fail "lit did not run"
     return 0
   fi
+  if [ ! -x "$check_lit" ]; then
+    echo "  lit: $check_lit missing" | tee -a "$LOG"
+    _gate_fail "lit did not run (no check-mc6809-lit.sh)"
+    return 0
+  fi
 
-  # Build the test list: always the llvm backend tests; add clang tests if present.
-  local testpaths="$llvm_root/test/CodeGen/MC6809"
-  if [ -d "$clang_root/test/CodeGen/MC6809" ]; then
-    testpaths="$testpaths $clang_root/test/CodeGen/MC6809"
-  fi
-  # Bug #358: the on-usim execution suite is now part of the bench lit
-  # gate.  It was excluded while the $FFDx→$FFCx IO-map mismatch made it
-  # hang 50/54; now that the Inputs/ map is fixed it runs each .s
-  # end-to-end on usim09batch (a few HD6309 cases via MAME).  Each test
-  # uses its own Output/<test>.s.tmp.hex, so lit's parallel workers don't
-  # collide on a shared temp file (unlike run-mc6809-tests --record).
-  if [ -d "$llvm_root/test/MC/MC6809/Execution" ]; then
-    testpaths="$testpaths $llvm_root/test/MC/MC6809/Execution"
-  fi
-  for f in "$clang_root"/test/Sema/asm-mc6809-*.c \
-            "$clang_root"/test/Sema/mc6809-*.c; do
-    [ -f "$f" ] && testpaths="$testpaths $f"
-  done
-  # What the driver actually emits -- the libraries, the linker script, the
-  # module name.  These cost milliseconds and were outside the gate, which
-  # is how one of them stayed broken through several benches that each said
-  # no regression.
-  for f in "$clang_root"/test/Driver/mc6809*.c; do
-    [ -f "$f" ] && testpaths="$testpaths $f"
-  done
   # The end-to-end OS-9 cases: each boots NitrOS-9 and checks a real
   # console.  They need the opt-in below, and self-skip without it -- see
   # the count check after the run.
   local os9_runtime="$llvm_root/../compiler-rt/test/mc6809-os9-runtime"
   local os9_runtime_ran=0
+  local extra=""
   if [ -d "$os9_runtime" ]; then
-    testpaths="$testpaths $os9_runtime"
+    extra="$os9_runtime"
     os9_runtime_ran=1
   fi
 
-  # USIM09BATCH must be in the environment or the Execution suite
-  # self-skips every test as UNSUPPORTED.  HD6309 execution tests run on
-  # the same backend as the -hd6309 levels: usim unless
-  # BENCH_HD6309_BACKEND=mame.
+  # The Execution suite runs each .s end-to-end on usim09batch; each test
+  # uses its own Output/<test>.s.tmp.hex, so lit's parallel workers don't
+  # collide on a shared temp file (unlike run-mc6809-tests --record).
+  # HD6309 execution tests run on the same backend as the -hd6309 levels:
+  # usim unless BENCH_HD6309_BACKEND=mame.  The script's summary table goes
+  # to the bench log; lit's own output to $outfile.  The floor on passes is
+  # the script's own unless BENCH_LIT_MIN_PASS says otherwise (the gate
+  # tests' stub lit reports one test).
   # shellcheck disable=SC2086
+  LIT_LOG="$outfile" \
   USIM09BATCH="$USIM/usim09batch" \
   MAMELLVM6309="$MAME_RUNNER" \
   MC6809_HD6309_SIM="$HD6309_BACKEND" \
   MC6809_OS9_RUNTIME_TESTS=1 \
   NITROS9_USIM09PT="$USIM/usim09pt" \
-    "$lit" -v --no-progress-bar $testpaths > "$outfile" 2>&1
+    "$check_lit" "$build_dir" "${BENCH_LIT_MIN_PASS:-}" $extra >> "$LOG" 2>&1
   local lit_rc=$?
 
   local commit picolibc_commit usim_commit timestamp host bin_mtime
@@ -635,11 +618,12 @@ _lit_tally() {
   [ "${fail:-0}"  -gt 0 ] 2>/dev/null && tag="FAIL"
   [ "${unres:-0}" -gt 0 ] 2>/dev/null && tag="UNRESOLVED"
 
-  # lit's own status is the verdict.  It also covers what the counts above do
-  # not: TIMEOUT, XPASS, and a lit that died before reporting anything.
+  # The script's status is the verdict.  It also covers what the counts
+  # above do not: TIMEOUT, XPASS, too few passes, and a lit that died before
+  # reporting anything.
   if [ "$lit_rc" -ne 0 ]; then
     [ "$tag" = " ok " ] && tag="FAIL"
-    _gate_fail "lit exited $lit_rc (FAIL=${fail:-0} UNRESOLVED=${unres:-0}, see $outfile)"
+    _gate_fail "lit check exited $lit_rc (FAIL=${fail:-0} UNRESOLVED=${unres:-0}, see $outfile and $LOG)"
   fi
 
   # A suite that reports UNSUPPORTED for every case has not passed, it has

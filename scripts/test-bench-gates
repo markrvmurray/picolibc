@@ -25,6 +25,12 @@ mkdir -p "$stub" "$pico/scripts" "$bin" "$repo/llvm/test/CodeGen/MC6809" \
          "$repo/clang" "$work/usim"
 cp "$SCRIPT_DIR/bench-parallel.sh" "$SCRIPT_DIR/run-mc6809-tests" \
    "$SCRIPT_DIR/create-bench-db.sh" "$SCRIPT_DIR/bench-db-schema.sql" "$pico/scripts/"
+# The real lit check, from the llvm-mc6809 checkout beside this one, where the
+# bench finds it: the bench's lit verdict is that script's.
+llvm_repo=${LLVM_REPO:-$(cd "$SCRIPT_DIR/../.." && pwd)/llvm-mc6809}
+mkdir -p "$repo/scripts"
+cp "$llvm_repo/scripts/check-mc6809-lit.sh" "$repo/scripts/" || {
+  echo "FAIL no scripts/check-mc6809-lit.sh in $llvm_repo"; exit 1; }
 # The real generator writes cross files for whichever LLVM_BIN it is given.
 printf '#!/bin/sh\nexit 0\n' > "$pico/scripts/gen-mc6809-cross.sh"
 chmod +x "$pico/scripts/gen-mc6809-cross.sh"
@@ -86,7 +92,7 @@ run_bench() {
   PICO="$pico" LLVM_REPO="$repo" LLVM_BIN="$bin" USIM="$work/usim" \
   MAME_RUNNER="$work/no-mame" MC6809_BENCH_DB="$work/ledger.sqlite" \
   MC6809_BENCH_LOG="$work/bench.log" MC6809_BENCH_LOCK="$work/bench.lock" \
-  STUB_DIR="$stub" \
+  STUB_DIR="$stub" BENCH_LIT_MIN_PASS=${BENCH_LIT_MIN_PASS:-0} \
     "$pico/scripts/bench-parallel.sh" --skip-build --levels gate-test "$@" > "$bench_out" 2>&1
 }
 
@@ -108,11 +114,14 @@ lit_case() { # NAME MODE WANTED_RC [TEXT]
 }
 
 lit_case "lit passes"            pass       0
-lit_case "lit FAIL"              fail       1 "GATE FAILED: lit exited 1 (FAIL=1"
+lit_case "lit FAIL"              fail       1 "GATE FAILED: lit check exited 1 (FAIL=1"
 lit_case "lit UNRESOLVED"        unresolved 1 "UNRESOLVED=1"
-lit_case "lit TIMEOUT"           timeout    1 "GATE FAILED: lit exited 1"
-lit_case "lit XPASS"             xpass      1 "GATE FAILED: lit exited 1"
-lit_case "lit dies with no tally" died      1 "GATE FAILED: lit exited 134"
+lit_case "lit TIMEOUT"           timeout    1 "GATE FAILED: lit check exited 1"
+lit_case "lit XPASS"             xpass      1 "GATE FAILED: lit check exited 1"
+lit_case "lit dies with no tally" died      1 "GATE FAILED: lit check exited 134"
+# The stub prints no lit summary, so it passes nothing a floor counts.
+BENCH_LIT_MIN_PASS=1 run_bench
+check "too few lit passes" 1 "GATE FAILED: lit check exited 1" $?
 
 # --- What the lit phase records -----------------------------------------------
 

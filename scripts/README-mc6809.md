@@ -55,6 +55,16 @@ nothing assumes a home-directory path.
 | `USIM09BATCH`       | `$USIM/usim09batch`                             | the simulator binary |
 | `MAME_RUNNER`       | `$PICO/../mame/run-mc6809-mame`                 | MAME llvm6309 wrapper (HD6309 only) |
 | `MC6809_BENCH_DB`   | `~/Documents/mc6809-bench/results.sqlite`       | bench results ledger |
+| `MC6809_TOOLCHAIN`  | unset                                           | an installed bundle to use instead of a build tree (its `bin/` becomes `LLVM_BIN`) |
+| `BENCH_HD6309_BACKEND` | `usim`                                       | `mame` runs the 6309 levels on MAME |
+| `NITROS9_USIM09PT`  | `usim09pt` on the PATH                          | the simulator NitrOS-9 boots on |
+| `NITROS9_RECIPES`   | `~/Documents/NitrOS-9/nitros9/recipes/picothing` | NitrOS-9 build tree: the boot image and firmware are found there |
+| `NITROS9_LEVEL`, `NITROS9_CPU` | `2`, `6809`                          | which NitrOS-9 to boot |
+| `NITROS9_BOOT_DSK`, `NITROS9_FIRMWARE` | from `NITROS9_RECIPES`        | name the boot image and firmware outright |
+| `MC6809_FP_MODULE`  | from the cross file                             | the FPO9 module to put on each OS-9 test disk |
+
+`scripts/run-mc6809-os9`'s header lists the rest of its knobs (time limits,
+the guest clock).
 
 `bench-parallel.sh` exports `MAMELLVM6309=$MAME_RUNNER` and
 `MC6809_HD6309_SIM=$BENCH_HD6309_BACKEND` for the lit Execution gate, so
@@ -73,6 +83,10 @@ scripts/gen-mc6809-cross.sh                      ← generator
 scripts/cross-clang-mc6809-unknown-elf.txt       ← generated (usim, DP=$00)
 scripts/cross-clang-mc6809-unknown-elf-hd6309.txt ← generated (HD6309: usim, or MAME with BENCH_HD6309_BACKEND=mame; DP=$00)
 scripts/cross-clang-mc6809-unknown-elf-dp7F.txt  ← generated (usim, DP=$7F)
+scripts/cross-clang-mc6809-unknown-os9.txt.in   ← committed template (OS-9)
+scripts/cross-clang-mc6809-unknown-os9.txt       ← generated (NitrOS-9 on usim09pt)
+scripts/cross-clang-mc6809-unknown-decb.txt.in  ← committed template (DECB)
+scripts/cross-clang-mc6809-unknown-decb.txt      ← generated (CoCo LOADM binaries)
 ```
 
 Generate them after cloning (or whenever the toolchain moves):
@@ -97,6 +111,12 @@ run needs no manual step.
 | `run-mc6809-tests-local` | Lightweight local variant that sets the tool env vars and runs the harness. |
 | `run-mc6809` | exe_wrapper: run one ELF on `usim09batch` (reads `$USIM09BATCH`). |
 | `run-mc6809-mame` | exe_wrapper: run one ELF on HD6309 under MAME (reads `$MAME_LLVM6309_DIR`). |
+| `run-mc6809-usim6309` | exe_wrapper: run one ELF on usim as a 6309 (`usim09batch --hd6309`). |
+| `run-mc6809-os9` | exe_wrapper: run one OS-9 module under a real NitrOS-9 boot on `usim09pt`. |
+| `mc6809-refresh` | Bring a builddir up to the compiler on disk (ninja cannot see a rebuilt clang). |
+| `check-mc6809-toolchain` | The acceptance check for a rolled toolchain bundle (`--corpus` adds the picolibc test programs). |
+| `sabotage-mc6809-check` | Breaks a copy of a bundle one way at a time and proves the check notices each. |
+| `test-gen-mc6809-cross` | Proves the cross-file generator's output, using stub paths. |
 
 ## Build layout
 
@@ -112,9 +132,15 @@ or `-hd6309-mame` to match.
 # 1. Generate the cross files for your toolchain location.
 ./scripts/gen-mc6809-cross.sh
 
-# 2. Configure and build one optimisation level by hand.
+# 2. Configure and build one optimisation level by hand, with the bench's
+#    options (the COMMON list in bench-parallel.sh).
 meson setup builddir-mc6809-Os \
-    --cross-file scripts/cross-clang-mc6809-unknown-elf.txt -Doptimization=s ...
+    --cross-file scripts/cross-clang-mc6809-unknown-elf.txt -Doptimization=s \
+    -Dformat-default=integer -Dprintf-aliases=false -Dstdio-float=false \
+    -Dposix-extensions=false -Dsearch-extensions=true -Dwant-libm=false \
+    -Dmb-capable=false -Dio-long-long=false -Dio-percent-b=true \
+    -Dmalloc-clear-allocated=false -Dtests=true \
+    -Dtests-enable-stack-protector=false -Dfast-strcmp=false
 ninja -C builddir-mc6809-Os
 
 # 3. Run the test suite for that build dir.
@@ -125,22 +151,22 @@ ninja -C builddir-mc6809-Os
 
 `bench-parallel.sh` builds every optimisation level in parallel, runs the
 full on-simulator test suite, and records cycle counts to the ledger.
-With the default sibling layout no environment setup is needed:
+With the default sibling layout no environment setup is needed, and with no
+`--levels` it runs every level:
 
 ```sh
-./scripts/bench-parallel.sh \
-  --levels O0,O0-fp,O1,O1-fp,O2,O2-fp,O2-lto,O2-hd6309,O2-hd6309-fp,O3,O3-fp,O3-lto,Og,Og-fp,Og-hd6309,Og-lto-hd6309-fp,Os,Os-fp,Os-lto,Os-lto-fp,Os-hd6309,Os-hd6309-fp,Os-lto-hd6309,Os-lto-hd6309-fp,Oz,Oz-fp,Ofast,Ofast-fp,os9-Os,os9-Os-fp,os9-Os-hd6309 \
-  --build-jobs 5 --test-jobs 16
+./scripts/bench-parallel.sh --build-jobs 5 --test-jobs 16
 ```
 
-- 20 6809 levels + 8 HD6309 levels, all on usim, + a lit gate (incl. the
-  on-usim `test/MC/MC6809/Execution/` suite) ≈ 29 ledger rows.  With
+- 20 6809 levels + 8 HD6309 levels, all on usim, + 3 OS-9 levels + a lit
+  gate (llvm-mc6809's `scripts/check-mc6809-lit.sh`, including the on-usim
+  `test/MC/MC6809/Execution/` suite) = 32 ledger rows.  With
   `BENCH_HD6309_BACKEND=mame` the 8 HD6309 levels run on MAME instead,
   about 11x slower.
 - Three OS-9 levels are in the default set as well: `os9-Os` (NitrOS-9
   Level 1), `os9-Os-fp` (Level 2) and `os9-Os-hd6309` (the 6309 build on the
   6309 NitrOS-9 Level 2), each booted on usim09pt. They are tallied one at
-  a time rather than in the shared pool -- a level is a NitrOS-9 level and
+  a time rather than in the shared pool — a level is a NitrOS-9 level and
   CPU, which are environment variables, and one pool cannot hold two. They record no
   cycles: a boot is most of what a run costs, so a cycle count would be
   measuring the operating system. Their size column holds the OS-9 module's
@@ -161,24 +187,18 @@ PICOLIBC_BUILDDIR=$PWD/builddir-mc6809-O1 \
   ./scripts/run-mc6809-tests --record --jobs 8 --opt-level O1
 ```
 
-## ⚠️ The one mandatory gotcha — scrub after a compiler rebuild
+## ⚠️ The one mandatory gotcha — refresh after a compiler rebuild
 
 **ninja cannot see that clang changed** (the compiler-binary mtime is
-invisible to its dependency tracker). After rebuilding the LLVM backend
-you MUST wipe the builddirs, or you will silently test stale objects
-built with the *old* compiler:
+invisible to its dependency tracker), so after rebuilding LLVM a builddir
+goes on testing objects built with the *old* compiler.
 
-```sh
-for d in builddir-mc6809-*; do
-  [ -d "$d/meson-info" ] && meson setup --wipe "$d"
-done
-```
-
-`meson setup --wipe` is the only fully reliable reset (deleting `*.c.o`
-alone has been observed insufficient). `bench-parallel.sh` deletes stale
-`*.c.o`/`*.cpp.o` per level during its build phase, which covers the
-common case; a manual single-level build does no scrubbing at all. After
-a backend rebuild, prefer the `--wipe` loop above.
+`bench-parallel.sh` takes care of it: it runs `ninja -t clean` on every level
+before building, and refreshes the compiler-rt builtins when clang is newer
+than they are.  For a level built by hand, `scripts/mc6809-refresh BUILDDIR`
+does the same (see the OS-9 section below), and the runners refuse a program
+older than the toolchain.  `meson setup --wipe BUILDDIR` remains the full
+reset.
 
 ## One bench at a time
 
@@ -228,8 +248,8 @@ meson setup builddir-mc6809-os9-Os \
     -Dtests=true -Doptimization=s \
     -Dformat-default=integer -Dprintf-aliases=false -Dstdio-float=false \
     -Dposix-extensions=false -Dsearch-extensions=true -Dwant-libm=false \
-    -Dmb-capable=false -Dio-long-long=false -Dmalloc-clear-allocated=false \
-    -Dtests-enable-stack-protector=false
+    -Dmb-capable=false -Dio-long-long=false -Dio-percent-b=true \
+    -Dmalloc-clear-allocated=false -Dtests-enable-stack-protector=false
 ```
 
 For floating point, add `-Dstdio-float=true -Dwant-libm=true` and call the
@@ -243,8 +263,8 @@ meson setup builddir-mc6809-os9-Os-fp \
     -Dtests=true -Doptimization=s \
     -Dformat-default=integer -Dprintf-aliases=false -Dstdio-float=true \
     -Dposix-extensions=false -Dsearch-extensions=true -Dwant-libm=true \
-    -Dmb-capable=false -Dio-long-long=false -Dmalloc-clear-allocated=false \
-    -Dtests-enable-stack-protector=false
+    -Dmb-capable=false -Dio-long-long=false -Dio-percent-b=true \
+    -Dmalloc-clear-allocated=false -Dtests-enable-stack-protector=false
 ```
 
 A program that does floating point does not carry the MC6839 ROM: it links
@@ -294,7 +314,7 @@ Each test runs on a real NitrOS-9 boot (~2 s), driven by
 ```sh
 export NITROS9_BOOT_DSK=…/NOS9_6809_L2_DEV_picothing_mega.dsk # has /J0
 export NITROS9_FIRMWARE=…/rel_picothing.srec
-export PATH=…/usim:$PATH                                       # usim09pt
+export NITROS9_USIM09PT=…/usim/usim09pt
 PICOLIBC_BUILDDIR=$PWD/builddir-mc6809-os9-Os \
     python3 scripts/run-mc6809-tests --jobs 8 --include-fake-fs
 ```
@@ -311,8 +331,10 @@ NITROS9_LEVEL=1 PICOLIBC_BUILDDIR=$PWD/builddir-mc6809-os9-Os-fp \
 `NITROS9_LEVEL` (default 2) picks the mega boot image out of
 `NITROS9_RECIPES`, whose `/J0` descriptor is how the test disk is reached. The
 firmware is the newest `rel_picothing.srec` there, since one REL boots every
-level. An explicit `NITROS9_BOOT_DSK`/`NITROS9_FIRMWARE` still wins.  Give the run its own `--opt-level` label so the two levels get
-separate ledger rows.
+level. An explicit `NITROS9_BOOT_DSK`/`NITROS9_FIRMWARE` still wins.
+
+Give the run its own `--opt-level` label so the two levels get separate
+ledger rows.
 
 Expect a very different shape at Level 1: it has no DAT, so a program
 shares the one 64K space with the system and the size limit is far lower

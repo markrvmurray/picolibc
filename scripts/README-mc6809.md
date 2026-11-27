@@ -344,3 +344,17 @@ behavior even with RC2; physical LF probes use octal `\012`. The runner
 checks its raw emulator log for exact CR/LF text output and unchanged LF
 binary/raw output before normalizing anything. Run both tests with
 `-Dfast-bufio=false` and `true`.
+
+### Shared OS-9 calls
+
+The OS-9 build requires an LLVM runtime built with the canonical
+[nitros9-c-libs](https://github.com/nitros9project/nitros9-c-libs) OS-call
+provider (`NITROS9_OS_CALLS_ABI` in its installed `os9.h`). An older runtime
+now produces an explicit compile-time error. Rebuild/install the LLVM OS-9
+runtime and regenerate the cross file before configuring picolibc.
+
+Picolibc keeps POSIX semantics and errno translation in `libos/os9`, and
+calls the shared native assembly through the installed OS-9 header. It does
+not vendor syscall implementations or add calling-convention wrappers.
+The LLVM runtime pins the library revision and installs a source-hash
+manifest alongside its runtime archive.

@@ -35,7 +35,7 @@
 
 # OS-9 / NitrOS-9 (mc6809-unknown-os9): the POSIX system calls over the OS-9
 # kernel.  The start-up code (crt0 + the F$Mem heap claim + argc/argv), the
-# system-call shim header <os9.h> and the module linker script come from the
+# canonical nitros9-c-libs OS-call headers and the module linker script come from the
 # LLVM-MC6809 OS-9 runtime (libclang_rt.os9, added to every link by the clang
 # driver for this triple); the cross file names the linker script in the
 # `os9_lds` property so the tests can link with it.

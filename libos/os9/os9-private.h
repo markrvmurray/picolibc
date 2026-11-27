@@ -52,6 +52,9 @@
  * name the same plain int (no TLS on this target); hide the header's
  * declaration behind the macro. */
 #include <os9.h>
+#ifndef NITROS9_OS_CALLS_ABI
+#error "OS-9 requires LLVM built with the canonical nitros9-c-libs OS calls"
+#endif
 
 /* Turn an OS-9 error code into errno and -1 (the shims have already left
  * the OS-9 code in errno; overwrite it with the POSIX value). */

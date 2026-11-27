@@ -66,11 +66,14 @@ freopen(const char *pathname, const char *mode, FILE *stream)
     __bufio_lock(stream);
 
     if (pathname != NULL)
-        close((int)(intptr_t)(pf->ptr));
+        (void)bufio_close(pf);
 
     stream->flags = (stream->flags & ~(__SRD | __SWR | __SERR | __SEOF)) | stdio_flags;
     pf->pos = 0;
     pf->ptr = (void *)(intptr_t)(fd);
+
+    /* The replacement backend takes an fd, including for former cookies. */
+    pf->bflags &= ~__BFPTR;
 
     /* Switch to POSIX backend */
     pf->read_int = read;

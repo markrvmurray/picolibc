@@ -160,6 +160,12 @@ struct __file_pipe {
 #endif
 #endif
 
+/* Only descriptor-backed OS-9 text output uses the line-write service.
+ * Newline character values belong to the compiler; stdio does not translate. */
+#ifdef __OS9__
+ssize_t __os9_text_write(int fd, const void *buf, size_t count);
+#endif
+
 /* Buffered I/O routines */
 
 static inline ssize_t
@@ -175,6 +181,11 @@ bufio_read(struct __file_bufio *bf, void *buf, size_t count)
 static inline ssize_t
 bufio_write(struct __file_bufio *bf, const void *buf, size_t count)
 {
+#ifdef __OS9__
+    /* Keep user-supplied descriptor write callbacks intact. */
+    if (!(bf->bflags & (__BFBIN | __BFPTR)) && bf->write_int == write)
+        return __os9_text_write(_FDEV_BUFIO_FD(bf), buf, count);
+#endif
 #ifndef BUFIO_ABI_MATCHES
     if (!(bf->bflags & __BFPTR))
         return (bf->write_int)(_FDEV_BUFIO_FD(bf), buf, count);

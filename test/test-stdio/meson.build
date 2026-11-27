@@ -144,6 +144,10 @@ if has_os_posix or use_stdlib
     ]
 endif
 
+if tests_enable_posix_io and has_os_os9
+  tests += ['test-os9-text', 'test-os9-text-console']
+endif
+
 if get_option('test-stdin')
   tests += ['test-gets']
   tests_failure += ['test-gets']

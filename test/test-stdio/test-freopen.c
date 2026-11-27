@@ -81,6 +81,45 @@ check_contents(const char *filename, int repeats)
     check(r == 0, "fclose r");
 }
 
+#ifdef __PICOLIBC__
+static unsigned cookie_closed;
+
+static ssize_t
+cookie_write(void *cookie, const void *buf, size_t len)
+{
+    FILE *f = NULL;
+    (void)buf;
+    check(cookie == &cookie_closed, "cookie write argument");
+    return len;
+}
+
+static int
+cookie_close(void *cookie)
+{
+    FILE *f = NULL;
+    check(cookie == &cookie_closed, "cookie close argument");
+    ++cookie_closed;
+    return 0;
+}
+
+static void
+check_cookie_reopen(void)
+{
+    FILE *f = funopen(&cookie_closed, NULL, cookie_write, NULL, cookie_close);
+    check(f != NULL, "funopen");
+    check(fputs("cookie", f) >= 0, "cookie write");
+    check(freopen(TEST_FILE_NAME, "w+", f) == f, "freopen cookie");
+    check(cookie_closed == 1, "old cookie closed");
+    check(fputs(MESSAGE, f) >= 0, "reopened write");
+    check(fflush(f) == 0, "reopened flush");
+    check(fseek(f, 0, SEEK_SET) == 0, "reopened seek");
+    check(getc(f) == MESSAGE[0], "reopened read");
+    check(fclose(f) == 0, "reopened close");
+    f = NULL;
+    check(cookie_closed == 1, "fd close does not call cookie");
+}
+#endif
+
 int
 main(void)
 {
@@ -99,6 +138,10 @@ main(void)
 
     check_contents(TEST_FILE_NAME, 1);
     check_contents(ANOTHER_FILE_NAME, 1);
+
+#ifdef __PICOLIBC__
+    check_cookie_reopen();
+#endif
 
     (void)remove(TEST_FILE_NAME);
     (void)remove(ANOTHER_FILE_NAME);

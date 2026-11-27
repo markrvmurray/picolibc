@@ -48,3 +48,17 @@ write(int fd, const void *buf, size_t count)
         return __os9_errno(errno);
     return n;
 }
+
+/* SCF applies its path line-ending options; RBF preserves every byte.
+ * It may stop at the first CR; bufio's flush loop writes the remainder. */
+ssize_t
+__os9_text_write(int fd, const void *buf, size_t count)
+{
+    int n;
+    if (count > 0x7FFF)
+        count = 0x7FFF;
+    n = (int)count;
+    if (_os_writeln(fd, buf, &n) != 0)
+        return __os9_errno(errno);
+    return n;
+}

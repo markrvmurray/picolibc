@@ -132,5 +132,16 @@ rm -rf "$recipes"
 NITROS9_LEVEL=2 run
 result "no recipes at all is nothing to boot" "$([ "$rc" = 77 ] && [ ! -e "$STUB_ARGS" ] && echo 1)"
 
+# These must be checked before the runner normalizes CR to LF.
+printf 'LINEONE\r\nLINETWO\r\nLINETHREE\r\nCONSOLE STDERR\r\nCONSOLE RAW\nCONSOLE BINARY\n' > "$work/console"
+"$SCRIPT_DIR/check-os9-console-bytes" "$work/console" 2> "$work/err"
+result "console checker accepts text CR/LF and raw/binary LF" "$([ "$?" = 0 ] && echo 1)"
+tr -d '\n' < "$work/console" > "$work/cr-only"
+"$SCRIPT_DIR/check-os9-console-bytes" "$work/cr-only" 2> "$work/err"
+result "console checker rejects overwritten CR-only lines" "$([ "$?" = 1 ] && echo 1)"
+tr -d '\r' < "$work/console" > "$work/lf-only"
+"$SCRIPT_DIR/check-os9-console-bytes" "$work/lf-only" 2> "$work/err"
+result "console checker rejects staircased LF-only lines" "$([ "$?" = 1 ] && echo 1)"
+
 echo "passed=$passed failed=$failed"
 [ "$failed" -eq 0 ]

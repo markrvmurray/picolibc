@@ -125,7 +125,7 @@ test_basic(const char *file_name, int repeat)
     int    generation = 0;
 
     (void)repeat;
-    /* Make sure we can create a file, write contents and read them back */
+    /* Compare arbitrary bytes, so disable native text newline translation. */
 
     for (size = 1; size < 16; size <<= 1) {
         nmemb = BUF_SIZE / size;
@@ -134,7 +134,7 @@ test_basic(const char *file_name, int repeat)
 
                 num_ops = nmemb / per_op;
 
-                f = fopen(file_name, "w");
+                f = fopen(file_name, "wb");
                 check(f != NULL, "fopen w");
 
                 fill_buf(0, generation, out, BUF_SIZE);
@@ -158,7 +158,7 @@ test_basic(const char *file_name, int repeat)
 
                 memset(in, 0xcd, BUF_SIZE);
 
-                f = fopen(file_name, "r");
+                f = fopen(file_name, "rb");
                 check(f != NULL, "fopen r");
                 if (order == 0) {
                     for (op = 0; op < num_ops; op++) {
@@ -200,7 +200,7 @@ test_mixed(const char *file_name, int repeat)
 
     /* Now do a mix of read/write operations */
 
-    f = fopen(file_name, "w+");
+    f = fopen(file_name, "w+b");
     check(f != NULL, "fopen w+");
 
     memset(out, '\0', BUF_SIZE);

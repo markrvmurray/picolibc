@@ -46,6 +46,7 @@
 #define _DEFAULT_SOURCE
 #include <errno.h>
 #include <stdint.h>
+#include <sys/types.h>
 
 /* picolibc's errno macro and the runtime header's `extern int errno`
  * name the same plain int (no TLS on this target); hide the header's
@@ -55,6 +56,9 @@
 /* Turn an OS-9 error code into errno and -1 (the shims have already left
  * the OS-9 code in errno; overwrite it with the POSIX value). */
 int __os9_errno(int os9_code);
+
+/* Descriptor-backed stdio text output; raw write remains byte-preserving. */
+ssize_t __os9_text_write(int fd, const void *buf, size_t count);
 
 /* A call that returns 0 or an OS-9 code, as a POSIX -1/errno result. */
 #define OS9_RESULT(call) ((call) == 0 ? 0 : __os9_errno(errno))

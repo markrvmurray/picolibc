@@ -60,6 +60,11 @@ fdopen(int fd, const char *mode)
 
     *bf = (struct __file_bufio)FDEV_SETUP_POSIX(fd, buf, buf_size, stdio_flags, __BFALL);
 
+#ifdef __OS9__
+    if (strchr(mode, 'b') != NULL)
+        bf->bflags |= __BFBIN;
+#endif
+
     if (open_flags & O_APPEND)
         (void)fseeko(&(bf->xfile.cfile.file), 0, SEEK_END);
 

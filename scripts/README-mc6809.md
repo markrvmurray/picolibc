@@ -323,3 +323,24 @@ only at Level 2, where the loader wedges instead.
 The runner sets the guest's clock from the host at every boot (the kernel
 starts at its 1986 epoch); `NITROS9_SETIME=off` leaves it alone, and
 `NITROS9_SETIME='2026/08/19 12:00:00'` pins it.
+
+### OS-9 text output
+
+Descriptor-backed text output uses `I$WritLn`, so SCF sends CR with the
+line-feed behavior selected by its path options (`PD.ALF`). RBF preserves
+every byte; short writes at CR are handled by the existing flush loop.
+Binary streams, raw `write`, memory streams
+and cookie/custom callbacks retain their bytes. `fopen`, `fdopen` and
+`freopen` honor `b` when choosing console output behavior.
+
+Stdio does not translate CR or LF. Native newline character values are the
+compiler's responsibility: the planned OS-9 clang change makes `\n` CR,
+with `\l` for a physical LF. Released RC2 still defines `\n` as LF.
+
+`test-os9-text` checks byte-preserving disk, binary, raw and cookie I/O,
+seeks, mode changes and the compiler's newline delimiter. The companion
+`test-os9-text-console` uses explicit CR, so it can test native console
+behavior even with RC2; physical LF probes use octal `\012`. The runner
+checks its raw emulator log for exact CR/LF text output and unchanged LF
+binary/raw output before normalizing anything. Run both tests with
+`-Dfast-bufio=false` and `true`.

@@ -74,6 +74,11 @@ freopen(const char *pathname, const char *mode, FILE *stream)
 
     /* The replacement backend takes an fd, including for former cookies. */
     pf->bflags &= ~__BFPTR;
+#ifdef __OS9__
+    pf->bflags &= ~__BFBIN;
+    if (strchr(mode, 'b') != NULL)
+        pf->bflags |= __BFBIN;
+#endif
 
     /* Switch to POSIX backend */
     pf->read_int = read;

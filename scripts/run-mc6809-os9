@@ -207,6 +207,12 @@ run_batch() {
   # Without a stream the caller runs each program alone, where this is an error.
   j0_failed "$log" && return 124
 
+  # Batch failure causes the harness to rerun programs individually.
+  case " $names " in
+    *testos9textconsole*)
+      "$(dirname "$0")/check-os9-console-bytes" "$log" || return 124 ;;
+  esac
+
   # What a program printed is what came between its own echoed command line
   # and its marker; its status is the shell's `Error #nnn` in that stretch.
   tr -d '\000' <"$log" | tr '\r' '\n' |
@@ -424,6 +430,11 @@ if ! grep -aq 'CIDONE' "$log"; then
   tr -d '\000' <"$log" | tail -c 2000 >&2
   exit 124
 fi
+
+case "$name" in
+  testos9textconsole*)
+    "$(dirname "$0")/check-os9-console-bytes" "$log" || exit 1 ;;
+esac
 
 # The program's output: the console between the command echo and the
 # sentinel command, without the NULs the console emits and with OS-9's CR

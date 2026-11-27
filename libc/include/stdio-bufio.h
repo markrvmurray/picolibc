@@ -45,6 +45,7 @@
 #define __BFALL 0x0004 /* FILE is allocated by stdio */
 #define __BFPTR 0x0008 /* funcs need pointers instead of ints */
 #define __BPIPE 0x0010 /* FILE is opened with popen */
+#define __BFBIN 0x0020 /* OS-9 POSIX stream uses binary mode */
 
 union __file_bufio_cookie {
     int   fd;
